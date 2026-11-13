@@ -294,3 +294,11 @@ Accepted from the quant engineer's implementation:
 - **Known gaps (tracked in TODO):**
   - the risk engine's DAILY_LOSS rule still receives `todayPnlPct = 0` (now wireable from snapshots; a deliberate separate change because it alters risk behaviour);
   - the summary's `accountValue` excludes unquoted holdings while snapshots value them at cost.
+
+## ADR-028 · Daily-loss risk rule armed from real P&L
+
+- **Defect fixed:** the risk engine's DAILY_LOSS rule always received `todayPnlPct = 0`, so the configured daily-loss limit (`maxDailyLossPct`) could never block anything.
+- **Now:** `TradingService` passes the **same today's P&L the dashboard shows** (`PerformanceService.today`: the snapshot after the close, otherwise live quotes vs the previous close, net of deposits and withdrawals), in percent per the finance-core convention.
+- **Semantics (finance-core):** only **BUYs** are blocked when today's loss exceeds the limit. **Sells are never blocked**, because reducing risk must stay possible.
+- **Limitation (documented):** with no previous close snapshot there's no baseline, so the value is 0 and the rule can't block. Snapshots must exist: run the backfill or enable `SNAPSHOT_SCHEDULER`.
+- Covered by `trading.int.test.ts` (BUY rejected at about −50 %, SELL allowed, dashboard basis matches).

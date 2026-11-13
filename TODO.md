@@ -86,7 +86,7 @@ Work top to bottom; the first unchecked item is the next task.
 
 - [x] Portfolio snapshots (ledger replay + D1 closes, provenance), backfill, scheduler; performance endpoint (TWR, drawdown, monthly, simple, XIRR); summary today/month P&L with explicit basis (ADR-027)
 - [x] Alerts CRUD + evaluator (cooldown, triggerOnce, dedupe) + scheduler; in-app notifications; order/signal notifications; email/Telegram adapters disabled
-- [ ] **NEXT (safety): feed the risk engine's DAILY_LOSS rule from snapshots/live today P&L (currently 0)** + integration test
+- [x] Risk engine DAILY_LOSS fed from real today P&L (ADR-028) + integration test
 - [ ] Make summary accountValue treat unquoted holdings consistently with snapshots (at cost, ESTIMATED)
 - [ ] Dividends (declarations, entitlements, WHT, reconcile)
 - [ ] Analytics endpoints + PDF/CSV/XLSX exports

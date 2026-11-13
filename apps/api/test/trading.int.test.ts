@@ -340,6 +340,56 @@ describe('trading (integration, real PostgreSQL)', () => {
     expect(summary.body.activeHoldings).toBe(1);
   });
 
+  it('DAILY_LOSS: blocks new BUYs once today is down more than the limit vs the previous close (sells still allowed)', async () => {
+    // Previous close (Fri 2026-11-13) far above today's live value → today ≈ −50 % (paper limit is 5 %).
+    const zero = '0';
+    await prisma.portfolioSnapshot.create({
+      data: {
+        portfolioId: paperId,
+        date: new Date('2026-11-13T00:00:00Z'),
+        marketValue: zero,
+        cashBalance: '2000000',
+        totalValue: '2000000',
+        netContributions: '1000000', // same contributions as today → no external flow to net out
+        investedCost: zero,
+        unrealizedPnl: zero,
+        realizedPnlCum: zero,
+        dividendsCum: zero,
+        feesCum: zero,
+        taxesCum: zero,
+        dailyPnl: zero,
+        dailyReturn: zero,
+        priceSource: 'SIMULATED',
+      },
+    });
+    const buy = await preview({
+      portfolioId: paperId,
+      symbol: 'HUBC',
+      side: 'BUY',
+      type: 'MARKET',
+      quantity: '1',
+    }).expect(201);
+    expect(buy.body.status).toBe('REJECTED_BY_RISK');
+    const rule = buy.body.riskChecks.find((r: { rule: string }) => r.rule === 'DAILY_LOSS');
+    expect(rule.passed).toBe(false);
+    expect(Number(rule.observed)).toBeLessThan(-5);
+
+    const sell = await preview({
+      portfolioId: paperId,
+      symbol: 'HUBC',
+      side: 'SELL',
+      type: 'MARKET',
+      quantity: '1',
+    }).expect(201);
+    expect(sell.body.status).toBe('PREVIEWED'); // reducing risk is never blocked by the daily-loss rule
+
+    const summary = await http()
+      .get(`/api/v1/dashboard/summary?portfolioId=${paperId}`)
+      .set(auth)
+      .expect(200);
+    expect(summary.body.todayPnl.basis).toBe('LIVE_VS_PREVIOUS_SNAPSHOT'); // same figure the risk engine used
+  });
+
   it('every order transition is in the append-only event log and audited', async () => {
     expect(await prisma.orderEvent.count()).toBeGreaterThan(10);
     await expect(prisma.orderEvent.deleteMany({})).rejects.toThrow(/append-only/);

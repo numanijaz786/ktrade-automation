@@ -10,6 +10,7 @@ import {
   d,
   type Decimal,
   evaluateRisk,
+  HUNDRED,
   paperFill,
   previewHash,
   type RiskEvaluation,
@@ -26,6 +27,7 @@ import { FeeService } from '../ledger/fee.service.js';
 import { feeLinesFromBreakdown, LedgerService } from '../ledger/ledger.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PerformanceService } from '../snapshots/performance.service.js';
 import type { PreviewOrderInput, RecordFillInput } from './trading.schemas.js';
 
 type Tx = Prisma.TransactionClient;
@@ -73,7 +75,19 @@ export class TradingService {
     private readonly audit: AuditService,
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly notifications: NotificationsService,
+    private readonly performance: PerformanceService,
   ) {}
+
+  /**
+   * Today's P&L in PERCENT (finance-core risk convention: 5 = 5 %) for the DAILY_LOSS rule (ADR-028):
+   * the same figure the dashboard shows (PerformanceService.today: snapshot after the close, otherwise live
+   * quotes vs the previous close, net of deposits/withdrawals). Without a previous close there is no baseline,
+   * so it is 0 — the rule then cannot block (documented limitation; backfill snapshots to arm it).
+   */
+  private async todayPnlPct(portfolioId: string): Promise<Decimal> {
+    const t = await this.performance.today(portfolioId, await this.performance.liveValuation(portfolioId));
+    return t?.ret ? t.ret.times(HUNDRED) : ZERO;
+  }
 
   // ── Preview ────────────────────────────────────────────────────────────────
 
@@ -636,6 +650,7 @@ export class TradingService {
       .filter((o) => o.side === 'SELL' && o.stockId === p.stockId)
       .reduce((a, o) => a.plus(dec(o.quantity).minus(dec(o.filledQuantity))), ZERO);
     const heldQty = heldMap.get(p.stockId) ?? ZERO;
+    const todayPnlPct = await this.todayPnlPct(p.portfolioId);
 
     return evaluateRisk({
       order: {
@@ -656,7 +671,7 @@ export class TradingService {
         portfolioValue: cash.plus(holdingsValue),
         todayTradedValue: todays.reduce((a, o) => a.plus(dec(o.estNotional)), ZERO),
         todayOrderCount: todays.length,
-        todayPnlPct: ZERO, // replaced by snapshot-based daily P&L in Phase 10
+        todayPnlPct,
       },
       limits: {
         maxOrderValue: dec(limits.maxOrderValue),
