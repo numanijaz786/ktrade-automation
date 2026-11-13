@@ -1,6 +1,17 @@
 import type { ReactNode } from 'react';
 import type { OrderStatus } from '@ktrade/shared';
-import { Ban, CheckCircle2, CircleDashed, Clock, Hand, Hourglass, Send, ShieldAlert, XCircle, HelpCircle } from 'lucide-react';
+import {
+  Ban,
+  CheckCircle2,
+  CircleDashed,
+  Clock,
+  Hand,
+  Hourglass,
+  Send,
+  ShieldAlert,
+  XCircle,
+  HelpCircle,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { humanize } from '@/lib/format';
@@ -33,9 +44,25 @@ const ORDER: Record<OrderStatus, { tone: Tone; icon: LucideIcon; label?: string 
   UNKNOWN: { tone: 'bad', icon: HelpCircle },
 };
 
-export function StatusPill({ tone, icon: Icon, children, className }: { tone: Tone; icon?: LucideIcon; children: ReactNode; className?: string }) {
+export function StatusPill({
+  tone,
+  icon: Icon,
+  children,
+  className,
+}: {
+  tone: Tone;
+  icon?: LucideIcon;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap', TONES[tone], className)}>
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap',
+        TONES[tone],
+        className,
+      )}
+    >
       {Icon && <Icon className="size-3.5" aria-hidden="true" />}
       {children}
     </span>
@@ -51,7 +78,15 @@ export function OrderStatusBadge({ status, className }: { status: OrderStatus; c
   );
 }
 
-export function GenericStatus({ value, tone = 'neutral', className }: { value: string; tone?: Tone; className?: string }) {
+export function GenericStatus({
+  value,
+  tone = 'neutral',
+  className,
+}: {
+  value: string;
+  tone?: Tone;
+  className?: string;
+}) {
   return (
     <StatusPill tone={tone} className={className}>
       {humanize(value)}

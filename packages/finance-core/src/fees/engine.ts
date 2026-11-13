@@ -11,7 +11,17 @@
  * - AT_ACTUAL components are estimated as 0 and flagged `atActual: true`; anything derived from an
  *   AT_ACTUAL base is flagged too, because it is equally unknown until the contract note arrives.
  */
-import { type Decimal, type DecimalInput, type RoundingMode, d, max, roundMoney, roundPaisa, sum, ZERO } from '../decimal.js';
+import {
+  type Decimal,
+  type DecimalInput,
+  type RoundingMode,
+  d,
+  max,
+  roundMoney,
+  roundPaisa,
+  sum,
+  ZERO,
+} from '../decimal.js';
 import { assertIsoDate, isWithinEffective } from './isoDate.js';
 import {
   type FeeComponent,
@@ -89,7 +99,10 @@ const appliesToSide = (item: FeeScheduleItemSpec, side: FeeTradeSide): boolean =
   item.appliesTo === side || item.appliesTo === 'BOTH';
 
 /** One effective item per component; a side-specific item overrides a BOTH item. */
-function effectiveItems(items: readonly FeeScheduleItemSpec[], side: FeeTradeSide): Map<FeeComponent, FeeScheduleItemSpec> {
+function effectiveItems(
+  items: readonly FeeScheduleItemSpec[],
+  side: FeeTradeSide,
+): Map<FeeComponent, FeeScheduleItemSpec> {
   const out = new Map<FeeComponent, FeeScheduleItemSpec>();
   for (const item of items) {
     if (!appliesToSide(item, side)) continue;
@@ -139,7 +152,10 @@ function evaluationOrder(items: Map<FeeComponent, FeeScheduleItemSpec>): FeeComp
         throw new FeeScheduleError('MISSING_PARAMETER', `${c} (PCT_OF_COMPONENT) requires baseComponent`);
       }
       if (!items.has(base)) {
-        throw new FeeScheduleError('MISSING_BASE_COMPONENT', `${c} is based on ${base}, which does not apply to this trade`);
+        throw new FeeScheduleError(
+          'MISSING_BASE_COMPONENT',
+          `${c} is based on ${base}, which does not apply to this trade`,
+        );
       }
       visit(base, [...path, c]);
     }
@@ -170,7 +186,13 @@ export function computeTradeFees(
   for (const component of order) {
     const item = items.get(component);
     if (!item) continue; // unreachable: order only contains effective components
-    const line: FeeLine = { component, method: item.method, amount: ZERO, capitalised: item.capitalise, source: 'ESTIMATED' };
+    const line: FeeLine = {
+      component,
+      method: item.method,
+      amount: ZERO,
+      capitalised: item.capitalise,
+      source: 'ESTIMATED',
+    };
     let raw: Decimal;
     let applyMin = true;
     switch (item.method) {
@@ -244,11 +266,17 @@ export function computeTradeFees(
 export function selectFeeSchedule<S extends FeeScheduleSpec>(schedules: readonly S[], date: string): S {
   assertIsoDate(date);
   const candidates = schedules.filter((s) => isWithinEffective(date, s.effectiveFrom, s.effectiveTo));
-  if (candidates.length === 0) throw new FeeScheduleError('NO_SCHEDULE', `No fee schedule effective on ${date}`);
-  candidates.sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : a.effectiveFrom > b.effectiveFrom ? -1 : 0));
+  if (candidates.length === 0)
+    throw new FeeScheduleError('NO_SCHEDULE', `No fee schedule effective on ${date}`);
+  candidates.sort((a, b) =>
+    a.effectiveFrom < b.effectiveFrom ? 1 : a.effectiveFrom > b.effectiveFrom ? -1 : 0,
+  );
   const [best, second] = candidates;
   if (second && second.effectiveFrom === best?.effectiveFrom && second.brokerCode === best.brokerCode) {
-    throw new FeeScheduleError('AMBIGUOUS_SCHEDULE', `Two fee schedules effective from ${best.effectiveFrom}`);
+    throw new FeeScheduleError(
+      'AMBIGUOUS_SCHEDULE',
+      `Two fee schedules effective from ${best.effectiveFrom}`,
+    );
   }
   return best as S;
 }

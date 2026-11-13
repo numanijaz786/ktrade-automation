@@ -94,6 +94,12 @@ export function verifyTotp(
 
 export function otpauthUri(secretBase32: string, account: string, issuer = 'KTrade Smart Trading'): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
-  const params = new URLSearchParams({ secret: secretBase32, issuer, algorithm: 'SHA1', digits: '6', period: '30' });
+  const params = new URLSearchParams({
+    secret: secretBase32,
+    issuer,
+    algorithm: 'SHA1',
+    digits: '6',
+    period: '30',
+  });
   return `otpauth://totp/${label}?${params.toString()}`;
 }

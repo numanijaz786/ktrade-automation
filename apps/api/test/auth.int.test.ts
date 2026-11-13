@@ -20,7 +20,11 @@ describe('auth (integration, real PostgreSQL)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   const http = () => request(app.getHttpServer());
-  const OWNER = { email: 'owner@example.com', password: 'correct horse battery staple', displayName: 'Owner' };
+  const OWNER = {
+    email: 'owner@example.com',
+    password: 'correct horse battery staple',
+    displayName: 'Owner',
+  };
 
   const cookieFrom = (res: request.Response): string => {
     const raw = res.headers['set-cookie'] as unknown as string[] | undefined;
@@ -41,7 +45,11 @@ describe('auth (integration, real PostgreSQL)', () => {
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(RedisHealth)
-      .useValue({ ping: async () => true, onModuleInit: () => undefined, onModuleDestroy: async () => undefined })
+      .useValue({
+        ping: async () => true,
+        onModuleInit: () => undefined,
+        onModuleDestroy: async () => undefined,
+      })
       // Rate limiting is covered by the stubbed e2e suite; here it would throttle the scenario itself.
       // (overrideGuard cannot reach APP_GUARD-registered guards, so skip via the module options instead.)
       .overrideProvider(getOptionsToken())
@@ -72,7 +80,10 @@ describe('auth (integration, real PostgreSQL)', () => {
     accessToken = res.body.accessToken;
     refreshCookie = cookieFrom(res);
 
-    const again = await http().post('/api/v1/auth/register').send({ ...OWNER, email: 'x@example.com' }).expect(403);
+    const again = await http()
+      .post('/api/v1/auth/register')
+      .send({ ...OWNER, email: 'x@example.com' })
+      .expect(403);
     expect(again.body.code).toBe('REGISTRATION_CLOSED');
   });
 
@@ -85,10 +96,15 @@ describe('auth (integration, real PostgreSQL)', () => {
   });
 
   it('validates input with field-level problem details', async () => {
-    const res = await http().post('/api/v1/auth/login').send({ email: 'not-an-email', password: '' }).expect(422);
+    const res = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: 'not-an-email', password: '' })
+      .expect(422);
     expect(res.headers['content-type']).toContain('application/problem+json');
     expect(res.body.code).toBe('VALIDATION_FAILED');
-    expect(res.body.errors.map((e: { path: string }) => e.path)).toEqual(expect.arrayContaining(['email', 'password']));
+    expect(res.body.errors.map((e: { path: string }) => e.path)).toEqual(
+      expect.arrayContaining(['email', 'password']),
+    );
   });
 
   it('protects routes by default and accepts a valid access token', async () => {
@@ -99,8 +115,14 @@ describe('auth (integration, real PostgreSQL)', () => {
   });
 
   it('does not reveal whether an email exists', async () => {
-    const unknown = await http().post('/api/v1/auth/login').send({ email: 'nobody@example.com', password: 'whatever-long-pw' }).expect(401);
-    const wrong = await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: 'wrong-password-123' }).expect(401);
+    const unknown = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: 'nobody@example.com', password: 'whatever-long-pw' })
+      .expect(401);
+    const wrong = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: 'wrong-password-123' })
+      .expect(401);
     expect(unknown.body.code).toBe('INVALID_CREDENTIALS');
     expect(wrong.body.code).toBe(unknown.body.code);
     expect(wrong.body.detail).toBe(unknown.body.detail);
@@ -123,17 +145,26 @@ describe('auth (integration, real PostgreSQL)', () => {
   });
 
   it('logs in again; logout revokes the session immediately', async () => {
-    const login = await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: OWNER.password }).expect(200);
+    const login = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: OWNER.password })
+      .expect(200);
     accessToken = login.body.accessToken;
     refreshCookie = cookieFrom(login);
     await http().post('/api/v1/auth/logout').set('Authorization', `Bearer ${accessToken}`).expect(204);
-    const after = await http().get('/api/v1/auth/me').set('Authorization', `Bearer ${accessToken}`).expect(401);
+    const after = await http()
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(401);
     expect(after.body.code).toBe('SESSION_REVOKED');
     await http().post('/api/v1/auth/refresh').set('Cookie', refreshCookie).expect(401);
   });
 
   it('requires a step-up token for sensitive routes', async () => {
-    const login = await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: OWNER.password }).expect(200);
+    const login = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: OWNER.password })
+      .expect(200);
     accessToken = login.body.accessToken;
     const auth = { Authorization: `Bearer ${accessToken}` };
     const body = { currentPassword: OWNER.password, newPassword: 'an even longer new passphrase' };
@@ -141,19 +172,31 @@ describe('auth (integration, real PostgreSQL)', () => {
     const denied = await http().put('/api/v1/auth/password').set(auth).send(body).expect(403);
     expect(denied.body.code).toBe('STEP_UP_REQUIRED');
     await http().post('/api/v1/auth/step-up').set(auth).send({ password: 'wrong' }).expect(403);
-    const su = await http().post('/api/v1/auth/step-up').set(auth).send({ password: OWNER.password }).expect(200);
+    const su = await http()
+      .post('/api/v1/auth/step-up')
+      .set(auth)
+      .send({ password: OWNER.password })
+      .expect(200);
     expect(su.body.stepUpToken).toEqual(expect.any(String));
     // A step-up token is not an access token.
     await http().get('/api/v1/auth/me').set('Authorization', `Bearer ${su.body.stepUpToken}`).expect(401);
 
-    await http().put('/api/v1/auth/password').set(auth).set('X-Step-Up-Token', su.body.stepUpToken).send(body).expect(204);
+    await http()
+      .put('/api/v1/auth/password')
+      .set(auth)
+      .set('X-Step-Up-Token', su.body.stepUpToken)
+      .send(body)
+      .expect(204);
     OWNER.password = body.newPassword;
     // Changing the password revokes every session.
     await http().get('/api/v1/auth/me').set(auth).expect(401);
   });
 
   it('enrols TOTP (secret encrypted at rest), then requires and validates it at login, rejecting replay', async () => {
-    const login = await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: OWNER.password }).expect(200);
+    const login = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: OWNER.password })
+      .expect(200);
     const auth = { Authorization: `Bearer ${login.body.accessToken}` };
     const setup = await http().post('/api/v1/auth/2fa/setup').set(auth).expect(201);
     const secret: string = setup.body.secret;
@@ -164,31 +207,62 @@ describe('auth (integration, real PostgreSQL)', () => {
 
     const codeAt = (ms: number) => hotp(base32Decode(secret), timeStep(ms));
     await http().post('/api/v1/auth/2fa/enable').set(auth).send({ code: '000000' }).expect(403);
-    await http().post('/api/v1/auth/2fa/enable').set(auth).send({ code: codeAt(Date.now()) }).expect(204);
+    await http()
+      .post('/api/v1/auth/2fa/enable')
+      .set(auth)
+      .send({ code: codeAt(Date.now()) })
+      .expect(204);
 
-    const noCode = await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: OWNER.password }).expect(401);
+    const noCode = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: OWNER.password })
+      .expect(401);
     expect(noCode.body.code).toBe('TOTP_REQUIRED');
     // The enrolment code's step is now "used": the next valid code is from a later step.
     const next = codeAt(Date.now() + 30_000);
-    await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: OWNER.password, totpCode: next }).expect(200);
-    const replay = await http().post('/api/v1/auth/login').send({ email: OWNER.email, password: OWNER.password, totpCode: next }).expect(401);
+    await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: OWNER.password, totpCode: next })
+      .expect(200);
+    const replay = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: OWNER.email, password: OWNER.password, totpCode: next })
+      .expect(401);
     expect(replay.body.code).toBe('INVALID_TOTP');
   });
 
   it('locks the account after 5 failed attempts', async () => {
     const email = 'locktest@example.com';
-    await prisma.user.create({ data: { email, passwordHash: await argon2.hash('the-right-password', ARGON2_OPTIONS), displayName: 'L' } });
-    for (let i = 0; i < 5; i++) await http().post('/api/v1/auth/login').send({ email, password: 'wrong-password-x' }).expect(401);
-    const locked = await http().post('/api/v1/auth/login').send({ email, password: 'the-right-password' }).expect(423);
+    await prisma.user.create({
+      data: {
+        email,
+        passwordHash: await argon2.hash('the-right-password', ARGON2_OPTIONS),
+        displayName: 'L',
+      },
+    });
+    for (let i = 0; i < 5; i++)
+      await http().post('/api/v1/auth/login').send({ email, password: 'wrong-password-x' }).expect(401);
+    const locked = await http()
+      .post('/api/v1/auth/login')
+      .send({ email, password: 'the-right-password' })
+      .expect(423);
     expect(locked.body.code).toBe('ACCOUNT_LOCKED');
   });
 
   it('VIEWER role is read-only by default', async () => {
     const email = 'viewer@example.com';
     await prisma.user.create({
-      data: { email, passwordHash: await argon2.hash('viewer-password-1', ARGON2_OPTIONS), displayName: 'V', role: 'VIEWER' },
+      data: {
+        email,
+        passwordHash: await argon2.hash('viewer-password-1', ARGON2_OPTIONS),
+        displayName: 'V',
+        role: 'VIEWER',
+      },
     });
-    const login = await http().post('/api/v1/auth/login').send({ email, password: 'viewer-password-1' }).expect(200);
+    const login = await http()
+      .post('/api/v1/auth/login')
+      .send({ email, password: 'viewer-password-1' })
+      .expect(200);
     const auth = { Authorization: `Bearer ${login.body.accessToken}` };
     await http().get('/api/v1/auth/me').set(auth).expect(200);
     const denied = await http().post('/api/v1/auth/2fa/setup').set(auth).expect(403);
@@ -199,7 +273,16 @@ describe('auth (integration, real PostgreSQL)', () => {
   it('writes an audit trail without secrets, and the trail is append-only', async () => {
     const logs = await prisma.auditLog.findMany();
     const actions = new Set(logs.map((l) => l.action));
-    for (const a of ['auth.registered', 'auth.login', 'auth.login_failed', 'auth.logout', 'auth.step_up', 'auth.totp_enabled', 'auth.account_locked', 'auth.password_changed']) {
+    for (const a of [
+      'auth.registered',
+      'auth.login',
+      'auth.login_failed',
+      'auth.logout',
+      'auth.step_up',
+      'auth.totp_enabled',
+      'auth.account_locked',
+      'auth.password_changed',
+    ]) {
       expect(actions, a).toContain(a);
     }
     const dump = JSON.stringify(logs, (_, v) => (typeof v === 'bigint' ? v.toString() : v));

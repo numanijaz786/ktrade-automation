@@ -39,7 +39,8 @@ abstract class RollingExtreme implements StreamingIndicator {
   }
   push(x: Decimal): Decimal | null {
     const i = this.count++;
-    while (this.deque.length > 0 && this.dominates(x, at(this.deque, this.deque.length - 1).v)) this.deque.pop();
+    while (this.deque.length > 0 && this.dominates(x, at(this.deque, this.deque.length - 1).v))
+      this.deque.pop();
     this.deque.push({ i, v: x });
     while (at(this.deque, 0).i <= i - this.period) this.deque.shift();
     this.value = this.count >= this.period ? at(this.deque, 0).v : null;

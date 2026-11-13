@@ -43,7 +43,14 @@ export class CsvEodProvider implements MarketDataProvider {
   ) {}
 
   capabilities(): MarketDataCapabilities {
-    return { quotes: true, intradayBars: false, eodBars: true, corporateActions: false, streaming: false, delayMinutes: 0 };
+    return {
+      quotes: true,
+      intradayBars: false,
+      eodBars: true,
+      corporateActions: false,
+      streaming: false,
+      delayMinutes: 0,
+    };
   }
 
   async healthCheck(): Promise<ProviderHealth> {
@@ -55,16 +62,27 @@ export class CsvEodProvider implements MarketDataProvider {
         _max: { ts: true },
       });
       const latest = agg._max.ts ? pktDateOf(agg._max.ts) : 'none';
-      return { ok: true, checkedAt, message: `${agg._count._all} EOD bars imported; latest session ${latest}` };
+      return {
+        ok: true,
+        checkedAt,
+        message: `${agg._count._all} EOD bars imported; latest session ${latest}`,
+      };
     } catch {
       return { ok: false, checkedAt, message: 'database unavailable' };
     }
   }
 
   async getBars(symbol: string, interval: PriceInterval, from: Date, to: Date): Promise<BarDto[]> {
-    if (interval !== 'D1') throw new MarketDataCapabilityError(this.key, `${interval} bars (end-of-day only)`);
+    if (interval !== 'D1')
+      throw new MarketDataCapabilityError(this.key, `${interval} bars (end-of-day only)`);
     const rows = await this.prisma.stockPrice.findMany({
-      where: { stock: { symbol }, interval: 'D1', isAdjusted: false, providerKey: this.key, ts: { gte: from, lte: to } },
+      where: {
+        stock: { symbol },
+        interval: 'D1',
+        isAdjusted: false,
+        providerKey: this.key,
+        ts: { gte: from, lte: to },
+      },
       orderBy: { ts: 'asc' },
     });
     return rows.map((r) => ({
@@ -120,7 +138,10 @@ export class CsvEodProvider implements MarketDataProvider {
     if (issues.length) throw csvIssuesToZodError(issues);
 
     const symbols = [...new Set(rows.map((r) => r.symbol))].sort();
-    const stocks = await this.prisma.stock.findMany({ where: { symbol: { in: symbols } }, select: { id: true, symbol: true } });
+    const stocks = await this.prisma.stock.findMany({
+      where: { symbol: { in: symbols } },
+      select: { id: true, symbol: true },
+    });
     const idBySymbol = new Map(stocks.map((s) => [s.symbol, s.id]));
     const unknown: CsvIssue[] = rows
       .filter((r) => !idBySymbol.has(r.symbol))

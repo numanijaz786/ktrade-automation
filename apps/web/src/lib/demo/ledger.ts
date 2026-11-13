@@ -32,13 +32,28 @@ export interface LedgerState {
 }
 
 export function emptyState(): LedgerState {
-  return { cash: Dec.zero(), deposits: Dec.zero(), fees: Dec.zero(), taxes: Dec.zero(), dividends: Dec.zero(), positions: new Map() };
+  return {
+    cash: Dec.zero(),
+    deposits: Dec.zero(),
+    fees: Dec.zero(),
+    taxes: Dec.zero(),
+    dividends: Dec.zero(),
+    positions: new Map(),
+  };
 }
 
 function position(state: LedgerState, symbol: string): Position {
   let p = state.positions.get(symbol);
   if (!p) {
-    p = { symbol, qty: Dec.zero(), cost: Dec.zero(), realized: Dec.zero(), lots: [], sources: [], lastConfirmed: null };
+    p = {
+      symbol,
+      qty: Dec.zero(),
+      cost: Dec.zero(),
+      realized: Dec.zero(),
+      lots: [],
+      sources: [],
+      lastConfirmed: null,
+    };
     state.positions.set(symbol, p);
   }
   return p;
@@ -64,12 +79,26 @@ export function applyEntry(state: LedgerState, e: LedgerEntry): void {
     const totalCost = Dec.of(t.grossAmount).add(t.fees);
     p.qty = p.qty.add(qty);
     p.cost = p.cost.add(totalCost);
-    p.lots.push({ id: `lot-${t.id}`, acquiredAt: t.tradeDate, quantity: qty.toString(), remainingQty: qty.toString(), unitCost: totalCost.div(qty).toFixed(4), source: t.source });
+    p.lots.push({
+      id: `lot-${t.id}`,
+      acquiredAt: t.tradeDate,
+      quantity: qty.toString(),
+      remainingQty: qty.toString(),
+      unitCost: totalCost.div(qty).toFixed(4),
+      source: t.source,
+    });
     state.cash = state.cash.add(t.netAmount);
     state.fees = state.fees.add(t.fees);
   } else if (t.type === 'BONUS_IN') {
     p.qty = p.qty.add(qty);
-    p.lots.push({ id: `lot-${t.id}`, acquiredAt: t.tradeDate, quantity: qty.toString(), remainingQty: qty.toString(), unitCost: '0.0000', source: t.source });
+    p.lots.push({
+      id: `lot-${t.id}`,
+      acquiredAt: t.tradeDate,
+      quantity: qty.toString(),
+      remainingQty: qty.toString(),
+      unitCost: '0.0000',
+      source: t.source,
+    });
   } else if (t.type === 'SELL' || t.type === 'TRANSFER_OUT') {
     const avg = p.qty.isZero() ? Dec.zero() : p.cost.div(p.qty);
     const costOut = avg.mul(qty).round(4);
@@ -150,7 +179,14 @@ export function makeTrade(input: {
   };
 }
 
-function cash(portfolioId: string, date: string, type: CashMovementType, amount: string, description: string, source: DataSource = 'SIMULATED'): CashMovement {
+function cash(
+  portfolioId: string,
+  date: string,
+  type: CashMovementType,
+  amount: string,
+  description: string,
+  source: DataSource = 'SIMULATED',
+): CashMovement {
   return { id: nextId('cash'), portfolioId, date, type, amount, description, source };
 }
 
@@ -175,19 +211,42 @@ function qtyFor(symbol: string, date: string, targetRs: number): { qty: string; 
   return { qty: String(qty), price: paisaToString(pricePaisa) };
 }
 
-function buy(pf: string, n: number, symbol: string, targetRs: number, source: DataSource = 'SIMULATED', reference: string | null = null): LedgerEntry {
+function buy(
+  pf: string,
+  n: number,
+  symbol: string,
+  targetRs: number,
+  source: DataSource = 'SIMULATED',
+  reference: string | null = null,
+): LedgerEntry {
   const date = daysAgo(n);
   const { qty, price } = qtyFor(symbol, date, targetRs);
-  return { kind: 'txn', txn: makeTrade({ portfolioId: pf, date, type: 'BUY', symbol, quantity: qty, price, source, reference }) };
+  return {
+    kind: 'txn',
+    txn: makeTrade({ portfolioId: pf, date, type: 'BUY', symbol, quantity: qty, price, source, reference }),
+  };
 }
 
-function sell(pf: string, n: number, symbol: string, fraction: '1' | '0.5' | '0.3', entriesSoFar: LedgerEntry[]): LedgerEntry {
+function sell(
+  pf: string,
+  n: number,
+  symbol: string,
+  fraction: '1' | '0.5' | '0.3',
+  entriesSoFar: LedgerEntry[],
+): LedgerEntry {
   const date = daysAgo(n);
   const held = replay(entriesSoFar).positions.get(symbol)?.qty ?? Dec.zero();
   const qty = held.mul(fraction).floor(0);
   return {
     kind: 'txn',
-    txn: makeTrade({ portfolioId: pf, date, type: 'SELL', symbol, quantity: qty.toString(), price: paisaToString(closeOn(symbol, date)) }),
+    txn: makeTrade({
+      portfolioId: pf,
+      date,
+      type: 'SELL',
+      symbol,
+      quantity: qty.toString(),
+      price: paisaToString(closeOn(symbol, date)),
+    }),
   };
 }
 
@@ -224,8 +283,28 @@ function dividend(
   const out: LedgerEntry[] = [];
   if (payAgo !== null && (status === 'PAID' || status === 'RECONCILED')) {
     const payDate = daysAgo(payAgo);
-    out.push({ kind: 'cash', cash: cash(pf, payDate, 'DIVIDEND', gross.toFixed(2), `${symbol} cash dividend Rs ${perShare}/share`, source) });
-    out.push({ kind: 'cash', cash: cash(pf, payDate, 'TAX', wht.neg().toFixed(2), `${symbol} dividend withholding tax (15%)`, source === 'BROKER_CONFIRMED' ? 'BROKER_CONFIRMED' : 'ESTIMATED') });
+    out.push({
+      kind: 'cash',
+      cash: cash(
+        pf,
+        payDate,
+        'DIVIDEND',
+        gross.toFixed(2),
+        `${symbol} cash dividend Rs ${perShare}/share`,
+        source,
+      ),
+    });
+    out.push({
+      kind: 'cash',
+      cash: cash(
+        pf,
+        payDate,
+        'TAX',
+        wht.neg().toFixed(2),
+        `${symbol} dividend withholding tax (15%)`,
+        source === 'BROKER_CONFIRMED' ? 'BROKER_CONFIRMED' : 'ESTIMATED',
+      ),
+    });
   }
   return { entries: out, record };
 }
@@ -247,7 +326,21 @@ export function seedLivePortfolio(pf: string): DemoLedgerSeed {
     const bonus = held.mul('0.1').floor(0);
     e.push({
       kind: 'txn',
-      txn: { id: nextId('txn'), portfolioId: pf, tradeDate: date, type: 'BONUS_IN', symbol: 'MEBL', quantity: bonus.toString(), price: '0.00', grossAmount: '0.00', fees: '0.00', netAmount: '0.00', source: 'SIMULATED', reference: 'Bonus 10% (demo)', orderId: null },
+      txn: {
+        id: nextId('txn'),
+        portfolioId: pf,
+        tradeDate: date,
+        type: 'BONUS_IN',
+        symbol: 'MEBL',
+        quantity: bonus.toString(),
+        price: '0.00',
+        grossAmount: '0.00',
+        fees: '0.00',
+        netAmount: '0.00',
+        source: 'SIMULATED',
+        reference: 'Bonus 10% (demo)',
+        orderId: null,
+      },
     });
   }
   {

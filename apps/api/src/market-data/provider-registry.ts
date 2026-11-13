@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { MarketDataProvider } from '@ktrade/broker-sdk';
-import { CAPITAL_STAKE_UNAVAILABLE_REASON, CapitalStakeProvider } from './providers/capital-stake.provider.js';
+import {
+  CAPITAL_STAKE_UNAVAILABLE_REASON,
+  CapitalStakeProvider,
+} from './providers/capital-stake.provider.js';
 import { CsvEodProvider } from './providers/csv-eod.provider.js';
 import { SimulatedMarketDataProvider } from './providers/simulated.provider.js';
 
@@ -23,11 +26,19 @@ export interface RegisteredProvider {
 export class MarketDataProviderRegistry {
   private readonly entries: ReadonlyMap<string, RegisteredProvider>;
 
-  constructor(simulated: SimulatedMarketDataProvider, csvEod: CsvEodProvider, capitalStake: CapitalStakeProvider) {
+  constructor(
+    simulated: SimulatedMarketDataProvider,
+    csvEod: CsvEodProvider,
+    capitalStake: CapitalStakeProvider,
+  ) {
     const list: RegisteredProvider[] = [
       { provider: simulated, enabled: true },
       { provider: csvEod, enabled: true },
-      { provider: capitalStake, enabled: capitalStake.enabled, disabledReason: CAPITAL_STAKE_UNAVAILABLE_REASON },
+      {
+        provider: capitalStake,
+        enabled: capitalStake.enabled,
+        disabledReason: CAPITAL_STAKE_UNAVAILABLE_REASON,
+      },
     ];
     this.entries = new Map(list.map((e) => [e.provider.key, e]));
   }

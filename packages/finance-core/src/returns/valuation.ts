@@ -54,7 +54,9 @@ export interface PortfolioWeight<K> {
 }
 
 /** Portfolio weight of each holding: MV / Σ MV. */
-export function portfolioWeights<K>(holdings: readonly { key: K; marketValue: DecimalInput }[]): PortfolioWeight<K>[] {
+export function portfolioWeights<K>(
+  holdings: readonly { key: K; marketValue: DecimalInput }[],
+): PortfolioWeight<K>[] {
   const mvs = holdings.map((h) => d(h.marketValue));
   const total = sum(mvs);
   return holdings.map((h, i) => {
@@ -67,13 +69,20 @@ export function portfolioWeights<K>(holdings: readonly { key: K; marketValue: De
  * Simple return = (accountValue − netContributions) / netContributions.
  * null when netContributions ≤ 0 (the ratio has no meaningful sign/scale then).
  */
-export function simpleReturn(accountValueAmount: DecimalInput, netContributions: DecimalInput): Decimal | null {
+export function simpleReturn(
+  accountValueAmount: DecimalInput,
+  netContributions: DecimalInput,
+): Decimal | null {
   const c = d(netContributions);
   if (!c.gt(0)) return null;
   return d(accountValueAmount).minus(c).div(c);
 }
 
 /** Today's P&L = V_today − V_prevClose − netExternalFlows_today. */
-export function dailyPnl(valueToday: DecimalInput, valuePrevClose: DecimalInput, netExternalFlows: DecimalInput): Decimal {
+export function dailyPnl(
+  valueToday: DecimalInput,
+  valuePrevClose: DecimalInput,
+  netExternalFlows: DecimalInput,
+): Decimal {
   return d(valueToday).minus(d(valuePrevClose)).minus(d(netExternalFlows));
 }

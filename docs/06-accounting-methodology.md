@@ -13,14 +13,14 @@ All formulas are implemented once, in `packages/finance-core`. The ledger, dashb
 
 ## 2. Fee model (KTrade published schedule, effective-dated)
 
-| Component | Default rule | Capitalised into cost? | Source |
-|---|---|---|---|
-| Commission | `max(0.3% × value, Rs 0.06 × qty)` per side | Yes | KTrade Commission Structure PDF |
-| Day trade (same-day round trip) | Commission on **one side only** | Yes | Same PDF |
-| SST | 15% × commission | Yes | Same PDF |
-| CDC / NCCPL / levies (SECP, PSX), CVT | `AT_ACTUAL`: estimate shown as 0 with a ⚠, filled in from the contract note | Yes | Same PDF ("as per actual") |
-| CGT | From `tax_rates` (filer status, holding period); usually collected by NCCPL, not per trade | **No.** Tracked as tax | Placeholder, must be verified |
-| Dividend WHT | From `tax_rates` (filer status) | N/A (reduces dividend income) | Placeholder, must be verified |
+| Component                             | Default rule                                                                               | Capitalised into cost?        | Source                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------- | ------------------------------- |
+| Commission                            | `max(0.3% × value, Rs 0.06 × qty)` per side                                                | Yes                           | KTrade Commission Structure PDF |
+| Day trade (same-day round trip)       | Commission on **one side only**                                                            | Yes                           | Same PDF                        |
+| SST                                   | 15% × commission                                                                           | Yes                           | Same PDF                        |
+| CDC / NCCPL / levies (SECP, PSX), CVT | `AT_ACTUAL`: estimate shown as 0 with a ⚠, filled in from the contract note                | Yes                           | Same PDF ("as per actual")      |
+| CGT                                   | From `tax_rates` (filer status, holding period); usually collected by NCCPL, not per trade | **No.** Tracked as tax        | Placeholder, must be verified   |
+| Dividend WHT                          | From `tax_rates` (filer status)                                                            | N/A (reduces dividend income) | Placeholder, must be verified   |
 
 Buy fees are added to cost. Sell fees reduce proceeds. Taxes never change the cost basis.
 
@@ -41,43 +41,43 @@ avgCost = totalCost / qty
 
 ### Worked example (fixture `wac-basic`)
 
-| # | Event | Calculation | qty | totalCost | avgCost | realized |
-|---|---|---|---|---|---|---|
-| 1 | BUY 100 @ 250.00 | value 25,000.00; comm max(75.00, 6.00)=75.00; SST 11.25 → fees 86.25 | 100 | 25,086.2500 | 250.862500 | — |
-| 2 | BUY 50 @ 270.00 | value 13,500.00; comm 40.50; SST 6.08 (6.075 rounded half-up) → fees 46.58 | 150 | 38,632.8300 | 257.552200 | — |
-| 3 | SELL 60 @ 280.00 | value 16,800.00; comm 50.40; SST 7.56 → net 16,742.04; costRemoved = 38,632.83 × 60/150 = 15,453.1320 | 90 | 23,179.6980 | 257.552200 | **1,288.9080** |
-| 4 | BONUS 10% (1 for 10) | +9 shares, cost unchanged | 99 | 23,179.6980 | 234.138364 | — |
+| #   | Event                | Calculation                                                                                           | qty | totalCost   | avgCost    | realized       |
+| --- | -------------------- | ----------------------------------------------------------------------------------------------------- | --- | ----------- | ---------- | -------------- |
+| 1   | BUY 100 @ 250.00     | value 25,000.00; comm max(75.00, 6.00)=75.00; SST 11.25 → fees 86.25                                  | 100 | 25,086.2500 | 250.862500 | —              |
+| 2   | BUY 50 @ 270.00      | value 13,500.00; comm 40.50; SST 6.08 (6.075 rounded half-up) → fees 46.58                            | 150 | 38,632.8300 | 257.552200 | —              |
+| 3   | SELL 60 @ 280.00     | value 16,800.00; comm 50.40; SST 7.56 → net 16,742.04; costRemoved = 38,632.83 × 60/150 = 15,453.1320 | 90  | 23,179.6980 | 257.552200 | **1,288.9080** |
+| 4   | BONUS 10% (1 for 10) | +9 shares, cost unchanged                                                                             | 99  | 23,179.6980 | 234.138364 | —              |
 
 ## 4. Corporate actions
 
-| Action | Treatment |
-|---|---|
+| Action              | Treatment                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Bonus** (n for m) | `qty += floor(qty × n/m)`; totalCost unchanged → avg ↓. Fractional entitlements: the company typically sells fractions and pays cash. That cash is recorded as `ADJUSTMENT` income with zero cost (policy flag, overridable). Lots: bonus shares get their own lot at cost 0, dated on the original lot dates for holding-period purposes (configurable; must be verified for CGT). |
-| **Split** (a:b) | `qty × a/b`; totalCost unchanged. Lots are adjusted proportionally. |
-| **Rights** | Entitlement is recorded. Subscribing is a `RIGHTS_SUBSCRIPTION` buy at the subscription price (plus fees). Selling the entitlement is realized income with zero cost basis (policy flag). |
-| **Cash dividend** | Income only (§6). No basis change. |
+| **Split** (a:b)     | `qty × a/b`; totalCost unchanged. Lots are adjusted proportionally.                                                                                                                                                                                                                                                                                                                 |
+| **Rights**          | Entitlement is recorded. Subscribing is a `RIGHTS_SUBSCRIPTION` buy at the subscription price (plus fees). Selling the entitlement is realized income with zero cost basis (policy flag).                                                                                                                                                                                           |
+| **Cash dividend**   | Income only (§6). No basis change.                                                                                                                                                                                                                                                                                                                                                  |
 
 Corporate actions are posted on the **ex/book-closure date** before any trades on that date.
 
 ## 5. Valuation & P&L definitions
 
-| Metric | Formula | Label |
-|---|---|---|
-| Market value (holding) | `qty × lastPrice` | price provenance shown (PROVIDER / SIMULATED / USER_REPORTED) |
-| Unrealized P&L | `marketValue − totalCost` | ESTIMATED (price-dependent) |
-| Liquidation value (optional) | `marketValue − estimated sell fees` | ESTIMATED |
-| Realized P&L | Σ realized on SELL transactions | BROKER_CONFIRMED only when every contributing fill and fee is confirmed |
-| Portfolio weight | `holding MV / Σ holdings MV` | |
-| Cash balance | Σ `cash_movements.amount`. The latest `broker_balance_snapshots.cashBalance` is shown alongside, and a mismatch raises a `SYNC_DISCREPANCY` | |
-| Account value | cash + Σ market value | |
-| Invested amount | Σ totalCost of open holdings (cost of what you hold now). Also shown: net contributions = deposits − withdrawals | |
-| Today's P&L | `V_today − V_prevClose − netExternalFlows_today` | |
-| Monthly P&L | Σ daily P&L over the month | |
-| Simple return | `(accountValue − netContributions) / netContributions` | |
-| **TWR** (performance) | daily `r_t = (V_t − F_t) / V_{t−1} − 1`, flows at end of day; linked `Π(1+r_t) − 1` | primary "portfolio return %" |
-| **XIRR** (your return) | money-weighted, over the dated contributions and withdrawals plus current value | |
-| Dividends received | Σ net of PAID or RECONCILED entitlements | gross / WHT / net shown separately |
-| Fees & taxes | Σ `transaction_fees` by component, plus TAX cash movements | estimate vs confirmed split |
+| Metric                       | Formula                                                                                                                                     | Label                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Market value (holding)       | `qty × lastPrice`                                                                                                                           | price provenance shown (PROVIDER / SIMULATED / USER_REPORTED)           |
+| Unrealized P&L               | `marketValue − totalCost`                                                                                                                   | ESTIMATED (price-dependent)                                             |
+| Liquidation value (optional) | `marketValue − estimated sell fees`                                                                                                         | ESTIMATED                                                               |
+| Realized P&L                 | Σ realized on SELL transactions                                                                                                             | BROKER_CONFIRMED only when every contributing fill and fee is confirmed |
+| Portfolio weight             | `holding MV / Σ holdings MV`                                                                                                                |                                                                         |
+| Cash balance                 | Σ `cash_movements.amount`. The latest `broker_balance_snapshots.cashBalance` is shown alongside, and a mismatch raises a `SYNC_DISCREPANCY` |                                                                         |
+| Account value                | cash + Σ market value                                                                                                                       |                                                                         |
+| Invested amount              | Σ totalCost of open holdings (cost of what you hold now). Also shown: net contributions = deposits − withdrawals                            |                                                                         |
+| Today's P&L                  | `V_today − V_prevClose − netExternalFlows_today`                                                                                            |                                                                         |
+| Monthly P&L                  | Σ daily P&L over the month                                                                                                                  |                                                                         |
+| Simple return                | `(accountValue − netContributions) / netContributions`                                                                                      |                                                                         |
+| **TWR** (performance)        | daily `r_t = (V_t − F_t) / V_{t−1} − 1`, flows at end of day; linked `Π(1+r_t) − 1`                                                         | primary "portfolio return %"                                            |
+| **XIRR** (your return)       | money-weighted, over the dated contributions and withdrawals plus current value                                                             |                                                                         |
+| Dividends received           | Σ net of PAID or RECONCILED entitlements                                                                                                    | gross / WHT / net shown separately                                      |
+| Fees & taxes                 | Σ `transaction_fees` by component, plus TAX cash movements                                                                                  | estimate vs confirmed split                                             |
 
 ## 6. Dividends
 
@@ -87,7 +87,7 @@ wht   = gross × taxRate(DIVIDEND_WITHHOLDING, filerStatus, paymentDate)
 net   = gross − wht − zakat
 ```
 
-- **Eligibility:** shares that are *settled* in the portfolio **strictly before** book closure starts. The settlement cycle is configurable (`market.settlementDays`); with T+n settlement, the last qualifying trade date is **T−(n+1) trading days** before book-closure start (implemented in `finance-core/ledger`, ADR-018 §5). Check this against actual entitlements.
+- **Eligibility:** shares that are _settled_ in the portfolio **strictly before** book closure starts. The settlement cycle is configurable (`market.settlementDays`); with T+n settlement, the last qualifying trade date is **T−(n+1) trading days** before book-closure start (implemented in `finance-core/ledger`, ADR-018 §5). Check this against actual entitlements.
 - Lifecycle: `ANNOUNCED` → `ENTITLED` (computed, ESTIMATED) → `PAID` (cash movement) → `RECONCILED` (matched to a broker or CDC statement, BROKER_CONFIRMED).
 
 ## 7. Ordering & replay

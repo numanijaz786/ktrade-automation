@@ -61,7 +61,12 @@ const barsArb = (minLength = 0, maxLength = 60): fc.Arbitrary<OhlcvBar[]> =>
 type Eq<T> = (a: T, b: T) => boolean;
 const decEq: Eq<Decimal> = (a, b) => a.eq(b);
 
-function assertStreamingMatches<T>(ind: StreamingIndicator<T>, bars: OhlcvBar[], batch: (T | null)[], eq: Eq<T>): void {
+function assertStreamingMatches<T>(
+  ind: StreamingIndicator<T>,
+  bars: OhlcvBar[],
+  batch: (T | null)[],
+  eq: Eq<T>,
+): void {
   expect(batch.length).toBe(bars.length);
   bars.forEach((b, i) => {
     const s = ind.update(b);
@@ -105,8 +110,24 @@ describe('batch == streaming (property)', () => {
           bollingerSeries(closes(bars), p, '2.5'),
           (a, b) => a.upper.eq(b.upper) && a.middle.eq(b.middle) && a.lower.eq(b.lower),
         );
-        assertStreamingMatches(new HighestIndicator(p), bars, highestSeries(bars.map((b) => b.high), p), decEq);
-        assertStreamingMatches(new LowestIndicator(p), bars, lowestSeries(bars.map((b) => b.low), p), decEq);
+        assertStreamingMatches(
+          new HighestIndicator(p),
+          bars,
+          highestSeries(
+            bars.map((b) => b.high),
+            p,
+          ),
+          decEq,
+        );
+        assertStreamingMatches(
+          new LowestIndicator(p),
+          bars,
+          lowestSeries(
+            bars.map((b) => b.low),
+            p,
+          ),
+          decEq,
+        );
       }),
       { numRuns: 60 },
     );
@@ -114,14 +135,20 @@ describe('batch == streaming (property)', () => {
 
   it('MACD', () => {
     fc.assert(
-      fc.property(barsArb(0, 80), fc.integer({ min: 1, max: 6 }), fc.integer({ min: 1, max: 8 }), fc.integer({ min: 1, max: 6 }), (bars, f, extra, s) => {
-        assertStreamingMatches(
-          new MacdIndicator(f, f + extra, s),
-          bars,
-          macdSeries(closes(bars), f, f + extra, s),
-          (a, b) => a.macd.eq(b.macd) && a.signal.eq(b.signal) && a.histogram.eq(b.histogram),
-        );
-      }),
+      fc.property(
+        barsArb(0, 80),
+        fc.integer({ min: 1, max: 6 }),
+        fc.integer({ min: 1, max: 8 }),
+        fc.integer({ min: 1, max: 6 }),
+        (bars, f, extra, s) => {
+          assertStreamingMatches(
+            new MacdIndicator(f, f + extra, s),
+            bars,
+            macdSeries(closes(bars), f, f + extra, s),
+            (a, b) => a.macd.eq(b.macd) && a.signal.eq(b.signal) && a.histogram.eq(b.histogram),
+          );
+        },
+      ),
       { numRuns: 60 },
     );
   });

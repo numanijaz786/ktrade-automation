@@ -82,7 +82,11 @@ export interface AuthApi {
 export interface SystemApi {
   dataMode(): Promise<DataMode>;
   killSwitch(): Promise<KillSwitch>;
-  setKillSwitch(input: { liveTradingEnabled: boolean; reason: string; stepUpToken: string }): Promise<KillSwitch>;
+  setKillSwitch(input: {
+    liveTradingEnabled: boolean;
+    reason: string;
+    stepUpToken: string;
+  }): Promise<KillSwitch>;
 }
 
 export interface DashboardApi {
@@ -175,7 +179,12 @@ export interface BrokerApi {
   imports(): Promise<ImportBatch[]>;
   importRows(importId: string): Promise<ImportRow[]>;
   /** POST /imports — `content` is the file text (UTF-8, ≤ 2 MB). Target must be a LIVE broker portfolio. */
-  upload(input: { portfolioId: string; fileName: string; content: string; kind?: ImportKind }): Promise<ImportBatch>;
+  upload(input: {
+    portfolioId: string;
+    fileName: string;
+    content: string;
+    kind?: ImportKind;
+  }): Promise<ImportBatch>;
   /** PATCH /imports/:id/rows/:rowId — skip any row; include only rows flagged DUPLICATE (never INVALID). */
   updateImportRow(importId: string, rowId: string, action: ImportRowAction): Promise<ImportRow>;
   /** POST /imports/:id/commit — all-or-nothing; blocked while INVALID rows remain. */
@@ -222,7 +231,6 @@ export interface ApiClient {
   security: SecurityApi;
   settings: SettingsApi;
 }
-
 
 const ApiClientContext = createContext<ApiClient | null>(null);
 

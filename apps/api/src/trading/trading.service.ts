@@ -6,7 +6,16 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { d, type Decimal, evaluateRisk, paperFill, previewHash, type RiskEvaluation, roundMoney, ZERO } from '@ktrade/finance-core';
+import {
+  d,
+  type Decimal,
+  evaluateRisk,
+  paperFill,
+  previewHash,
+  type RiskEvaluation,
+  roundMoney,
+  ZERO,
+} from '@ktrade/finance-core';
 import type { DataSource, OrderStatus } from '@ktrade/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { RequestMeta } from '../auth/decorators.js';
@@ -19,7 +28,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { PreviewOrderInput, RecordFillInput } from './trading.schemas.js';
 
 type Tx = Prisma.TransactionClient;
-const dec = (v: { toString(): string } | null | undefined): Decimal => (v === null || v === undefined ? ZERO : d(v.toString()));
+const dec = (v: { toString(): string } | null | undefined): Decimal =>
+  v === null || v === undefined ? ZERO : d(v.toString());
 
 export const PREVIEW_TTL_MS = 5 * 60_000;
 export const QUOTE_FRESHNESS_MS = 15 * 60_000;
@@ -27,7 +37,14 @@ export const PAPER_SLIPPAGE_BPS = d('5');
 export const KILL_SWITCH_KEY = 'trading.live.enabled';
 
 /** Statuses whose BUY value / SELL quantity is committed but not yet filled. */
-const WORKING: OrderStatus[] = ['APPROVED', 'AWAITING_MANUAL_PLACEMENT', 'PLACED_BY_USER', 'SUBMITTED', 'ACCEPTED', 'PARTIALLY_FILLED'];
+const WORKING: OrderStatus[] = [
+  'APPROVED',
+  'AWAITING_MANUAL_PLACEMENT',
+  'PLACED_BY_USER',
+  'SUBMITTED',
+  'ACCEPTED',
+  'PARTIALLY_FILLED',
+];
 const FINAL: OrderStatus[] = ['FILLED', 'CANCELLED', 'REJECTED_BY_RISK', 'REJECTED_BY_BROKER', 'EXPIRED'];
 
 export type ExecutionPath = 'PAPER_AUTO' | 'MANUAL_TICKET' | 'ADAPTER';
@@ -52,13 +69,23 @@ export class TradingService {
   // ── Preview ────────────────────────────────────────────────────────────────
 
   async preview(userId: string, input: PreviewOrderInput, idempotencyKey: string, meta: RequestMeta) {
-    const replayed = await this.prisma.order.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey } } });
+    const replayed = await this.prisma.order.findUnique({
+      where: { userId_idempotencyKey: { userId, idempotencyKey } },
+    });
     if (replayed) return this.present(replayed.id, userId); // idempotent replay: same response, nothing new created
 
     const portfolio = await this.ownedPortfolio(userId, input.portfolioId);
-    const stock = await this.prisma.stock.findUnique({ where: { symbol: input.symbol.toUpperCase() }, include: { quote: true } });
-    if (!stock) throw new NotFoundException({ message: `Unknown symbol ${input.symbol}`, code: 'UNKNOWN_SYMBOL' });
-    if (!stock.quote) throw new ConflictException({ message: `No market price available for ${stock.symbol}`, code: 'NO_PRICE' });
+    const stock = await this.prisma.stock.findUnique({
+      where: { symbol: input.symbol.toUpperCase() },
+      include: { quote: true },
+    });
+    if (!stock)
+      throw new NotFoundException({ message: `Unknown symbol ${input.symbol}`, code: 'UNKNOWN_SYMBOL' });
+    if (!stock.quote)
+      throw new ConflictException({
+        message: `No market price available for ${stock.symbol}`,
+        code: 'NO_PRICE',
+      });
 
     const mode = portfolio.kind === 'PAPER' ? 'PAPER' : 'LIVE';
     const now = this.clock.now();
@@ -127,7 +154,13 @@ export class TradingService {
           strategyId: input.strategyId ?? null,
           createdAt: now, // same time source as the daily-limit window
           riskChecks: {
-            create: risk.results.map((r) => ({ rule: r.rule, passed: r.passed, observed: r.observed, limit: r.limit, message: r.message })),
+            create: risk.results.map((r) => ({
+              rule: r.rule,
+              passed: r.passed,
+              observed: r.observed,
+              limit: r.limit,
+              message: r.message,
+            })),
           },
           events: { create: { toStatus: status, actorType: 'USER', actorId: userId, reason: 'preview' } },
         },
@@ -139,7 +172,14 @@ export class TradingService {
           actorUserId: userId,
           entityType: 'order',
           entityId: created.id,
-          after: { symbol: stock.symbol, side: input.side, type: input.type, qty: qty.toFixed(), mode, failedRules: risk.failedRules },
+          after: {
+            symbol: stock.symbol,
+            side: input.side,
+            type: input.type,
+            qty: qty.toFixed(),
+            mode,
+            failedRules: risk.failedRules,
+          },
           ...meta,
         },
         tx,
@@ -147,12 +187,16 @@ export class TradingService {
       return created;
     });
 
-    return { ...(await this.present(order.id, userId)), executionPath, feeBreakdown: fees.lines.map((l) => ({
-      component: l.component,
-      amount: l.amount.toFixed(2),
-      source: 'ESTIMATED' as DataSource,
-      ...(l.atActual ? { note: 'at actual — known after contract note' } : {}),
-    })) };
+    return {
+      ...(await this.present(order.id, userId)),
+      executionPath,
+      feeBreakdown: fees.lines.map((l) => ({
+        component: l.component,
+        amount: l.amount.toFixed(2),
+        source: 'ESTIMATED' as DataSource,
+        ...(l.atActual ? { note: 'at actual — known after contract note' } : {}),
+      })),
+    };
   }
 
   // ── Approve ────────────────────────────────────────────────────────────────
@@ -162,14 +206,20 @@ export class TradingService {
     const result = await this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, userId);
       if (order.status !== 'PREVIEWED') {
-        throw new ConflictException({ message: `Order is ${order.status}, not awaiting approval`, code: 'INVALID_ORDER_STATE' });
+        throw new ConflictException({
+          message: `Order is ${order.status}, not awaiting approval`,
+          code: 'INVALID_ORDER_STATE',
+        });
       }
       if (!order.previewExpiresAt || order.previewExpiresAt <= now) {
         await this.transition(tx, order, 'EXPIRED', userId, 'preview expired');
         return { expired: true as const };
       }
       if (order.previewHash !== previewHashIn) {
-        throw new ConflictException({ message: 'Preview changed — re-preview before approving', code: 'PREVIEW_MISMATCH' });
+        throw new ConflictException({
+          message: 'Preview changed — re-preview before approving',
+          code: 'PREVIEW_MISMATCH',
+        });
       }
       await this.lockPortfolio(tx, order.portfolioId);
       const quote = await tx.stockQuote.findUnique({ where: { stockId: order.stockId } });
@@ -193,26 +243,62 @@ export class TradingService {
       });
       if (!risk.passed) {
         await tx.orderRiskCheck.createMany({
-          data: risk.results.map((r) => ({ orderId: order.id, rule: r.rule, passed: r.passed, observed: r.observed, limit: r.limit, message: `[at approval] ${r.message}` })),
+          data: risk.results.map((r) => ({
+            orderId: order.id,
+            rule: r.rule,
+            passed: r.passed,
+            observed: r.observed,
+            limit: r.limit,
+            message: `[at approval] ${r.message}`,
+          })),
         });
-        await this.transition(tx, order, 'REJECTED_BY_RISK', userId, `at approval: ${risk.failedRules.join(', ')}`);
+        await this.transition(
+          tx,
+          order,
+          'REJECTED_BY_RISK',
+          userId,
+          `at approval: ${risk.failedRules.join(', ')}`,
+        );
         return { rejected: risk.failedRules };
       }
 
-      await this.transition(tx, order, 'APPROVED', userId, 'approved with step-up', { approvedById: userId, approvedAt: now });
-      await this.audit.record({ action: 'order.approved', actorType: 'USER', actorUserId: userId, entityType: 'order', entityId: order.id, ...meta }, tx);
+      await this.transition(tx, order, 'APPROVED', userId, 'approved with step-up', {
+        approvedById: userId,
+        approvedAt: now,
+      });
+      await this.audit.record(
+        {
+          action: 'order.approved',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'order',
+          entityId: order.id,
+          ...meta,
+        },
+        tx,
+      );
 
       if (order.mode === 'PAPER') {
         await this.paperExecute(tx, { ...order, status: 'APPROVED' }, quote, now, userId);
       } else {
-        await this.transition(tx, { ...order, status: 'APPROVED' }, 'AWAITING_MANUAL_PLACEMENT', userId, 'no authorized broker adapter — place this order in the KTrade app');
+        await this.transition(
+          tx,
+          { ...order, status: 'APPROVED' },
+          'AWAITING_MANUAL_PLACEMENT',
+          userId,
+          'no authorized broker adapter — place this order in the KTrade app',
+        );
       }
       return { ok: true as const };
     });
 
-    if ('expired' in result) throw new ConflictException({ message: 'Preview expired — preview again', code: 'PREVIEW_EXPIRED' });
+    if ('expired' in result)
+      throw new ConflictException({ message: 'Preview expired — preview again', code: 'PREVIEW_EXPIRED' });
     if ('rejected' in result && result.rejected) {
-      throw new UnprocessableEntityException({ message: `Risk checks failed at approval: ${result.rejected.join(', ')}`, code: 'RISK_CHECK_FAILED' });
+      throw new UnprocessableEntityException({
+        message: `Risk checks failed at approval: ${result.rejected.join(', ')}`,
+        code: 'RISK_CHECK_FAILED',
+      });
     }
     return this.present(orderId, userId);
   }
@@ -223,14 +309,27 @@ export class TradingService {
     await this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, userId);
       if (order.mode !== 'LIVE' || order.status !== 'AWAITING_MANUAL_PLACEMENT') {
-        throw new ConflictException({ message: `Cannot mark a ${order.mode} ${order.status} order as placed`, code: 'INVALID_ORDER_STATE' });
+        throw new ConflictException({
+          message: `Cannot mark a ${order.mode} ${order.status} order as placed`,
+          code: 'INVALID_ORDER_STATE',
+        });
       }
       await this.transition(tx, order, 'PLACED_BY_USER', userId, 'user reports placing it in KTrade', {
         brokerOrderRef: brokerOrderRef ?? null,
         adapter: 'MANUAL_IMPORT',
         submittedAt: this.clock.now(),
       });
-      await this.audit.record({ action: 'order.placed_manually', actorType: 'USER', actorUserId: userId, entityType: 'order', entityId: orderId, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: 'order.placed_manually',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'order',
+          entityId: orderId,
+          ...meta,
+        },
+        tx,
+      );
     });
     return this.present(orderId, userId);
   }
@@ -239,20 +338,44 @@ export class TradingService {
   async recordFill(userId: string, orderId: string, input: RecordFillInput, meta: RequestMeta) {
     await this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, userId);
-      if (order.mode !== 'LIVE' || !['PLACED_BY_USER', 'PARTIALLY_FILLED', 'AWAITING_MANUAL_PLACEMENT'].includes(order.status)) {
-        throw new ConflictException({ message: `Cannot record a fill on a ${order.mode} ${order.status} order`, code: 'INVALID_ORDER_STATE' });
+      if (
+        order.mode !== 'LIVE' ||
+        !['PLACED_BY_USER', 'PARTIALLY_FILLED', 'AWAITING_MANUAL_PLACEMENT'].includes(order.status)
+      ) {
+        throw new ConflictException({
+          message: `Cannot record a fill on a ${order.mode} ${order.status} order`,
+          code: 'INVALID_ORDER_STATE',
+        });
       }
       const qty = d(input.quantity);
       const price = d(input.price);
       const remaining = dec(order.quantity).minus(dec(order.filledQuantity));
-      if (qty.gt(remaining)) throw new UnprocessableEntityException({ message: `Fill exceeds remaining ${remaining.toFixed()}`, code: 'OVERFILL' });
+      if (qty.gt(remaining))
+        throw new UnprocessableEntityException({
+          message: `Fill exceeds remaining ${remaining.toFixed()}`,
+          code: 'OVERFILL',
+        });
       const executedAt = new Date(input.executedAt);
       // A recorded fill implies the user placed the order; make that explicit in the event log.
       if (order.status === 'AWAITING_MANUAL_PLACEMENT') {
-        await this.transition(tx, order, 'PLACED_BY_USER', userId, 'implied by recorded fill', { adapter: 'MANUAL_IMPORT', submittedAt: executedAt });
+        await this.transition(tx, order, 'PLACED_BY_USER', userId, 'implied by recorded fill', {
+          adapter: 'MANUAL_IMPORT',
+          submittedAt: executedAt,
+        });
       }
       await this.fillOrder(tx, order, qty, price, executedAt, 'USER_REPORTED', userId);
-      await this.audit.record({ action: 'order.fill_recorded', actorType: 'USER', actorUserId: userId, entityType: 'order', entityId: orderId, after: { qty: qty.toFixed(), price: price.toFixed() }, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: 'order.fill_recorded',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'order',
+          entityId: orderId,
+          after: { qty: qty.toFixed(), price: price.toFixed() },
+          ...meta,
+        },
+        tx,
+      );
     });
     return this.present(orderId, userId);
   }
@@ -260,25 +383,60 @@ export class TradingService {
   async cancel(userId: string, orderId: string, meta: RequestMeta) {
     await this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, userId);
-      if (FINAL.includes(order.status)) throw new ConflictException({ message: `Order already ${order.status}`, code: 'INVALID_ORDER_STATE' });
-      const atBroker = order.mode === 'LIVE' && ['PLACED_BY_USER', 'PARTIALLY_FILLED', 'SUBMITTED', 'ACCEPTED'].includes(order.status);
+      if (FINAL.includes(order.status))
+        throw new ConflictException({
+          message: `Order already ${order.status}`,
+          code: 'INVALID_ORDER_STATE',
+        });
+      const atBroker =
+        order.mode === 'LIVE' &&
+        ['PLACED_BY_USER', 'PARTIALLY_FILLED', 'SUBMITTED', 'ACCEPTED'].includes(order.status);
       // A manually placed live order can only be cancelled by the user in KTrade; we record the request, not the outcome.
-      await this.transition(tx, order, atBroker ? 'CANCEL_REQUESTED' : 'CANCELLED', userId, atBroker ? 'cancel it in the KTrade app, then record the outcome' : 'cancelled before reaching the broker');
-      await this.audit.record({ action: 'order.cancelled', actorType: 'USER', actorUserId: userId, entityType: 'order', entityId: orderId, metadata: { atBroker }, ...meta }, tx);
+      await this.transition(
+        tx,
+        order,
+        atBroker ? 'CANCEL_REQUESTED' : 'CANCELLED',
+        userId,
+        atBroker
+          ? 'cancel it in the KTrade app, then record the outcome'
+          : 'cancelled before reaching the broker',
+      );
+      await this.audit.record(
+        {
+          action: 'order.cancelled',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'order',
+          entityId: orderId,
+          metadata: { atBroker },
+          ...meta,
+        },
+        tx,
+      );
     });
     return this.present(orderId, userId);
   }
 
-  async list(userId: string, q: { status?: OrderStatus; portfolioId?: string; limit: number; cursor?: string }) {
+  async list(
+    userId: string,
+    q: { status?: OrderStatus; portfolioId?: string; limit: number; cursor?: string },
+  ) {
     const rows = await this.prisma.order.findMany({
-      where: { userId, ...(q.status ? { status: q.status } : {}), ...(q.portfolioId ? { portfolioId: q.portfolioId } : {}) },
+      where: {
+        userId,
+        ...(q.status ? { status: q.status } : {}),
+        ...(q.portfolioId ? { portfolioId: q.portfolioId } : {}),
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: q.limit + 1,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       include: { stock: { select: { symbol: true, name: true } } },
     });
     const page = rows.slice(0, q.limit);
-    return { data: page.map((o) => this.serialize(o, o.stock)), nextCursor: rows.length > q.limit ? page.at(-1)!.id : null };
+    return {
+      data: page.map((o) => this.serialize(o, o.stock)),
+      nextCursor: rows.length > q.limit ? page.at(-1)!.id : null,
+    };
   }
 
   async present(orderId: string, userId: string) {
@@ -294,12 +452,31 @@ export class TradingService {
     if (!o) throw new NotFoundException({ message: 'Order not found', code: 'NOT_FOUND' });
     return {
       ...this.serialize(o, o.stock),
-      riskChecks: o.riskChecks.map((r) => ({ rule: r.rule, passed: r.passed, observed: r.observed, limit: r.limit, message: r.message })),
-      events: o.events.map((e) => ({ from: e.fromStatus, to: e.toStatus, actorType: e.actorType, reason: e.reason, at: e.createdAt.toISOString() })),
-      executions: o.executions.map((x) => ({ quantity: x.quantity.toString(), price: x.price.toString(), executedAt: x.executedAt.toISOString(), source: x.source })),
+      riskChecks: o.riskChecks.map((r) => ({
+        rule: r.rule,
+        passed: r.passed,
+        observed: r.observed,
+        limit: r.limit,
+        message: r.message,
+      })),
+      events: o.events.map((e) => ({
+        from: e.fromStatus,
+        to: e.toStatus,
+        actorType: e.actorType,
+        reason: e.reason,
+        at: e.createdAt.toISOString(),
+      })),
+      executions: o.executions.map((x) => ({
+        quantity: x.quantity.toString(),
+        price: x.price.toString(),
+        executedAt: x.executedAt.toISOString(),
+        source: x.source,
+      })),
       warnings:
         o.mode === 'LIVE'
-          ? ['Live execution is manual: place approved orders in the KTrade app, then record the fill. Contract notes confirm it.']
+          ? [
+              'Live execution is manual: place approved orders in the KTrade app, then record the fill. Contract notes confirm it.',
+            ]
           : ['Paper trading: simulated fills, no real money.'],
     };
   }
@@ -319,7 +496,18 @@ export class TradingService {
         create: { key: KILL_SWITCH_KEY, value: enabled, updatedById: userId },
         update: { value: enabled, updatedById: userId },
       });
-      await this.audit.record({ action: 'killswitch.toggled', actorType: 'USER', actorUserId: userId, before, after: { liveTradingEnabled: enabled }, metadata: { reason }, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: 'killswitch.toggled',
+          actorType: 'USER',
+          actorUserId: userId,
+          before,
+          after: { liveTradingEnabled: enabled },
+          metadata: { reason },
+          ...meta,
+        },
+        tx,
+      );
     });
     return { liveTradingEnabled: enabled };
   }
@@ -345,31 +533,62 @@ export class TradingService {
     },
   ): Promise<RiskEvaluation> {
     const limits = await tx.riskLimit.findUnique({ where: { portfolioId: p.portfolioId } });
-    if (!limits) throw new ConflictException({ message: 'Configure risk limits for this portfolio before trading', code: 'NO_RISK_LIMITS' });
+    if (!limits)
+      throw new ConflictException({
+        message: 'Configure risk limits for this portfolio before trading',
+        code: 'NO_RISK_LIMITS',
+      });
     const today = new Date(`${pktTradeDate(p.now)}T00:00:00+05:00`);
     const exclude = p.excludeOrderId ? { id: { not: p.excludeOrderId } } : {};
 
     const [cash, holdings, working, todays, holidays, killSwitch] = await Promise.all([
       this.ledger.cashBalance(tx, p.portfolioId),
-      tx.holding.findMany({ where: { portfolioId: p.portfolioId }, select: { stockId: true, quantity: true } }),
-      tx.order.findMany({ where: { portfolioId: p.portfolioId, status: { in: WORKING }, ...exclude }, select: { side: true, stockId: true, estTotal: true, quantity: true, filledQuantity: true } }),
-      tx.order.findMany({ where: { portfolioId: p.portfolioId, createdAt: { gte: today }, status: { notIn: ['REJECTED_BY_RISK', 'EXPIRED', 'CANCELLED', 'PREVIEWED'] }, ...exclude }, select: { estNotional: true } }),
+      tx.holding.findMany({
+        where: { portfolioId: p.portfolioId },
+        select: { stockId: true, quantity: true },
+      }),
+      tx.order.findMany({
+        where: { portfolioId: p.portfolioId, status: { in: WORKING }, ...exclude },
+        select: { side: true, stockId: true, estTotal: true, quantity: true, filledQuantity: true },
+      }),
+      tx.order.findMany({
+        where: {
+          portfolioId: p.portfolioId,
+          createdAt: { gte: today },
+          status: { notIn: ['REJECTED_BY_RISK', 'EXPIRED', 'CANCELLED', 'PREVIEWED'] },
+          ...exclude,
+        },
+        select: { estNotional: true },
+      }),
       tx.marketHoliday.findMany({ select: { date: true } }),
       tx.systemSetting.findUnique({ where: { key: KILL_SWITCH_KEY } }),
     ]);
     const heldMap = new Map(holdings.map((h) => [h.stockId, dec(h.quantity)]));
-    const prices = await tx.stockQuote.findMany({ where: { stockId: { in: [...heldMap.keys(), p.stockId] } }, select: { stockId: true, last: true } });
+    const prices = await tx.stockQuote.findMany({
+      where: { stockId: { in: [...heldMap.keys(), p.stockId] } },
+      select: { stockId: true, last: true },
+    });
     const priceMap = new Map(prices.map((q) => [q.stockId, dec(q.last)]));
     let holdingsValue = ZERO;
     for (const [sid, q] of heldMap) holdingsValue = holdingsValue.plus(q.times(priceMap.get(sid) ?? ZERO));
-    const pendingBuyValue = working.filter((o) => o.side === 'BUY').reduce((a, o) => a.plus(dec(o.estTotal)), ZERO);
+    const pendingBuyValue = working
+      .filter((o) => o.side === 'BUY')
+      .reduce((a, o) => a.plus(dec(o.estTotal)), ZERO);
     const pendingSellQty = working
       .filter((o) => o.side === 'SELL' && o.stockId === p.stockId)
       .reduce((a, o) => a.plus(dec(o.quantity).minus(dec(o.filledQuantity))), ZERO);
     const heldQty = heldMap.get(p.stockId) ?? ZERO;
 
     return evaluateRisk({
-      order: { side: p.side, type: p.type, qty: p.qty, limitPrice: p.limitPrice, stopPrice: p.stopPrice, refPrice: p.refPrice, estimatedTotal: p.estTotal },
+      order: {
+        side: p.side,
+        type: p.type,
+        qty: p.qty,
+        limitPrice: p.limitPrice,
+        stopPrice: p.stopPrice,
+        refPrice: p.refPrice,
+        estimatedTotal: p.estTotal,
+      },
       portfolio: {
         cash,
         pendingBuyValue,
@@ -398,16 +617,29 @@ export class TradingService {
         // An automated adapter path would require the broker capability chain (broker-sdk guardedCall).
         capabilityUsable: true,
         // Paper trading is a simulation and may run outside PSX hours (ADR-021).
-        marketOpen: p.mode === 'PAPER' || isPsxSessionOpen(p.now, new Set(holidays.map((h) => h.date.toISOString().slice(0, 10)))),
+        marketOpen:
+          p.mode === 'PAPER' ||
+          isPsxSessionOpen(p.now, new Set(holidays.map((h) => h.date.toISOString().slice(0, 10)))),
         priceIsSimulated: p.quote.source === 'SIMULATED',
         priceIsStale: p.now.getTime() - p.quote.asOf.getTime() > QUOTE_FRESHNESS_MS,
       },
     });
   }
 
-  private async paperExecute(tx: Tx, order: Order, quote: { last: { toString(): string }; volume: bigint | null }, now: Date, userId: string) {
+  private async paperExecute(
+    tx: Tx,
+    order: Order,
+    quote: { last: { toString(): string }; volume: bigint | null },
+    now: Date,
+    userId: string,
+  ) {
     const fill = paperFill(
-      { side: order.side, type: order.type === 'LIMIT' ? 'LIMIT' : 'MARKET', qty: dec(order.quantity), limitPrice: order.limitPrice ? dec(order.limitPrice) : null },
+      {
+        side: order.side,
+        type: order.type === 'LIMIT' ? 'LIMIT' : 'MARKET',
+        qty: dec(order.quantity),
+        limitPrice: order.limitPrice ? dec(order.limitPrice) : null,
+      },
       { last: dec(quote.last) },
       { slippageBps: PAPER_SLIPPAGE_BPS },
     );
@@ -416,10 +648,26 @@ export class TradingService {
       return;
     }
     await this.transition(tx, order, 'ACCEPTED', userId, 'paper broker accepted');
-    await this.fillOrder(tx, { ...order, status: 'ACCEPTED' }, fill.qty, fill.price, now, 'SIMULATED', userId);
+    await this.fillOrder(
+      tx,
+      { ...order, status: 'ACCEPTED' },
+      fill.qty,
+      fill.price,
+      now,
+      'SIMULATED',
+      userId,
+    );
   }
 
-  private async fillOrder(tx: Tx, order: Order, qty: Decimal, price: Decimal, executedAt: Date, source: DataSource, userId: string) {
+  private async fillOrder(
+    tx: Tx,
+    order: Order,
+    qty: Decimal,
+    price: Decimal,
+    executedAt: Date,
+    source: DataSource,
+    userId: string,
+  ) {
     const exec = await tx.orderExecution.create({
       data: {
         orderId: order.id,
@@ -441,7 +689,10 @@ export class TradingService {
       quantity: qty,
       price,
       tradeDate,
-      fees: feeLinesFromBreakdown(fees.lines).map((f) => ({ ...f, source: source === 'SIMULATED' ? 'SIMULATED' : 'ESTIMATED' })),
+      fees: feeLinesFromBreakdown(fees.lines).map((f) => ({
+        ...f,
+        source: source === 'SIMULATED' ? 'SIMULATED' : 'ESTIMATED',
+      })),
       source,
       executionId: exec.id,
       feeScheduleId: fees.scheduleId,
@@ -450,23 +701,55 @@ export class TradingService {
     const prevAvg = order.avgFillPrice ? dec(order.avgFillPrice) : null;
     const avg = prevAvg ? prevAvg.times(dec(order.filledQuantity)).plus(price.times(qty)).div(filled) : price;
     const done = filled.gte(dec(order.quantity));
-    await this.transition(tx, order, done ? 'FILLED' : 'PARTIALLY_FILLED', userId, `${source} fill ${qty.toFixed()} @ ${price.toFixed()}`, {
-      filledQuantity: filled.toFixed(),
-      avgFillPrice: avg.toDecimalPlaces(6).toFixed(),
-      statusSource: source,
-    });
+    await this.transition(
+      tx,
+      order,
+      done ? 'FILLED' : 'PARTIALLY_FILLED',
+      userId,
+      `${source} fill ${qty.toFixed()} @ ${price.toFixed()}`,
+      {
+        filledQuantity: filled.toFixed(),
+        avgFillPrice: avg.toDecimalPlaces(6).toFixed(),
+        statusSource: source,
+      },
+    );
   }
 
   /** Optimistic state transition: succeeds only if the order is still in the state we read (no lost updates). */
-  private async transition(tx: Tx, order: Pick<Order, 'id' | 'status'>, to: OrderStatus, userId: string, reason: string, extra: Prisma.OrderUncheckedUpdateManyInput = {}) {
-    const { count } = await tx.order.updateMany({ where: { id: order.id, status: order.status }, data: { status: to, ...extra } });
-    if (count !== 1) throw new ConflictException({ message: 'Order changed concurrently — reload', code: 'CONCURRENT_MODIFICATION' });
-    await tx.orderEvent.create({ data: { orderId: order.id, fromStatus: order.status, toStatus: to, actorType: 'USER', actorId: userId, reason } });
+  private async transition(
+    tx: Tx,
+    order: Pick<Order, 'id' | 'status'>,
+    to: OrderStatus,
+    userId: string,
+    reason: string,
+    extra: Prisma.OrderUncheckedUpdateManyInput = {},
+  ) {
+    const { count } = await tx.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: to, ...extra },
+    });
+    if (count !== 1)
+      throw new ConflictException({
+        message: 'Order changed concurrently — reload',
+        code: 'CONCURRENT_MODIFICATION',
+      });
+    await tx.orderEvent.create({
+      data: {
+        orderId: order.id,
+        fromStatus: order.status,
+        toStatus: to,
+        actorType: 'USER',
+        actorId: userId,
+        reason,
+      },
+    });
     order.status = to;
   }
 
   private async lockOrder(tx: Tx, orderId: string, userId: string): Promise<Order> {
-    const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM orders WHERE id = ${orderId}::uuid AND "userId" = ${userId}::uuid FOR UPDATE`;
+    const rows = await tx.$queryRaw<
+      { id: string }[]
+    >`SELECT id FROM orders WHERE id = ${orderId}::uuid AND "userId" = ${userId}::uuid FOR UPDATE`;
     if (rows.length === 0) throw new NotFoundException({ message: 'Order not found', code: 'NOT_FOUND' });
     return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   }
@@ -479,7 +762,11 @@ export class TradingService {
   private async ownedPortfolio(userId: string, portfolioId: string) {
     const p = await this.prisma.portfolio.findFirst({ where: { id: portfolioId, userId, archivedAt: null } });
     if (!p) throw new NotFoundException({ message: 'Portfolio not found', code: 'NOT_FOUND' });
-    if (p.kind === 'LIVE' && !p.brokerAccountId) throw new ForbiddenException({ message: 'Live portfolio has no broker account', code: 'NO_BROKER_ACCOUNT' });
+    if (p.kind === 'LIVE' && !p.brokerAccountId)
+      throw new ForbiddenException({
+        message: 'Live portfolio has no broker account',
+        code: 'NO_BROKER_ACCOUNT',
+      });
     return p;
   }
 
@@ -496,12 +783,19 @@ export class TradingService {
       quantity: o.quantity.toString(),
       limitPrice: o.limitPrice?.toString() ?? null,
       stopPrice: o.stopPrice?.toString() ?? null,
-      referencePrice: o.referencePrice ? { value: o.referencePrice.toString(), source: o.referencePriceSrc } : null,
+      referencePrice: o.referencePrice
+        ? { value: o.referencePrice.toString(), source: o.referencePriceSrc }
+        : null,
       status: o.status,
       statusSource: o.statusSource,
       filledQuantity: o.filledQuantity.toString(),
       avgFillPrice: o.avgFillPrice?.toString() ?? null,
-      estimate: { notional: o.estNotional?.toString() ?? null, fees: o.estFees?.toString() ?? null, total: o.estTotal?.toString() ?? null, source: 'ESTIMATED' as const },
+      estimate: {
+        notional: o.estNotional?.toString() ?? null,
+        fees: o.estFees?.toString() ?? null,
+        total: o.estTotal?.toString() ?? null,
+        source: 'ESTIMATED' as const,
+      },
       previewHash: o.status === 'PREVIEWED' ? o.previewHash : null,
       previewExpiresAt: o.previewExpiresAt?.toISOString() ?? null,
       rejectionReason: o.rejectionReason,

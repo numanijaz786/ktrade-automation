@@ -10,7 +10,12 @@ import {
 
 describe('computeDividendEntitlement', () => {
   it('gross, WHT, zakat, net with paisa rounding', () => {
-    const r = computeDividendEntitlement({ sharesEligible: '99', dividendPerShare: '2.75', whtRate: '0.15', zakatAmount: '1.005' });
+    const r = computeDividendEntitlement({
+      sharesEligible: '99',
+      dividendPerShare: '2.75',
+      whtRate: '0.15',
+      zakatAmount: '1.005',
+    });
     expect(r.gross.toFixed(2)).toBe('272.25');
     expect(r.wht.toFixed(2)).toBe('40.84'); // 40.8375 → 40.84
     expect(r.zakat.toFixed(2)).toBe('1.01');
@@ -21,14 +26,35 @@ describe('computeDividendEntitlement', () => {
     expect(r.net.isZero()).toBe(true);
   });
   it('rejects invalid inputs', () => {
-    expect(() => computeDividendEntitlement({ sharesEligible: '-1', dividendPerShare: '1', whtRate: '0.1' })).toThrow(RangeError);
-    expect(() => computeDividendEntitlement({ sharesEligible: '1', dividendPerShare: '1', whtRate: '1.5' })).toThrow(RangeError);
-    expect(() => computeDividendEntitlement({ sharesEligible: '10', dividendPerShare: '1', whtRate: '0.5', zakatAmount: '6' })).toThrow(RangeError);
+    expect(() =>
+      computeDividendEntitlement({ sharesEligible: '-1', dividendPerShare: '1', whtRate: '0.1' }),
+    ).toThrow(RangeError);
+    expect(() =>
+      computeDividendEntitlement({ sharesEligible: '1', dividendPerShare: '1', whtRate: '1.5' }),
+    ).toThrow(RangeError);
+    expect(() =>
+      computeDividendEntitlement({
+        sharesEligible: '10',
+        dividendPerShare: '1',
+        whtRate: '0.5',
+        zakatAmount: '6',
+      }),
+    ).toThrow(RangeError);
   });
 });
 
 // Mon 2025-03-03 … Fri 2025-03-14, with Fri 2025-03-07 a holiday
-const cal = ['2025-03-03', '2025-03-04', '2025-03-05', '2025-03-06', '2025-03-10', '2025-03-11', '2025-03-12', '2025-03-13', '2025-03-14'];
+const cal = [
+  '2025-03-03',
+  '2025-03-04',
+  '2025-03-05',
+  '2025-03-06',
+  '2025-03-10',
+  '2025-03-11',
+  '2025-03-12',
+  '2025-03-13',
+  '2025-03-14',
+];
 
 describe('settlement & eligibility (T+2)', () => {
   it('settlementDateFor skips non-trading days', () => {
@@ -55,6 +81,8 @@ describe('settlement & eligibility (T+2)', () => {
       '2025-03-12',
     );
     expect(q.eq(d('70'))).toBe(true);
-    expect(() => settledQuantityBefore([{ settlementDate: '2025-03-05', quantity: '-1' }], '2025-03-12')).toThrow(RangeError);
+    expect(() =>
+      settledQuantityBefore([{ settlementDate: '2025-03-05', quantity: '-1' }], '2025-03-12'),
+    ).toThrow(RangeError);
   });
 });

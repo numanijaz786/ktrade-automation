@@ -1,7 +1,26 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
-import { type AuthUser, CurrentUser, ReqMeta, type RequestMeta, RequireStepUp, Roles } from '../auth/decorators.js';
+import {
+  type AuthUser,
+  CurrentUser,
+  ReqMeta,
+  type RequestMeta,
+  RequireStepUp,
+  Roles,
+} from '../auth/decorators.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import {
   approveOrderSchema,
@@ -25,7 +44,10 @@ export class TradingController {
   @Post('orders/preview')
   @Roles('OWNER')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
-  @ApiOperation({ summary: 'Preview an order: fee estimate + all risk checks. Creates a PREVIEWED or REJECTED_BY_RISK order.' })
+  @ApiOperation({
+    summary:
+      'Preview an order: fee estimate + all risk checks. Creates a PREVIEWED or REJECTED_BY_RISK order.',
+  })
   preview(
     @CurrentUser() user: AuthUser,
     @Headers('idempotency-key') key: string | undefined,
@@ -65,7 +87,9 @@ export class TradingController {
   @Post('orders/:id/fills')
   @Roles('OWNER')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Live/manual: record a fill you saw in KTrade (USER_REPORTED until a contract note confirms)' })
+  @ApiOperation({
+    summary: 'Live/manual: record a fill you saw in KTrade (USER_REPORTED until a contract note confirms)',
+  })
   recordFill(
     @CurrentUser() user: AuthUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -78,12 +102,19 @@ export class TradingController {
   @Post('orders/:id/cancel')
   @Roles('OWNER')
   @HttpCode(HttpStatus.OK)
-  cancel(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @ReqMeta() meta: RequestMeta) {
+  cancel(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ReqMeta() meta: RequestMeta,
+  ) {
     return this.trading.cancel(user.id, id, meta);
   }
 
   @Get('orders')
-  list(@CurrentUser() user: AuthUser, @Query(new ZodValidationPipe(listOrdersSchema)) q: z.infer<typeof listOrdersSchema>) {
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(listOrdersSchema)) q: z.infer<typeof listOrdersSchema>,
+  ) {
     return this.trading.list(user.id, q);
   }
 

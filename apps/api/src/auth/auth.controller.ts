@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -80,7 +93,10 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthTokensResponse> {
     try {
-      return this.respond(res, await this.auth.refresh(req.cookies?.[REFRESH_COOKIE] as string | undefined, meta));
+      return this.respond(
+        res,
+        await this.auth.refresh(req.cookies?.[REFRESH_COOKIE] as string | undefined, meta),
+      );
     } catch (err) {
       this.clearCookie(res);
       throw err;
@@ -91,7 +107,11 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(@CurrentUser() user: AuthUser, @ReqMeta() meta: RequestMeta, @Res({ passthrough: true }) res: Response): Promise<void> {
+  async logout(
+    @CurrentUser() user: AuthUser,
+    @ReqMeta() meta: RequestMeta,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
     await this.auth.logout(user.sessionId, user.id, meta);
     this.clearCookie(res);
   }
@@ -126,7 +146,11 @@ export class AuthController {
   @ApiBearerAuth()
   @Delete('sessions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  revokeSession(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @ReqMeta() meta: RequestMeta) {
+  revokeSession(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ReqMeta() meta: RequestMeta,
+  ) {
     return this.auth.revokeSession(user.id, id, meta);
   }
 
@@ -134,7 +158,11 @@ export class AuthController {
   @ApiBearerAuth()
   @Delete('sessions')
   @HttpCode(HttpStatus.OK)
-  async revokeAll(@CurrentUser() user: AuthUser, @ReqMeta() meta: RequestMeta, @Res({ passthrough: true }) res: Response) {
+  async revokeAll(
+    @CurrentUser() user: AuthUser,
+    @ReqMeta() meta: RequestMeta,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const revoked = await this.auth.revokeAllSessions(user.id, meta);
     this.clearCookie(res);
     return { revoked };
@@ -150,7 +178,11 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('2fa/enable')
   @HttpCode(HttpStatus.NO_CONTENT)
-  enableTotp(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(totpConfirmSchema)) body: TotpConfirmInput, @ReqMeta() meta: RequestMeta) {
+  enableTotp(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(totpConfirmSchema)) body: TotpConfirmInput,
+    @ReqMeta() meta: RequestMeta,
+  ) {
     return this.auth.confirmTotpEnrolment(user.id, body.code, meta);
   }
 
@@ -191,6 +223,11 @@ export class AuthController {
   }
 
   private clearCookie(res: Response): void {
-    res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH, httpOnly: true, sameSite: 'strict', secure: this.config.get('COOKIE_SECURE') });
+    res.clearCookie(REFRESH_COOKIE, {
+      path: REFRESH_COOKIE_PATH,
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: this.config.get('COOKIE_SECURE'),
+    });
   }
 }

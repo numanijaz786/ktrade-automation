@@ -20,8 +20,14 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   // Both URI schemes are valid for PostgreSQL (libpq); rediss:// is Redis over TLS.
-  DATABASE_URL: z.string().url().regex(/^postgres(ql)?:\/\//, 'must be a postgres:// or postgresql:// URL'),
-  REDIS_URL: z.string().url().regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL'),
+  DATABASE_URL: z
+    .string()
+    .url()
+    .regex(/^postgres(ql)?:\/\//, 'must be a postgres:// or postgresql:// URL'),
+  REDIS_URL: z
+    .string()
+    .url()
+    .regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL'),
   CORS_ORIGINS: csv,
   SWAGGER_ENABLED: z
     .enum(['true', 'false'])

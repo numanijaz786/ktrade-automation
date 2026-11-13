@@ -5,7 +5,8 @@ import { computeTradeFees, FeeScheduleError, ktradeDefaultSchedule, selectFeeSch
 import { type FeeScheduleItemSpec } from './types.js';
 
 const KT = ktradeDefaultSchedule('2025-01-01');
-const amt = (b: ReturnType<typeof computeTradeFees>, c: string) => b.lines.find((l) => l.component === c)?.amount.toFixed(2);
+const amt = (b: ReturnType<typeof computeTradeFees>, c: string) =>
+  b.lines.find((l) => l.component === c)?.amount.toFixed(2);
 
 describe('KTrade default schedule — docs/06 §3 worked example', () => {
   it('row 1: BUY 100 @ 250 → commission 75.00, SST 11.25, fees 86.25', () => {
@@ -33,7 +34,11 @@ describe('KTrade default schedule — docs/06 §3 worked example', () => {
   });
 
   it('6.075 rounds to 6.07 under HALF_EVEN, 6.08 under HALF_UP', () => {
-    const even = computeTradeFees(KT, { side: 'BUY', quantity: '50', price: '270' }, { rounding: 'HALF_EVEN' });
+    const even = computeTradeFees(
+      KT,
+      { side: 'BUY', quantity: '50', price: '270' },
+      { rounding: 'HALF_EVEN' },
+    );
     expect(amt(even, 'SST_ON_COMMISSION')).toBe('6.08'); // 6.075 → nearest even paisa is 6.08
     const down = computeTradeFees(KT, { side: 'BUY', quantity: '50', price: '270' }, { rounding: 'DOWN' });
     expect(amt(down, 'SST_ON_COMMISSION')).toBe('6.07');
@@ -45,7 +50,9 @@ describe('KTrade default schedule — docs/06 §3 worked example', () => {
     expect(amt(b, 'COMMISSION')).toBe('60.00');
     expect(amt(b, 'SST_ON_COMMISSION')).toBe('9.00');
     // crossover exactly at price 20: both legs equal
-    expect(amt(computeTradeFees(KT, { side: 'BUY', quantity: '10', price: '20' }), 'COMMISSION')).toBe('0.60');
+    expect(amt(computeTradeFees(KT, { side: 'BUY', quantity: '10', price: '20' }), 'COMMISSION')).toBe(
+      '0.60',
+    );
   });
 
   it('flags AT_ACTUAL components as 0 with atActual', () => {
@@ -67,7 +74,12 @@ describe('KTrade default schedule — docs/06 §3 worked example', () => {
   });
 
   it('day trade: second leg pays no commission and no SST', () => {
-    const b = computeTradeFees(KT, { side: 'SELL', quantity: '100', price: '250', isDayTradeSecondLeg: true });
+    const b = computeTradeFees(KT, {
+      side: 'SELL',
+      quantity: '100',
+      price: '250',
+      isDayTradeSecondLeg: true,
+    });
     expect(amt(b, 'COMMISSION')).toBe('0.00');
     expect(amt(b, 'SST_ON_COMMISSION')).toBe('0.00');
     expect(b.lines.find((l) => l.component === 'COMMISSION')?.dayTradeWaived).toBe(true);
@@ -82,22 +94,28 @@ describe('KTrade default schedule — docs/06 §3 worked example', () => {
 
   it('property: commission ≥ 0.3% value and ≥ 0.06/share (to the paisa); SST = 15% of commission', () => {
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 1, max: 10_000_000 }), (q, paisa) => {
-        const price = d(paisa.toString()).div(100);
-        const b = computeTradeFees(KT, { side: 'BUY', quantity: q.toString(), price });
-        const comm = b.lines[0]?.amount ?? d('0');
-        const sst = b.lines[1]?.amount ?? d('0');
-        const value = d(q.toString()).times(price);
-        expect(comm.gte(round(value.times('0.003'), 2, 'DOWN'))).toBe(true);
-        expect(comm.gte(round(d(q.toString()).times('0.06'), 2, 'DOWN'))).toBe(true);
-        expect(sst.eq(roundPaisa(comm.times('0.15')))).toBe(true);
-      }),
+      fc.property(
+        fc.integer({ min: 1, max: 1_000_000 }),
+        fc.integer({ min: 1, max: 10_000_000 }),
+        (q, paisa) => {
+          const price = d(paisa.toString()).div(100);
+          const b = computeTradeFees(KT, { side: 'BUY', quantity: q.toString(), price });
+          const comm = b.lines[0]?.amount ?? d('0');
+          const sst = b.lines[1]?.amount ?? d('0');
+          const value = d(q.toString()).times(price);
+          expect(comm.gte(round(value.times('0.003'), 2, 'DOWN'))).toBe(true);
+          expect(comm.gte(round(d(q.toString()).times('0.06'), 2, 'DOWN'))).toBe(true);
+          expect(sst.eq(roundPaisa(comm.times('0.15')))).toBe(true);
+        },
+      ),
       { numRuns: 300 },
     );
   });
 });
 
-const item = (over: Partial<FeeScheduleItemSpec> & Pick<FeeScheduleItemSpec, 'component' | 'method'>): FeeScheduleItemSpec => ({
+const item = (
+  over: Partial<FeeScheduleItemSpec> & Pick<FeeScheduleItemSpec, 'component' | 'method'>,
+): FeeScheduleItemSpec => ({
   appliesTo: 'BOTH',
   capitalise: true,
   sortOrder: 0,
@@ -142,7 +160,13 @@ describe('fee methods', () => {
     const b = computeTradeFees(
       [
         item({ component: 'COMMISSION', method: 'FIXED', fixedAmount: d('10') }),
-        item({ component: 'CGT', method: 'PCT_OF_VALUE', rate: d('0.01'), capitalise: false, appliesTo: 'SELL' }),
+        item({
+          component: 'CGT',
+          method: 'PCT_OF_VALUE',
+          rate: d('0.01'),
+          capitalise: false,
+          appliesTo: 'SELL',
+        }),
       ],
       { ...trade, side: 'SELL' },
     );
@@ -171,27 +195,60 @@ describe('fee methods', () => {
   });
 
   it('PCT_OF_COMPONENT: missing base, cycle, missing baseComponent, missing rate', () => {
-    const missing = [item({ component: 'SST_ON_COMMISSION', method: 'PCT_OF_COMPONENT', rate: d('0.15'), baseComponent: 'COMMISSION' })];
-    expect(() => computeTradeFees(missing, trade)).toThrow(expect.objectContaining({ code: 'MISSING_BASE_COMPONENT' }));
+    const missing = [
+      item({
+        component: 'SST_ON_COMMISSION',
+        method: 'PCT_OF_COMPONENT',
+        rate: d('0.15'),
+        baseComponent: 'COMMISSION',
+      }),
+    ];
+    expect(() => computeTradeFees(missing, trade)).toThrow(
+      expect.objectContaining({ code: 'MISSING_BASE_COMPONENT' }),
+    );
     const cyclic = [
       item({ component: 'OTHER', method: 'PCT_OF_COMPONENT', rate: d('0.1'), baseComponent: 'CVT' }),
       item({ component: 'CVT', method: 'PCT_OF_COMPONENT', rate: d('0.1'), baseComponent: 'OTHER' }),
     ];
-    expect(() => computeTradeFees(cyclic, trade)).toThrow(expect.objectContaining({ code: 'CYCLIC_COMPONENTS' }));
-    const self = [item({ component: 'OTHER', method: 'PCT_OF_COMPONENT', rate: d('0.1'), baseComponent: 'OTHER' })];
-    expect(() => computeTradeFees(self, trade)).toThrow(expect.objectContaining({ code: 'CYCLIC_COMPONENTS' }));
+    expect(() => computeTradeFees(cyclic, trade)).toThrow(
+      expect.objectContaining({ code: 'CYCLIC_COMPONENTS' }),
+    );
+    const self = [
+      item({ component: 'OTHER', method: 'PCT_OF_COMPONENT', rate: d('0.1'), baseComponent: 'OTHER' }),
+    ];
+    expect(() => computeTradeFees(self, trade)).toThrow(
+      expect.objectContaining({ code: 'CYCLIC_COMPONENTS' }),
+    );
     const noBase = [item({ component: 'OTHER', method: 'PCT_OF_COMPONENT', rate: d('0.1') })];
-    expect(() => computeTradeFees(noBase, trade)).toThrow(expect.objectContaining({ code: 'MISSING_PARAMETER' }));
+    expect(() => computeTradeFees(noBase, trade)).toThrow(
+      expect.objectContaining({ code: 'MISSING_PARAMETER' }),
+    );
     const noRate = [item({ component: 'COMMISSION', method: 'PCT_OF_VALUE' })];
-    expect(() => computeTradeFees(noRate, trade)).toThrow(expect.objectContaining({ code: 'MISSING_PARAMETER' }));
+    expect(() => computeTradeFees(noRate, trade)).toThrow(
+      expect.objectContaining({ code: 'MISSING_PARAMETER' }),
+    );
     const negRate = [item({ component: 'COMMISSION', method: 'PCT_OF_VALUE', rate: d('-0.1') })];
-    expect(() => computeTradeFees(negRate, trade)).toThrow(expect.objectContaining({ code: 'INVALID_PARAMETER' }));
+    expect(() => computeTradeFees(negRate, trade)).toThrow(
+      expect.objectContaining({ code: 'INVALID_PARAMETER' }),
+    );
   });
 
   it('PCT_OF_COMPONENT is evaluated after its base regardless of item order; chains work', () => {
     const items = [
-      item({ component: 'CVT', method: 'PCT_OF_COMPONENT', rate: d('0.5'), baseComponent: 'SST_ON_COMMISSION', sortOrder: 3 }),
-      item({ component: 'SST_ON_COMMISSION', method: 'PCT_OF_COMPONENT', rate: d('0.1'), baseComponent: 'COMMISSION', sortOrder: 2 }),
+      item({
+        component: 'CVT',
+        method: 'PCT_OF_COMPONENT',
+        rate: d('0.5'),
+        baseComponent: 'SST_ON_COMMISSION',
+        sortOrder: 3,
+      }),
+      item({
+        component: 'SST_ON_COMMISSION',
+        method: 'PCT_OF_COMPONENT',
+        rate: d('0.1'),
+        baseComponent: 'COMMISSION',
+        sortOrder: 2,
+      }),
       item({ component: 'COMMISSION', method: 'FIXED', fixedAmount: d('100'), sortOrder: 1 }),
     ];
     const b = computeTradeFees(items, trade);
@@ -205,7 +262,13 @@ describe('fee methods', () => {
   it('a component derived from an AT_ACTUAL base is itself flagged atActual', () => {
     const items = [
       item({ component: 'CDC_CHARGES', method: 'AT_ACTUAL' }),
-      item({ component: 'OTHER', method: 'PCT_OF_COMPONENT', rate: d('0.15'), baseComponent: 'CDC_CHARGES', minAmount: d('1') }),
+      item({
+        component: 'OTHER',
+        method: 'PCT_OF_COMPONENT',
+        rate: d('0.15'),
+        baseComponent: 'CDC_CHARGES',
+        minAmount: d('1'),
+      }),
     ];
     const b = computeTradeFees(items, trade);
     const other = b.lines.find((l) => l.component === 'OTHER');

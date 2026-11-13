@@ -59,7 +59,8 @@ export async function upsertBars(
   options: UpsertBarsOptions,
 ): Promise<UpsertBarsResult> {
   const result: UpsertBarsResult = { inserted: 0, updated: 0, unchanged: 0 };
-  if (options.overwritableProviderKeys.length === 0) throw new Error('overwritableProviderKeys must not be empty');
+  if (options.overwritableProviderKeys.length === 0)
+    throw new Error('overwritableProviderKeys must not be empty');
   for (let i = 0; i < bars.length; i += CHUNK) {
     const chunk = bars.slice(i, i + CHUNK).map((b) => ('symbol' in b ? barDtoToRow(b) : b));
     const values = chunk.map(

@@ -13,7 +13,12 @@ import { type OhlcvBar } from '../indicators/types.js';
 import { type DslError, type StrategyParams } from './dsl.js';
 import { type CompiledRules, type RuleEvaluation, type RulesEvaluator, tryCompileRules } from './engine.js';
 import { type SignalScore, type SignalScoreConfig, SignalScorer } from './scoring.js';
-import { type StrategyPosition, type StrategySignalReason, type StrategySignalType, type TradeSide } from './types.js';
+import {
+  type StrategyPosition,
+  type StrategySignalReason,
+  type StrategySignalType,
+  type TradeSide,
+} from './types.js';
 
 export interface StrategyDefinition {
   /** Rule DSL document (docs/08 §3) or null/undefined for "no rule-based entries". */
@@ -89,7 +94,12 @@ export class StrategyValidationError extends Error {
 const isSet = (x: unknown): boolean => x !== undefined && x !== null;
 const DEC = /^\d+(\.\d+)?$/;
 
-function overlayPct(raw: DecimalInput | null | undefined, path: string, maxExclusive: Decimal | null, errors: DslError[]): Decimal | null {
+function overlayPct(
+  raw: DecimalInput | null | undefined,
+  path: string,
+  maxExclusive: Decimal | null,
+  errors: DslError[],
+): Decimal | null {
   if (raw === undefined || raw === null) return null;
   let v: Decimal;
   try {
@@ -100,20 +110,28 @@ function overlayPct(raw: DecimalInput | null | undefined, path: string, maxExclu
     return null;
   }
   if (!v.gt(0) || (maxExclusive !== null && !v.lt(maxExclusive))) {
-    errors.push({ path, code: 'OUT_OF_RANGE', message: `must be > 0${maxExclusive ? ` and < ${maxExclusive.toString()}` : ''}` });
+    errors.push({
+      path,
+      code: 'OUT_OF_RANGE',
+      message: `must be > 0${maxExclusive ? ` and < ${maxExclusive.toString()}` : ''}`,
+    });
     return null;
   }
   return v;
 }
 
-export type CompileStrategyResult = { ok: true; strategy: CompiledStrategy } | { ok: false; errors: DslError[] };
+export type CompileStrategyResult =
+  { ok: true; strategy: CompiledStrategy } | { ok: false; errors: DslError[] };
 
 export function tryCompileStrategy(def: StrategyDefinition): CompileStrategyResult {
   const errors: DslError[] = [];
   const rules: Partial<Record<'entryRules' | 'exitRules', unknown>> = {};
   if (isSet(def.entryRules)) rules.entryRules = def.entryRules;
   if (isSet(def.exitRules)) rules.exitRules = def.exitRules;
-  const compiled = tryCompileRules(rules as Record<'entryRules' | 'exitRules', unknown>, def.parameters ?? {});
+  const compiled = tryCompileRules(
+    rules as Record<'entryRules' | 'exitRules', unknown>,
+    def.parameters ?? {},
+  );
   if (!compiled.ok) errors.push(...compiled.errors);
   const sl = overlayPct(def.stopLossPct, '$.stopLossPct', HUNDRED, errors);
   const tp = overlayPct(def.takeProfitPct, '$.takeProfitPct', null, errors);
@@ -153,7 +171,8 @@ export interface StrategyRunnerOptions {
   readonly lastFlatBarIndex?: number | null;
 }
 
-const isOpen = (p: StrategyPosition | null | undefined): p is StrategyPosition => p !== null && p !== undefined && p.qty.gt(0);
+const isOpen = (p: StrategyPosition | null | undefined): p is StrategyPosition =>
+  p !== null && p !== undefined && p.qty.gt(0);
 const fmt = (x: Decimal): string => round(x, 4).toString();
 
 /** Stateful, incremental strategy evaluation over one symbol's bar stream. */
@@ -190,7 +209,11 @@ export class StrategyRunner {
     this.ev.update(bar, open ? position : null);
     this.scorer.update(bar);
     const s = this.strategy;
-    const make = (type: StrategySignalType, reason: StrategySignalReason, trace: StrategySignalTrace): StrategySignal => ({
+    const make = (
+      type: StrategySignalType,
+      reason: StrategySignalReason,
+      trace: StrategySignalTrace,
+    ): StrategySignal => ({
       type,
       reason,
       side: type === 'ENTRY' ? 'BUY' : 'SELL',
@@ -233,7 +256,14 @@ export class StrategyRunner {
     const s = this.strategy;
     const out: OverlayTraceEntry[] = [];
     const close = bar.close;
-    const push = (kind: OverlayKind, pctV: Decimal, threshold: Decimal, triggered: boolean, rel: string, base: string): void => {
+    const push = (
+      kind: OverlayKind,
+      pctV: Decimal,
+      threshold: Decimal,
+      triggered: boolean,
+      rel: string,
+      base: string,
+    ): void => {
       out.push({
         kind,
         pct: pctV.toString(),
@@ -245,15 +275,36 @@ export class StrategyRunner {
     };
     if (s.stopLossPct) {
       const th = p.avgCost.times(ONE.minus(s.stopLossPct.div(HUNDRED)));
-      push('STOP_LOSS', s.stopLossPct, th, close.lte(th), '<=', `avgCost ${fmt(p.avgCost)} x (1 - ${s.stopLossPct.toString()}%) = ${fmt(th)}`);
+      push(
+        'STOP_LOSS',
+        s.stopLossPct,
+        th,
+        close.lte(th),
+        '<=',
+        `avgCost ${fmt(p.avgCost)} x (1 - ${s.stopLossPct.toString()}%) = ${fmt(th)}`,
+      );
     }
     if (s.trailingStopPct) {
       const th = p.highSinceEntry.times(ONE.minus(s.trailingStopPct.div(HUNDRED)));
-      push('TRAILING_STOP', s.trailingStopPct, th, close.lte(th), '<=', `highSinceEntry ${fmt(p.highSinceEntry)} x (1 - ${s.trailingStopPct.toString()}%) = ${fmt(th)}`);
+      push(
+        'TRAILING_STOP',
+        s.trailingStopPct,
+        th,
+        close.lte(th),
+        '<=',
+        `highSinceEntry ${fmt(p.highSinceEntry)} x (1 - ${s.trailingStopPct.toString()}%) = ${fmt(th)}`,
+      );
     }
     if (s.takeProfitPct) {
       const th = p.avgCost.times(ONE.plus(s.takeProfitPct.div(HUNDRED)));
-      push('TAKE_PROFIT', s.takeProfitPct, th, close.gte(th), '>=', `avgCost ${fmt(p.avgCost)} x (1 + ${s.takeProfitPct.toString()}%) = ${fmt(th)}`);
+      push(
+        'TAKE_PROFIT',
+        s.takeProfitPct,
+        th,
+        close.gte(th),
+        '>=',
+        `avgCost ${fmt(p.avgCost)} x (1 + ${s.takeProfitPct.toString()}%) = ${fmt(th)}`,
+      );
     }
     return out;
   }

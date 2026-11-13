@@ -27,13 +27,18 @@ const rowSchema = z
     high: priceString,
     low: priceString,
     close: priceString,
-    volume: z.string().trim().regex(/^\d{1,15}$/, 'must be a whole number of shares'),
+    volume: z
+      .string()
+      .trim()
+      .regex(/^\d{1,15}$/, 'must be a whole number of shares'),
   })
   .superRefine((r, ctx) => {
     const [open, high, low, close] = [d(r.open), d(r.high), d(r.low), d(r.close)];
     if (high.lt(low)) ctx.addIssue({ code: 'custom', path: ['high'], message: 'high must be ≥ low' });
-    if (open.gt(high) || open.lt(low)) ctx.addIssue({ code: 'custom', path: ['open'], message: 'open must be within [low, high]' });
-    if (close.gt(high) || close.lt(low)) ctx.addIssue({ code: 'custom', path: ['close'], message: 'close must be within [low, high]' });
+    if (open.gt(high) || open.lt(low))
+      ctx.addIssue({ code: 'custom', path: ['open'], message: 'open must be within [low, high]' });
+    if (close.gt(high) || close.lt(low))
+      ctx.addIssue({ code: 'custom', path: ['close'], message: 'close must be within [low, high]' });
   });
 
 export interface EodCsvRow {
@@ -66,7 +71,10 @@ export interface ParseEodCsvOptions {
  * than guessed. Returns every valid row and every issue with its line number; callers decide whether
  * any issue rejects the whole file (the importer does — imports are all-or-nothing).
  */
-export function parseEodCsv(text: string, options: ParseEodCsvOptions): { rows: EodCsvRow[]; issues: CsvIssue[] } {
+export function parseEodCsv(
+  text: string,
+  options: ParseEodCsvOptions,
+): { rows: EodCsvRow[]; issues: CsvIssue[] } {
   const maxRows = options.maxRows ?? MAX_CSV_ROWS;
   const rows: EodCsvRow[] = [];
   const issues: CsvIssue[] = [];
@@ -81,11 +89,13 @@ export function parseEodCsv(text: string, options: ParseEodCsvOptions): { rows: 
   const header = splitFields(lines[headerIdx]!).map((h) => h.toLowerCase());
   const index = new Map<Column, number>();
   header.forEach((h, i) => {
-    if (!(EOD_CSV_COLUMNS as readonly string[]).includes(h)) push({ line: headerIdx + 1, message: `unknown column "${h}"` });
+    if (!(EOD_CSV_COLUMNS as readonly string[]).includes(h))
+      push({ line: headerIdx + 1, message: `unknown column "${h}"` });
     else if (index.has(h as Column)) push({ line: headerIdx + 1, message: `duplicate column "${h}"` });
     else index.set(h as Column, i);
   });
-  for (const c of EOD_CSV_COLUMNS) if (!index.has(c)) push({ line: headerIdx + 1, message: `missing column "${c}"` });
+  for (const c of EOD_CSV_COLUMNS)
+    if (!index.has(c)) push({ line: headerIdx + 1, message: `missing column "${c}"` });
   if (issues.length) return { rows, issues };
 
   const seen = new Map<string, number>();
@@ -100,13 +110,17 @@ export function parseEodCsv(text: string, options: ParseEodCsvOptions): { rows: 
     }
     const fields = splitFields(raw);
     if (fields.length !== header.length) {
-      push({ line, message: `expected ${header.length} fields, got ${fields.length} (thousands separators are not allowed)` });
+      push({
+        line,
+        message: `expected ${header.length} fields, got ${fields.length} (thousands separators are not allowed)`,
+      });
       continue;
     }
     const record = Object.fromEntries(EOD_CSV_COLUMNS.map((c) => [c, fields[index.get(c)!]!]));
     const parsed = rowSchema.safeParse(record);
     if (!parsed.success) {
-      for (const iss of parsed.error.issues) push({ line, field: String(iss.path[0] ?? ''), message: iss.message });
+      for (const iss of parsed.error.issues)
+        push({ line, field: String(iss.path[0] ?? ''), message: iss.message });
       continue;
     }
     const r = parsed.data;

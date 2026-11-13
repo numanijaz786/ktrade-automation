@@ -23,7 +23,19 @@ export interface StatTileProps {
 }
 
 /** KPI tile: label · value · provenance · optional delta and hint. */
-export function StatTile({ label, value, source, asOf, note, breakdown, delta, hint, icon, loading, className }: StatTileProps) {
+export function StatTile({
+  label,
+  value,
+  source,
+  asOf,
+  note,
+  breakdown,
+  delta,
+  hint,
+  icon,
+  loading,
+  className,
+}: StatTileProps) {
   return (
     <Card className={cn('gap-1.5 px-4 py-3.5', className)}>
       <div className="flex items-center justify-between gap-2">

@@ -46,7 +46,8 @@ const FEE_FIELDS: [string, FeeComponent][] = [
   ['other', 'OTHER'],
 ];
 
-const normaliseHeader = (h: string) => ALIASES[h.trim().toLowerCase().replace(/\s+/g, '_')] ?? h.trim().toLowerCase();
+const normaliseHeader = (h: string) =>
+  ALIASES[h.trim().toLowerCase().replace(/\s+/g, '_')] ?? h.trim().toLowerCase();
 const cleanNumber = (v: string) => v.trim().replace(/,/g, '');
 
 /** Accepts YYYY-MM-DD or DD/MM/YYYY (Pakistani convention) or DD-MM-YYYY. */
@@ -101,19 +102,23 @@ export class GenericTransactionsCsvParser implements StatementParser {
     const symbol = (raw.symbol ?? '').toUpperCase();
     if (!/^[A-Z0-9.-]{1,12}$/.test(symbol)) errors.push(`invalid symbol "${raw.symbol ?? ''}"`);
     const sideRaw = (raw.side ?? '').trim().toUpperCase();
-    const side = sideRaw === 'B' || sideRaw === 'BUY' ? 'BUY' : sideRaw === 'S' || sideRaw === 'SELL' ? 'SELL' : null;
+    const side =
+      sideRaw === 'B' || sideRaw === 'BUY' ? 'BUY' : sideRaw === 'S' || sideRaw === 'SELL' ? 'SELL' : null;
     if (!side) errors.push(`invalid side "${raw.side ?? ''}" (BUY/SELL)`);
     const quantity = cleanNumber(raw.quantity ?? '');
-    if (!/^\d+$/.test(quantity) || quantity === '0' || /^0+$/.test(quantity)) errors.push(`quantity must be a positive whole number, got "${raw.quantity ?? ''}"`);
+    if (!/^\d+$/.test(quantity) || quantity === '0' || /^0+$/.test(quantity))
+      errors.push(`quantity must be a positive whole number, got "${raw.quantity ?? ''}"`);
     const price = cleanNumber(raw.price ?? '');
-    if (!DECIMAL_STRING_RE.test(price) || !d(price).gt(0)) errors.push(`price must be a positive decimal, got "${raw.price ?? ''}"`);
+    if (!DECIMAL_STRING_RE.test(price) || !d(price).gt(0))
+      errors.push(`price must be a positive decimal, got "${raw.price ?? ''}"`);
 
     const fees: { component: FeeComponent; amount: string }[] = [];
     for (const [field, component] of FEE_FIELDS) {
       const v = raw[field];
       if (v === undefined || v.trim() === '') continue;
       const amt = cleanNumber(v);
-      if (!DECIMAL_STRING_RE.test(amt) || d(amt).lt(0)) errors.push(`${field} must be a non-negative decimal, got "${v}"`);
+      if (!DECIMAL_STRING_RE.test(amt) || d(amt).lt(0))
+        errors.push(`${field} must be a non-negative decimal, got "${v}"`);
       else fees.push({ component, amount: amt });
     }
 

@@ -93,7 +93,8 @@ export class SignalScorer {
     assertPeriod('volatilityLookback', c.volatilityLookback);
     assertPeriod('volatilityMinSamples', c.volatilityMinSamples);
     for (const w of Object.values(c.weights)) {
-      if (!Number.isSafeInteger(w) || w < 0) throw new RangeError('score weights must be non-negative integers');
+      if (!Number.isSafeInteger(w) || w < 0)
+        throw new RangeError('score weights must be non-negative integers');
     }
     this.emaFast = new EmaIndicator(c.trendFastPeriod);
     this.emaSlow = new EmaIndicator(c.trendSlowPeriod);
@@ -142,14 +143,22 @@ export class SignalScorer {
     if (rsi !== null && m !== null) {
       const macdPart = m.histogram.gt(0) ? HUNDRED : m.histogram.isZero() ? FIFTY : ZERO;
       const bull = rsi.plus(macdPart).div(2);
-      comps.push({ name: 'momentum', raw: mirror(bull), detail: `RSI(${this.cfg.rsiPeriod})=${show(rsi)}; MACD hist=${show(m.histogram)}` });
+      comps.push({
+        name: 'momentum',
+        raw: mirror(bull),
+        detail: `RSI(${this.cfg.rsiPeriod})=${show(rsi)}; MACD hist=${show(m.histogram)}`,
+      });
     } else comps.push({ name: 'momentum', raw: null, detail: 'RSI/MACD warming up' });
 
     // volume
     const vs = this.volSma.value;
     if (bar && vs !== null && vs.gt(0)) {
       const ratio = bar.volume.div(vs);
-      comps.push({ name: 'volume', raw: min(HUNDRED, FIFTY.times(ratio)), detail: `volume/SMA(${this.cfg.volumePeriod})=${show(ratio)}x` });
+      comps.push({
+        name: 'volume',
+        raw: min(HUNDRED, FIFTY.times(ratio)),
+        detail: `volume/SMA(${this.cfg.volumePeriod})=${show(ratio)}x`,
+      });
     } else comps.push({ name: 'volume', raw: null, detail: 'volume average unavailable' });
 
     // volatility regime
@@ -162,7 +171,9 @@ export class SignalScorer {
         if (v.lt(cur)) below++;
         else if (v.eq(cur)) equal++;
       }
-      const rank = fromInt(2 * below + equal).times(HUNDRED).div(fromInt(2 * hist.length));
+      const rank = fromInt(2 * below + equal)
+        .times(HUNDRED)
+        .div(fromInt(2 * hist.length));
       comps.push({
         name: 'volatility',
         raw: HUNDRED.minus(rank),
@@ -173,7 +184,9 @@ export class SignalScorer {
     const avail = comps.filter((c) => c.raw !== null && w[c.name] > 0);
     const wsum = avail.reduce((a, c) => a + w[c.name], 0);
     const total =
-      wsum === 0 ? FIFTY : sum(avail.map((c) => (c.raw as Decimal).times(fromInt(w[c.name])))).div(fromInt(wsum));
+      wsum === 0
+        ? FIFTY
+        : sum(avail.map((c) => (c.raw as Decimal).times(fromInt(w[c.name])))).div(fromInt(wsum));
     return {
       total: round(total, 0, 'HALF_UP'),
       direction,

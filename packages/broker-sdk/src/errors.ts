@@ -16,7 +16,10 @@ export class BrokerCapabilityUnavailableError extends Error {
 /** The adapter could not determine the outcome (e.g. timeout after submit). Never retried automatically. */
 export class BrokerOutcomeUnknownError extends Error {
   readonly code = 'BROKER_OUTCOME_UNKNOWN';
-  constructor(message: string, readonly brokerOrderRef?: string) {
+  constructor(
+    message: string,
+    readonly brokerOrderRef?: string,
+  ) {
     super(message);
     this.name = 'BrokerOutcomeUnknownError';
   }
@@ -24,7 +27,10 @@ export class BrokerOutcomeUnknownError extends Error {
 
 export class BrokerRejectedError extends Error {
   readonly code = 'BROKER_REJECTED';
-  constructor(message: string, readonly brokerReason?: string) {
+  constructor(
+    message: string,
+    readonly brokerReason?: string,
+  ) {
     super(message);
     this.name = 'BrokerRejectedError';
   }

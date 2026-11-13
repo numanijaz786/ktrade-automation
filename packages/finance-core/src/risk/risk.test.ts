@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { d } from '../decimal.js';
-import { canonicalPreviewString, evaluateRisk, previewHash, RISK_RULES, type RiskEngineInput, type RiskRule } from './index.js';
+import {
+  canonicalPreviewString,
+  evaluateRisk,
+  previewHash,
+  RISK_RULES,
+  type RiskEngineInput,
+  type RiskRule,
+} from './index.js';
 
 const base = (): RiskEngineInput => ({
-  order: { side: 'BUY', type: 'LIMIT', qty: d('100'), limitPrice: d('101'), refPrice: d('100'), estimatedTotal: d('10130') },
+  order: {
+    side: 'BUY',
+    type: 'LIMIT',
+    qty: d('100'),
+    limitPrice: d('101'),
+    refPrice: d('100'),
+    estimatedTotal: d('10130'),
+  },
   portfolio: {
     cash: d('50000'),
     pendingBuyValue: d('5000'),
@@ -25,7 +39,14 @@ const base = (): RiskEngineInput => ({
     maxDailyLossPct: d('3'),
     allowMarketOrders: false,
   },
-  flags: { mode: 'LIVE', killSwitchOn: true, capabilityUsable: true, marketOpen: true, priceIsSimulated: false, priceIsStale: false },
+  flags: {
+    mode: 'LIVE',
+    killSwitchOn: true,
+    capabilityUsable: true,
+    marketOpen: true,
+    priceIsSimulated: false,
+    priceIsStale: false,
+  },
 });
 
 type Patch = { order?: object; portfolio?: object; limits?: object; flags?: object };
@@ -88,7 +109,9 @@ describe('risk engine', () => {
   });
 
   it('PAPER: kill switch & capability not applicable; simulated prices allowed', () => {
-    const r = run({ flags: { mode: 'PAPER', killSwitchOn: false, capabilityUsable: false, priceIsSimulated: true } });
+    const r = run({
+      flags: { mode: 'PAPER', killSwitchOn: false, capabilityUsable: false, priceIsSimulated: true },
+    });
     expect(r.passed).toBe(true);
     expect(rule(r, 'KILL_SWITCH').message).toBe('not applicable (paper)');
     expect(rule(r, 'CAPABILITY').message).toBe('not applicable (paper)');
@@ -107,7 +130,16 @@ describe('risk engine', () => {
   it('unset limits pass with "no limit configured"; market orders priced at ref', () => {
     const r = run({
       order: { type: 'MARKET', limitPrice: null },
-      limits: { maxOrderValue: null, maxOrderQty: undefined, maxDailyTradedValue: null, maxDailyOrders: null, maxPositionPct: null, priceBandPct: null, maxDailyLossPct: null, allowMarketOrders: true },
+      limits: {
+        maxOrderValue: null,
+        maxOrderQty: undefined,
+        maxDailyTradedValue: null,
+        maxDailyOrders: null,
+        maxPositionPct: null,
+        priceBandPct: null,
+        maxDailyLossPct: null,
+        allowMarketOrders: true,
+      },
     });
     expect(r.passed).toBe(true);
     expect(rule(r, 'MAX_ORDER_VALUE')).toMatchObject({ observed: '10000', message: 'no limit configured' });
@@ -128,7 +160,16 @@ describe('risk engine', () => {
 });
 
 describe('previewHash', () => {
-  const f = { symbol: 'OGDC', side: 'BUY', type: 'LIMIT', qty: '100', limitPrice: '101.50', stopPrice: null, portfolioId: 'p1', mode: 'LIVE' } as const;
+  const f = {
+    symbol: 'OGDC',
+    side: 'BUY',
+    type: 'LIMIT',
+    qty: '100',
+    limitPrice: '101.50',
+    stopPrice: null,
+    portfolioId: 'p1',
+    mode: 'LIVE',
+  } as const;
   it('is deterministic, hex sha256, and normalizes decimals', () => {
     const h = previewHash(f);
     expect(h).toMatch(/^[0-9a-f]{64}$/);

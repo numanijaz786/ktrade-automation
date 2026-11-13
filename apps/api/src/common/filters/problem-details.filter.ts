@@ -1,4 +1,11 @@
-import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import {
+  type ArgumentsHost,
+  Catch,
+  type ExceptionFilter,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { BrokerCapabilityUnavailableError } from '@ktrade/broker-sdk';
 import type { Request, Response } from 'express';
 import { ZodError } from 'zod';
@@ -62,8 +69,11 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const body = exception.getResponse();
       const detail =
-        typeof body === 'string' ? body : ((body as { message?: string | string[] }).message ?? exception.message);
-      const code = (typeof body === 'object' && (body as { code?: string }).code) || HttpStatus[status] || 'HTTP_ERROR';
+        typeof body === 'string'
+          ? body
+          : ((body as { message?: string | string[] }).message ?? exception.message);
+      const code =
+        (typeof body === 'object' && (body as { code?: string }).code) || HttpStatus[status] || 'HTTP_ERROR';
       // RFC 9457 extension members — an explicit allow-list so internal fields never leak.
       const ext: Record<string, unknown> = {};
       if (typeof body === 'object') {

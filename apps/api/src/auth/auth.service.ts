@@ -57,10 +57,23 @@ export class AuthService {
           throw new ForbiddenException({ message: 'Registration is closed', code: 'REGISTRATION_CLOSED' });
         }
         const created = await tx.user.create({
-          data: { email: input.email, passwordHash, displayName: input.displayName, role: 'OWNER', settings: { create: {} } },
+          data: {
+            email: input.email,
+            passwordHash,
+            displayName: input.displayName,
+            role: 'OWNER',
+            settings: { create: {} },
+          },
         });
         await this.audit.record(
-          { action: 'auth.registered', actorType: 'USER', actorUserId: created.id, entityType: 'user', entityId: created.id, ...meta },
+          {
+            action: 'auth.registered',
+            actorType: 'USER',
+            actorUserId: created.id,
+            entityType: 'user',
+            entityId: created.id,
+            ...meta,
+          },
           tx,
         );
         return created;
@@ -74,7 +87,12 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email: input.email } });
     if (!user || !user.isActive) {
       await argon2.verify(await this.dummyHash, input.password).catch(() => false);
-      await this.audit.record({ action: 'auth.login_failed', actorType: 'USER', metadata: { reason: 'unknown_user' }, ...meta });
+      await this.audit.record({
+        action: 'auth.login_failed',
+        actorType: 'USER',
+        metadata: { reason: 'unknown_user' },
+        ...meta,
+      });
       throw invalidCredentials();
     }
     const now = this.clock.now();
@@ -104,13 +122,23 @@ export class AuthService {
     }
 
     if (argon2.needsRehash(user.passwordHash, ARGON2_OPTIONS)) {
-      await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(input.password, ARGON2_OPTIONS) } });
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: await argon2.hash(input.password, ARGON2_OPTIONS) },
+      });
     }
     await this.prisma.user.update({
       where: { id: user.id },
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
     });
-    await this.audit.record({ action: 'auth.login', actorType: 'USER', actorUserId: user.id, entityType: 'user', entityId: user.id, ...meta });
+    await this.audit.record({
+      action: 'auth.login',
+      actorType: 'USER',
+      actorUserId: user.id,
+      entityType: 'user',
+      entityId: user.id,
+      ...meta,
+    });
     return this.issueSession(user, meta);
   }
 
@@ -121,7 +149,10 @@ export class AuthService {
   async refresh(rawToken: string | undefined, meta: RequestMeta): Promise<IssuedSession> {
     if (!rawToken) throw new UnauthorizedException({ message: 'No session', code: 'NO_SESSION' });
     const hash = TokenService.hash(rawToken);
-    const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash }, include: { user: true } });
+    const existing = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: hash },
+      include: { user: true },
+    });
     if (!existing) throw new UnauthorizedException({ message: 'Invalid session', code: 'INVALID_SESSION' });
     const now = this.clock.now();
 
@@ -159,7 +190,8 @@ export class AuthService {
         where: { id: existing.id, revokedAt: null },
         data: { revokedAt: now, revokeReason: 'rotated', replacedById: created.id, lastUsedAt: now },
       });
-      if (count !== 1) throw new UnauthorizedException({ message: 'Session revoked', code: 'SESSION_REVOKED' });
+      if (count !== 1)
+        throw new UnauthorizedException({ message: 'Session revoked', code: 'SESSION_REVOKED' });
     });
 
     return this.buildSession(existing.user, existing.familyId, next.raw, nextExpiry);
@@ -167,7 +199,14 @@ export class AuthService {
 
   async logout(sessionId: string, userId: string, meta: RequestMeta): Promise<void> {
     await this.revokeFamily(sessionId, 'logout', userId);
-    await this.audit.record({ action: 'auth.logout', actorType: 'USER', actorUserId: userId, entityType: 'session', entityId: sessionId, ...meta });
+    await this.audit.record({
+      action: 'auth.logout',
+      actorType: 'USER',
+      actorUserId: userId,
+      entityType: 'session',
+      entityId: sessionId,
+      ...meta,
+    });
   }
 
   async listSessions(userId: string, currentSessionId: string) {
@@ -188,8 +227,16 @@ export class AuthService {
 
   async revokeSession(userId: string, sessionId: string, meta: RequestMeta): Promise<void> {
     const n = await this.revokeFamily(sessionId, 'user_revoked', userId);
-    if (n === 0) throw new ConflictException({ message: 'Session not found or already revoked', code: 'NOT_FOUND' });
-    await this.audit.record({ action: 'auth.session_revoked', actorType: 'USER', actorUserId: userId, entityType: 'session', entityId: sessionId, ...meta });
+    if (n === 0)
+      throw new ConflictException({ message: 'Session not found or already revoked', code: 'NOT_FOUND' });
+    await this.audit.record({
+      action: 'auth.session_revoked',
+      actorType: 'USER',
+      actorUserId: userId,
+      entityType: 'session',
+      entityId: sessionId,
+      ...meta,
+    });
   }
 
   async revokeAllSessions(userId: string, meta: RequestMeta): Promise<number> {
@@ -197,12 +244,22 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: this.clock.now(), revokeReason: 'revoke_all' },
     });
-    await this.audit.record({ action: 'auth.sessions_revoked_all', actorType: 'USER', actorUserId: userId, metadata: { count }, ...meta });
+    await this.audit.record({
+      action: 'auth.sessions_revoked_all',
+      actorType: 'USER',
+      actorUserId: userId,
+      metadata: { count },
+      ...meta,
+    });
     return count;
   }
 
   /** Step-up: TOTP when enabled, otherwise password re-entry. Returns a short-lived token for 🔐 routes. */
-  async stepUp(userId: string, proof: { totpCode?: string; password?: string }, meta: RequestMeta): Promise<{ stepUpToken: string; expiresIn: number }> {
+  async stepUp(
+    userId: string,
+    proof: { totpCode?: string; password?: string },
+    meta: RequestMeta,
+  ): Promise<{ stepUpToken: string; expiresIn: number }> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const now = this.clock.now();
     let ok = false;
@@ -215,14 +272,23 @@ export class AuthService {
     } else if (proof.password) {
       ok = await argon2.verify(user.passwordHash, proof.password);
     }
-    await this.audit.record({ action: ok ? 'auth.step_up' : 'auth.step_up_failed', actorType: 'USER', actorUserId: userId, ...meta });
+    await this.audit.record({
+      action: ok ? 'auth.step_up' : 'auth.step_up_failed',
+      actorType: 'USER',
+      actorUserId: userId,
+      ...meta,
+    });
     if (!ok) throw new ForbiddenException({ message: 'Verification failed', code: 'STEP_UP_FAILED' });
-    return { stepUpToken: await this.tokens.signStepUp(userId), expiresIn: this.config.get('STEP_UP_TTL_SECONDS') };
+    return {
+      stepUpToken: await this.tokens.signStepUp(userId),
+      expiresIn: this.config.get('STEP_UP_TTL_SECONDS'),
+    };
   }
 
   async beginTotpEnrolment(userId: string): Promise<{ secret: string; otpauthUri: string }> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (user.totpEnabled) throw new ConflictException({ message: 'Two-factor already enabled', code: 'TOTP_ALREADY_ENABLED' });
+    if (user.totpEnabled)
+      throw new ConflictException({ message: 'Two-factor already enabled', code: 'TOTP_ALREADY_ENABLED' });
     const secret = generateTotpSecret();
     await this.prisma.user.update({
       where: { id: userId },
@@ -239,13 +305,19 @@ export class AuthService {
 
   async confirmTotpEnrolment(userId: string, code: string, meta: RequestMeta): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (!user.totpPendingEnc) throw new ConflictException({ message: 'No enrolment in progress', code: 'NO_PENDING_TOTP' });
+    if (!user.totpPendingEnc)
+      throw new ConflictException({ message: 'No enrolment in progress', code: 'NO_PENDING_TOTP' });
     const secret = openFromBuffer(this.kek, Buffer.from(user.totpPendingEnc), this.totpAad(userId));
     const res = verifyTotp(secret, code, this.clock.now().getTime());
     if (!res.ok) throw new ForbiddenException({ message: 'Invalid two-factor code', code: 'INVALID_TOTP' });
     await this.prisma.user.update({
       where: { id: userId },
-      data: { totpSecretEnc: user.totpPendingEnc, totpPendingEnc: null, totpEnabled: true, totpLastStep: res.step! },
+      data: {
+        totpSecretEnc: user.totpPendingEnc,
+        totpPendingEnc: null,
+        totpEnabled: true,
+        totpLastStep: res.step!,
+      },
     });
     await this.audit.record({ action: 'auth.totp_enabled', actorType: 'USER', actorUserId: userId, ...meta });
   }
@@ -255,15 +327,28 @@ export class AuthService {
       where: { id: userId },
       data: { totpEnabled: false, totpSecretEnc: null, totpPendingEnc: null, totpLastStep: null },
     });
-    await this.audit.record({ action: 'auth.totp_disabled', actorType: 'USER', actorUserId: userId, ...meta });
+    await this.audit.record({
+      action: 'auth.totp_disabled',
+      actorType: 'USER',
+      actorUserId: userId,
+      ...meta,
+    });
   }
 
   async changePassword(userId: string, current: string, next: string, meta: RequestMeta): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!(await argon2.verify(user.passwordHash, current))) throw invalidCredentials();
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await argon2.hash(next, ARGON2_OPTIONS) } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await argon2.hash(next, ARGON2_OPTIONS) },
+    });
     await this.revokeAllSessions(userId, meta);
-    await this.audit.record({ action: 'auth.password_changed', actorType: 'USER', actorUserId: userId, ...meta });
+    await this.audit.record({
+      action: 'auth.password_changed',
+      actorType: 'USER',
+      actorUserId: userId,
+      ...meta,
+    });
   }
 
   async me(userId: string): Promise<AuthTokensResponse['user']> {
@@ -284,7 +369,10 @@ export class AuthService {
     const lock = failed >= MAX_FAILED_LOGINS;
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { failedLoginCount: lock ? 0 : failed, lockedUntil: lock ? new Date(now.getTime() + LOCKOUT_MS) : user.lockedUntil },
+      data: {
+        failedLoginCount: lock ? 0 : failed,
+        lockedUntil: lock ? new Date(now.getTime() + LOCKOUT_MS) : user.lockedUntil,
+      },
     });
     await this.audit.record({
       action: lock ? 'auth.account_locked' : 'auth.login_failed',
@@ -320,7 +408,12 @@ export class AuthService {
     return this.buildSession(user, familyId, rt.raw, expiresAt);
   }
 
-  private async buildSession(user: User, familyId: string, rawRefresh: string, refreshExpiresAt: Date): Promise<IssuedSession> {
+  private async buildSession(
+    user: User,
+    familyId: string,
+    rawRefresh: string,
+    refreshExpiresAt: Date,
+  ): Promise<IssuedSession> {
     return {
       accessToken: await this.tokens.signAccess({ sub: user.id, role: user.role, sid: familyId }),
       expiresIn: this.tokens.accessTtlSeconds,
@@ -331,6 +424,12 @@ export class AuthService {
   }
 
   private publicUser(user: User): AuthTokensResponse['user'] {
-    return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, totpEnabled: user.totpEnabled };
+    return {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      totpEnabled: user.totpEnabled,
+    };
   }
 }

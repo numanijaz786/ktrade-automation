@@ -8,7 +8,12 @@ export const MIN_TICK = d('0.01');
 /** PSX symbols: upper-case letters/digits (e.g. OGDC, PIBTL, 786). */
 export const SYMBOL_RE = /^[A-Z0-9]{1,12}$/;
 
-export const INTERVAL_MINUTES: Record<Exclude<PriceInterval, 'D1'>, number> = { M1: 1, M5: 5, M15: 15, H1: 60 };
+export const INTERVAL_MINUTES: Record<Exclude<PriceInterval, 'D1'>, number> = {
+  M1: 1,
+  M5: 5,
+  M15: 15,
+  H1: 60,
+};
 
 /** Round to the PSX tick (half-even) and never below one tick. */
 export const toTick = (x: Decimal): Decimal => max(MIN_TICK, round(x, TICK_DP, 'HALF_EVEN'));

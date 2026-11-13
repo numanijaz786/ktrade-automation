@@ -61,7 +61,9 @@ export interface MacdResult {
 export function macd(values: readonly number[], fast = 12, slow = 26, signalPeriod = 9): MacdResult {
   const f = ema(values, fast);
   const s = ema(values, slow);
-  const line: Series = values.map((_, i) => (f[i] !== null && s[i] !== null ? (f[i] as number) - (s[i] as number) : null));
+  const line: Series = values.map((_, i) =>
+    f[i] !== null && s[i] !== null ? (f[i] as number) - (s[i] as number) : null,
+  );
   const firstIdx = line.findIndex((v) => v !== null);
   const signal: Series = new Array(values.length).fill(null);
   if (firstIdx >= 0) {
@@ -71,7 +73,9 @@ export function macd(values: readonly number[], fast = 12, slow = 26, signalPeri
       signal[firstIdx + j] = v;
     });
   }
-  const histogram: Series = line.map((v, i) => (v !== null && signal[i] !== null ? v - (signal[i] as number) : null));
+  const histogram: Series = line.map((v, i) =>
+    v !== null && signal[i] !== null ? v - (signal[i] as number) : null,
+  );
   return { macd: line, signal, histogram };
 }
 

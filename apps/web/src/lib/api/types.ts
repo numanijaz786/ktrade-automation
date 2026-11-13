@@ -294,7 +294,10 @@ export interface Quote {
 }
 
 /** WebSocket `quote` event payload. */
-export type QuoteTick = Pick<Quote, 'symbol' | 'last' | 'change' | 'changePct' | 'volume' | 'asOf' | 'source' | 'delayMinutes'> &
+export type QuoteTick = Pick<
+  Quote,
+  'symbol' | 'last' | 'change' | 'changePct' | 'volume' | 'asOf' | 'source' | 'delayMinutes'
+> &
   Partial<Pick<Quote, 'high' | 'low'>>;
 
 export interface Candle {
@@ -329,7 +332,13 @@ export interface MarketProvider {
   available: boolean;
   delayMinutes: number;
   health: 'OK' | 'DEGRADED' | 'DOWN' | 'NOT_CONFIGURED';
-  capabilities: { quotes: boolean; intradayBars: boolean; eodBars: boolean; corporateActions: boolean; streaming: boolean };
+  capabilities: {
+    quotes: boolean;
+    intradayBars: boolean;
+    eodBars: boolean;
+    corporateActions: boolean;
+    streaming: boolean;
+  };
   note: string;
 }
 
@@ -671,7 +680,8 @@ export interface FeesTaxes {
   totalConfirmed: Decimal;
 }
 
-export type ReportType = 'PERFORMANCE' | 'TRANSACTIONS' | 'HOLDINGS' | 'DIVIDENDS' | 'FEES_TAXES' | 'CGT_ESTIMATE';
+export type ReportType =
+  'PERFORMANCE' | 'TRANSACTIONS' | 'HOLDINGS' | 'DIVIDENDS' | 'FEES_TAXES' | 'CGT_ESTIMATE';
 export type ReportFormat = 'PDF' | 'CSV' | 'XLSX';
 
 export interface Report {

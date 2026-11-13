@@ -110,7 +110,12 @@ function assertMacd(fast: number, slow: number, signal: number): void {
 }
 
 /** MACD; output is null until the signal line exists. Warm-up = slow + signal - 1. */
-export function macdSeries(values: readonly Decimal[], fast = 12, slow = 26, signal = 9): IndicatorSeries<MacdValue> {
+export function macdSeries(
+  values: readonly Decimal[],
+  fast = 12,
+  slow = 26,
+  signal = 9,
+): IndicatorSeries<MacdValue> {
   assertMacd(fast, slow, signal);
   const ef = emaSeries(values, fast);
   const es = emaSeries(values, slow);
@@ -172,7 +177,9 @@ export class MacdIndicator implements StreamingIndicator<MacdValue> {
 /** Rate of change in percent: (x_t - x_{t-period}) / x_{t-period} * 100; null if x_{t-period} = 0. Warm-up = period + 1. */
 export function rocSeries(values: readonly Decimal[], period: number): IndicatorSeries {
   assertPeriod('ROC', period);
-  return values.map((x, i) => (i < period ? null : pct(x.minus(at(values, i - period)), at(values, i - period))));
+  return values.map((x, i) =>
+    i < period ? null : pct(x.minus(at(values, i - period)), at(values, i - period)),
+  );
 }
 
 export class RocIndicator implements StreamingIndicator {

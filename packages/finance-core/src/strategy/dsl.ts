@@ -65,7 +65,8 @@ export type DslArithOperand =
   | { mul: DslOperand[] }
   | { sub: [DslOperand, DslOperand] }
   | { div: [DslOperand, DslOperand] };
-export type DslOperand = DslIndicatorOperand | DslFieldOperand | DslPositionOperand | DslConstOperand | DslArithOperand;
+export type DslOperand =
+  DslIndicatorOperand | DslFieldOperand | DslPositionOperand | DslConstOperand | DslArithOperand;
 
 export type DslComparisonOp = 'gt' | 'gte' | 'lt' | 'lte' | 'eq';
 export type DslRule =
@@ -141,10 +142,34 @@ export type OperandAst =
 export type RuleAst =
   | { readonly k: 'all' | 'any'; readonly path: string; readonly rules: readonly RuleAst[] }
   | { readonly k: 'not'; readonly path: string; readonly rule: RuleAst }
-  | { readonly k: 'cmp'; readonly path: string; readonly op: DslComparisonOp; readonly a: OperandAst; readonly b: OperandAst }
-  | { readonly k: 'between'; readonly path: string; readonly x: OperandAst; readonly lo: OperandAst; readonly hi: OperandAst }
-  | { readonly k: 'cross'; readonly path: string; readonly dir: 'above' | 'below'; readonly a: OperandAst; readonly b: OperandAst }
-  | { readonly k: 'trend'; readonly path: string; readonly dir: 'rising' | 'falling'; readonly a: OperandAst; readonly n: number };
+  | {
+      readonly k: 'cmp';
+      readonly path: string;
+      readonly op: DslComparisonOp;
+      readonly a: OperandAst;
+      readonly b: OperandAst;
+    }
+  | {
+      readonly k: 'between';
+      readonly path: string;
+      readonly x: OperandAst;
+      readonly lo: OperandAst;
+      readonly hi: OperandAst;
+    }
+  | {
+      readonly k: 'cross';
+      readonly path: string;
+      readonly dir: 'above' | 'below';
+      readonly a: OperandAst;
+      readonly b: OperandAst;
+    }
+  | {
+      readonly k: 'trend';
+      readonly path: string;
+      readonly dir: 'rising' | 'falling';
+      readonly a: OperandAst;
+      readonly n: number;
+    };
 
 // ───────────────────────────── limits ─────────────────────────────
 
@@ -159,7 +184,10 @@ export const DSL_LIMITS = {
 // ───────────────────────────── validator ─────────────────────────────
 
 interface IndicatorTemplate {
-  readonly ints: readonly { readonly key: 'period' | 'fast' | 'slow' | 'signal'; readonly dflt: number | null }[];
+  readonly ints: readonly {
+    readonly key: 'period' | 'fast' | 'slow' | 'signal';
+    readonly dflt: number | null;
+  }[];
   readonly hasStdDev?: boolean;
   readonly outputs?: readonly string[];
   readonly defaultSource: PriceSource | null;
@@ -181,7 +209,12 @@ const IND_TEMPLATES: Record<DslIndicatorName, IndicatorTemplate> = {
     defaultSource: 'close',
   },
   ATR: { ints: [{ key: 'period', dflt: 14 }], defaultSource: null },
-  BB: { ints: [{ key: 'period', dflt: 20 }], hasStdDev: true, outputs: ['middle', 'upper', 'lower'], defaultSource: 'close' },
+  BB: {
+    ints: [{ key: 'period', dflt: 20 }],
+    hasStdDev: true,
+    outputs: ['middle', 'upper', 'lower'],
+    defaultSource: 'close',
+  },
   HIGHEST: { ints: [{ key: 'period', dflt: null }], defaultSource: 'high' },
   LOWEST: { ints: [{ key: 'period', dflt: null }], defaultSource: 'low' },
   VOLUME_SMA: { ints: [{ key: 'period', dflt: null }], defaultSource: null },
@@ -204,7 +237,8 @@ const RULE_OPS: readonly string[] = [
   'falling',
 ];
 
-const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const isObj = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
 const keyPath = (path: string, key: string): string => `${path}.${key}`;
 const idxPath = (path: string, i: number): string => `${path}[${i}]`;
 
@@ -224,14 +258,16 @@ class Validator {
       this.err(path, 'TOO_COMPLEX', `nesting deeper than ${DSL_LIMITS.maxDepth}`);
       return false;
     }
-    if (this.nodes === DSL_LIMITS.maxNodes + 1) this.err(path, 'TOO_COMPLEX', `more than ${DSL_LIMITS.maxNodes} nodes`);
+    if (this.nodes === DSL_LIMITS.maxNodes + 1)
+      this.err(path, 'TOO_COMPLEX', `more than ${DSL_LIMITS.maxNodes} nodes`);
     return this.nodes <= DSL_LIMITS.maxNodes;
   }
 
   /** Resolve a `$param` reference (returns the raw value) or pass through literals. */
   private deref(raw: unknown, path: string): unknown {
     if (typeof raw === 'string' && raw.startsWith('$')) {
-      if (!PARAM_REF.test(raw)) return this.err(path, 'INVALID_VALUE', `malformed parameter reference "${raw}"`);
+      if (!PARAM_REF.test(raw))
+        return this.err(path, 'INVALID_VALUE', `malformed parameter reference "${raw}"`);
       const name = raw.slice(1);
       if (!Object.prototype.hasOwnProperty.call(this.params, name)) {
         return this.err(path, 'UNKNOWN_PARAM', `unknown parameter "${raw}"`);
@@ -248,7 +284,8 @@ class Validator {
     if (typeof v === 'number' && Number.isSafeInteger(v)) n = v;
     else if (typeof v === 'string' && INT_STR.test(v) && v.length <= 15) n = Number.parseInt(v, 10);
     if (n === null) return this.err(path, 'INVALID_VALUE', `expected an integer, got ${JSON.stringify(v)}`);
-    if (n < minimum || n > maximum) return this.err(path, 'OUT_OF_RANGE', `must be between ${minimum} and ${maximum}, got ${n}`);
+    if (n < minimum || n > maximum)
+      return this.err(path, 'OUT_OF_RANGE', `must be between ${minimum} and ${maximum}, got ${n}`);
     return n;
   }
 
@@ -257,7 +294,11 @@ class Validator {
     if (v === null) return null;
     if (typeof v === 'number') {
       if (Number.isSafeInteger(v)) return d(String(v));
-      return this.err(path, 'INVALID_VALUE', `fractional JS numbers are not allowed; use a decimal string (got ${String(v)})`);
+      return this.err(
+        path,
+        'INVALID_VALUE',
+        `fractional JS numbers are not allowed; use a decimal string (got ${String(v)})`,
+      );
     }
     if (typeof v === 'string' && DEC_STR.test(v.trim())) return d(v.trim());
     return this.err(path, 'INVALID_VALUE', `expected a decimal string, got ${JSON.stringify(v)}`);
@@ -283,16 +324,25 @@ class Validator {
       this.unknownKeys(raw, ['field', 'offset'], path);
       const f = raw.field;
       if (typeof f !== 'string' || !(DSL_FIELDS as readonly string[]).includes(f)) {
-        return this.err(keyPath(path, 'field'), 'INVALID_VALUE', `field must be one of ${DSL_FIELDS.join(', ')}`);
+        return this.err(
+          keyPath(path, 'field'),
+          'INVALID_VALUE',
+          `field must be one of ${DSL_FIELDS.join(', ')}`,
+        );
       }
-      const offset = raw.offset === undefined ? 0 : this.int(raw.offset, keyPath(path, 'offset'), 0, DSL_LIMITS.maxOffset);
+      const offset =
+        raw.offset === undefined ? 0 : this.int(raw.offset, keyPath(path, 'offset'), 0, DSL_LIMITS.maxOffset);
       return offset === null ? null : { k: 'field', field: f as DslField, offset };
     }
     if ('position' in raw) {
       this.unknownKeys(raw, ['position'], path);
       const f = raw.position;
       if (typeof f !== 'string' || !(DSL_POSITION_FIELDS as readonly string[]).includes(f)) {
-        return this.err(keyPath(path, 'position'), 'INVALID_VALUE', `position must be one of ${DSL_POSITION_FIELDS.join(', ')}`);
+        return this.err(
+          keyPath(path, 'position'),
+          'INVALID_VALUE',
+          `position must be one of ${DSL_POSITION_FIELDS.join(', ')}`,
+        );
       }
       return { k: 'pos', field: f as DslPositionField };
     }
@@ -309,20 +359,32 @@ class Validator {
         if (!Array.isArray(list)) return this.err(p, 'INVALID_TYPE', `${op} expects an array of operands`);
         const binary = op === 'sub' || op === 'div';
         if (binary ? list.length !== 2 : list.length < 2) {
-          return this.err(p, 'ARITY', binary ? `${op} expects exactly 2 operands` : `${op} expects at least 2 operands`);
+          return this.err(
+            p,
+            'ARITY',
+            binary ? `${op} expects exactly 2 operands` : `${op} expects at least 2 operands`,
+          );
         }
         const args = list.map((a, i) => this.operand(a, idxPath(p, i), depth + 1));
         if (args.some((a) => a === null)) return null;
         return { k: 'arith', op, args: args as OperandAst[] };
       }
     }
-    return this.err(path, 'UNKNOWN_OPERATOR', `unknown operand; expected one of ind, field, position, const, add, sub, mul, div`);
+    return this.err(
+      path,
+      'UNKNOWN_OPERATOR',
+      `unknown operand; expected one of ind, field, position, const, add, sub, mul, div`,
+    );
   }
 
   private indicator(raw: Record<string, unknown>, path: string): OperandAst | null {
     const name = this.deref(raw.ind, keyPath(path, 'ind'));
     if (typeof name !== 'string' || !(DSL_INDICATORS as readonly string[]).includes(name)) {
-      return this.err(keyPath(path, 'ind'), 'UNKNOWN_INDICATOR', `unknown indicator ${JSON.stringify(name)}; expected one of ${DSL_INDICATORS.join(', ')}`);
+      return this.err(
+        keyPath(path, 'ind'),
+        'UNKNOWN_INDICATOR',
+        `unknown indicator ${JSON.stringify(name)}; expected one of ${DSL_INDICATORS.join(', ')}`,
+      );
     }
     const tpl = IND_TEMPLATES[name as DslIndicatorName];
     const allowed = ['ind', 'offset', ...tpl.ints.map((i) => i.key)];
@@ -362,10 +424,22 @@ class Validator {
         this.err(keyPath(path, 'source'), 'INVALID_VALUE', `source must be one of ${SOURCES.join(', ')}`);
       } else source = s as PriceSource;
     }
-    if (name === 'MACD' && ints.fast !== undefined && ints.slow !== undefined && ints.fast > 0 && ints.slow > 0 && ints.fast >= ints.slow) {
-      this.err(keyPath(path, 'fast'), 'OUT_OF_RANGE', `MACD fast (${ints.fast}) must be < slow (${ints.slow})`);
+    if (
+      name === 'MACD' &&
+      ints.fast !== undefined &&
+      ints.slow !== undefined &&
+      ints.fast > 0 &&
+      ints.slow > 0 &&
+      ints.fast >= ints.slow
+    ) {
+      this.err(
+        keyPath(path, 'fast'),
+        'OUT_OF_RANGE',
+        `MACD fast (${ints.fast}) must be < slow (${ints.slow})`,
+      );
     }
-    const offset = raw.offset === undefined ? 0 : this.int(raw.offset, keyPath(path, 'offset'), 0, DSL_LIMITS.maxOffset);
+    const offset =
+      raw.offset === undefined ? 0 : this.int(raw.offset, keyPath(path, 'offset'), 0, DSL_LIMITS.maxOffset);
     if (this.errors.length > before || offset === null) return null;
     return {
       k: 'ind',
@@ -388,12 +462,21 @@ class Validator {
     if (!isObj(raw)) return this.err(path, 'INVALID_TYPE', 'rule must be an object');
     const keys = Object.keys(raw);
     if (keys.length !== 1) {
-      return this.err(path, keys.length === 0 ? 'MISSING_FIELD' : 'UNKNOWN_KEY', `rule must have exactly one operator key, got [${keys.join(', ')}]`);
+      return this.err(
+        path,
+        keys.length === 0 ? 'MISSING_FIELD' : 'UNKNOWN_KEY',
+        `rule must have exactly one operator key, got [${keys.join(', ')}]`,
+      );
     }
     const op = keys[0] as string;
     const p = keyPath(path, op);
     const body = raw[op];
-    if (!RULE_OPS.includes(op)) return this.err(p, 'UNKNOWN_OPERATOR', `unknown operator "${op}"; expected one of ${RULE_OPS.join(', ')}`);
+    if (!RULE_OPS.includes(op))
+      return this.err(
+        p,
+        'UNKNOWN_OPERATOR',
+        `unknown operator "${op}"; expected one of ${RULE_OPS.join(', ')}`,
+      );
     if (op === 'all' || op === 'any') {
       if (!Array.isArray(body)) return this.err(p, 'INVALID_TYPE', `${op} expects an array of rules`);
       if (body.length === 0) return this.err(p, 'ARITY', `${op} needs at least one rule`);
@@ -440,7 +523,11 @@ export function parseRule(json: unknown, params: StrategyParams = {}, rootPath =
   const v = new Validator(params);
   const ast = v.rule(json, rootPath, 0);
   if (ast === null || v.errors.length > 0) {
-    return { ok: false, errors: v.errors.length > 0 ? v.errors : [{ path: rootPath, code: 'INVALID_TYPE', message: 'invalid rule' }] };
+    return {
+      ok: false,
+      errors:
+        v.errors.length > 0 ? v.errors : [{ path: rootPath, code: 'INVALID_TYPE', message: 'invalid rule' }],
+    };
   }
   return { ok: true, ast };
 }

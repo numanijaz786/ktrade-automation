@@ -7,5 +7,8 @@ export interface Clock {
 export const CLOCK = Symbol('CLOCK');
 
 @Global()
-@Module({ providers: [{ provide: CLOCK, useValue: { now: () => new Date() } satisfies Clock }], exports: [CLOCK] })
+@Module({
+  providers: [{ provide: CLOCK, useValue: { now: () => new Date() } satisfies Clock }],
+  exports: [CLOCK],
+})
 export class ClockModule {}

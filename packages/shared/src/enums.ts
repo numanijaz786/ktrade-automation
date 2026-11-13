@@ -18,10 +18,7 @@ export type DataSource = (typeof DATA_SOURCES)[number];
 export const dataSourceRank = (s: DataSource): number => DATA_SOURCES.indexOf(s);
 /** The least-trusted of several sources (an aggregate is only as good as its weakest input). */
 export const weakestSource = (sources: readonly DataSource[]): DataSource =>
-  sources.reduce<DataSource>(
-    (w, s) => (dataSourceRank(s) > dataSourceRank(w) ? s : w),
-    'BROKER_CONFIRMED',
-  );
+  sources.reduce<DataSource>((w, s) => (dataSourceRank(s) > dataSourceRank(w) ? s : w), 'BROKER_CONFIRMED');
 
 export const ROLES = e(['OWNER', 'VIEWER']);
 export type Role = (typeof ROLES)[number];

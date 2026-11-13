@@ -26,7 +26,12 @@ import {
 } from '../strategy/strategy.js';
 import { type StrategyPosition, type StrategySignalReason, type TradeSide } from '../strategy/types.js';
 import { applySlippage, volumeCapQty } from './fills.js';
-import { type BacktestEquityPoint, type BacktestMetrics, calendarDaysBetween, computeBacktestMetrics } from './metrics.js';
+import {
+  type BacktestEquityPoint,
+  type BacktestMetrics,
+  calendarDaysBetween,
+  computeBacktestMetrics,
+} from './metrics.js';
 
 /** Fee callback (inject the fee engine). Must be >= 0 and non-decreasing in qty. */
 export type BacktestFeeFn = (side: TradeSide, qty: Decimal, price: Decimal) => Decimal;
@@ -137,7 +142,8 @@ function checkFee(fee: Decimal): Decimal {
 
 /** Largest whole qty in [0, hi] with qty × price + fee(qty) ≤ budget (binary search; fee non-decreasing in qty). */
 export function maxAffordableQty(budget: Decimal, price: Decimal, hi: Decimal, fee: BacktestFeeFn): Decimal {
-  const cost = (q: Decimal): Decimal => (q.isZero() ? ZERO : q.times(price).plus(checkFee(fee('BUY', q, price))));
+  const cost = (q: Decimal): Decimal =>
+    q.isZero() ? ZERO : q.times(price).plus(checkFee(fee('BUY', q, price)));
   let lo = ZERO;
   let top = hi;
   while (lo.lt(top)) {
@@ -163,10 +169,14 @@ export function runBacktest(config: BacktestConfig): BacktestResult {
   const initialCapital = d(config.initialCapital);
   if (!initialCapital.gt(0)) throw new RangeError('initialCapital must be > 0');
   const slip = d(config.slippageBps ?? '0');
-  const participation = config.volumeParticipationPct === null || config.volumeParticipationPct === undefined ? null : d(config.volumeParticipationPct);
+  const participation =
+    config.volumeParticipationPct === null || config.volumeParticipationPct === undefined
+      ? null
+      : d(config.volumeParticipationPct);
   const investPct = d(config.investPct ?? '100');
   if (!investPct.gt(0) || investPct.gt(HUNDRED)) throw new RangeError('investPct must be in (0, 100]');
-  const maxPositionQty = config.maxPositionQty === null || config.maxPositionQty === undefined ? null : d(config.maxPositionQty);
+  const maxPositionQty =
+    config.maxPositionQty === null || config.maxPositionQty === undefined ? null : d(config.maxPositionQty);
 
   const runner = strategy.createRunner();
   let cash = initialCapital;
@@ -195,7 +205,11 @@ export function runBacktest(config: BacktestConfig): BacktestResult {
         const hi = cap === null ? uncapped : min(uncapped, cap);
         const qty = maxAffordableQty(budget, price, hi, config.fee);
         if (qty.isZero()) {
-          if (rec) rec.note = cap !== null && cap.isZero() ? 'volume cap allows 0 shares' : 'insufficient cash for one share incl. fees';
+          if (rec)
+            rec.note =
+              cap !== null && cap.isZero()
+                ? 'volume cap allows 0 shares'
+                : 'insufficient cash for one share incl. fees';
         } else {
           const fee = checkFee(config.fee('BUY', qty, price));
           cash = cash.minus(qty.times(price)).minus(fee);
@@ -216,7 +230,8 @@ export function runBacktest(config: BacktestConfig): BacktestResult {
           fills.push({ ts: bar.ts, barIndex: t, side: 'BUY', qty, price, fee, reason: order.reason });
           if (rec) {
             rec.filled = true;
-            if (cap !== null && cap.lt(uncapped) && qty.eq(cap)) rec.note = 'partially filled (volume cap); remainder cancelled';
+            if (cap !== null && cap.lt(uncapped) && qty.eq(cap))
+              rec.note = 'partially filled (volume cap); remainder cancelled';
           }
         }
       } else if (order.side === 'SELL' && lot !== null) {
@@ -316,7 +331,15 @@ export function runBacktest(config: BacktestConfig): BacktestResult {
     ...(config.riskFreeRatePct === undefined ? {} : { riskFreeRatePct: d(config.riskFreeRatePct) }),
     ...(config.annualizationFactor === undefined ? {} : { annualizationFactor: config.annualizationFactor }),
   });
-  return { equityCurve: curve, trades, fills, signals, openPosition, metrics, disclaimer: BACKTEST_DISCLAIMER };
+  return {
+    equityCurve: curve,
+    trades,
+    fills,
+    signals,
+    openPosition,
+    metrics,
+    disclaimer: BACKTEST_DISCLAIMER,
+  };
 }
 
 /**
@@ -324,7 +347,12 @@ export function runBacktest(config: BacktestConfig): BacktestResult {
  * (the earliest fill the strategy itself could get) with the same slippage and fees, mark to market at the
  * last close (no exit fee, like an open strategy position). null with fewer than 2 bars.
  */
-export function buyAndHoldReturnPct(bars: readonly OhlcvBar[], initialCapital: Decimal, slippageBps: Decimal, fee: BacktestFeeFn): Decimal | null {
+export function buyAndHoldReturnPct(
+  bars: readonly OhlcvBar[],
+  initialCapital: Decimal,
+  slippageBps: Decimal,
+  fee: BacktestFeeFn,
+): Decimal | null {
   if (bars.length < 2) return null;
   const entry = at(bars, 1);
   const price = applySlippage('BUY', entry.open, slippageBps);

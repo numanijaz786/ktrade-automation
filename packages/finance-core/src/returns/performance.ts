@@ -28,7 +28,11 @@ export interface DailyPerformance {
 }
 
 function normalise(points: readonly ValuationPoint[]): { date: string; value: Decimal; netFlow: Decimal }[] {
-  const out = points.map((p) => ({ date: assertIsoDate(p.date), value: d(p.value), netFlow: d(p.netFlow ?? ZERO) }));
+  const out = points.map((p) => ({
+    date: assertIsoDate(p.date),
+    value: d(p.value),
+    netFlow: d(p.netFlow ?? ZERO),
+  }));
   for (let i = 1; i < out.length; i++) {
     if (!((out[i - 1] as { date: string }).date < (out[i] as { date: string }).date)) {
       throw new RangeError('Valuation points must have strictly ascending dates');
@@ -94,7 +98,9 @@ export interface MaxDrawdownResult {
  * mistakes withdrawals for losses. Points with a non-positive running peak are skipped; null if the
  * series is empty or never has a positive peak.
  */
-export function maxDrawdown(series: readonly { date: string; value: DecimalInput }[]): MaxDrawdownResult | null {
+export function maxDrawdown(
+  series: readonly { date: string; value: DecimalInput }[],
+): MaxDrawdownResult | null {
   let peak: Decimal | null = null;
   let peakDate: string | null = null;
   let best: MaxDrawdownResult | null = null;

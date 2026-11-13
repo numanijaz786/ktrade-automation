@@ -11,16 +11,16 @@ _Threat model: a single owner, self-hosted, managing a real brokerage account. T
 
 ## 2. Secret inventory
 
-| Secret | Where it lives | Protection |
-|---|---|---|
-| App master key (KEK) | OS keychain (Windows Credential Manager / macOS Keychain / libsecret) through `keytar`, or the `APP_MASTER_KEY` env var from a secret manager in deployment | Never in `.env` committed files, never in the DB |
-| JWT signing keys | Env / secret manager; EdDSA (Ed25519) key pair, rotatable with a `kid` | Access token 15 min |
-| Refresh tokens | DB stores **only the SHA-256 hash** plus family id | Rotation on every use; reuse → revoke the whole family and force re-login |
-| User password (app login) | DB, **Argon2id** (m=64 MiB, t=3, p=1) | Login rate-limited; lockout with backoff |
-| TOTP 2FA secret (app login) | DB, encrypted (envelope) | Required for trade approval and settings changes |
-| Third-party API keys (market-data vendor, SMTP, Telegram bot, LLM provider, mailbox OAuth refresh token) | `credentials_vault` table, **AES-256-GCM** envelope encryption: a per-record DEK wrapped by the KEK, AAD = `user_id|provider|record_id` | Decrypted only in-process, just in time; never logged |
-| Browser profile (future, only if authorized) | Separate directory owned by the OS user, ACL-restricted, encrypted at rest (DPAPI on Windows) | One-click destroy; never mounted into the API container |
-| KTrade / PSX password, PIN, OTP | **Not stored. Ever.** | You enter them directly into KTrade's own page |
+| Secret                                                                                                   | Where it lives                                                                                                                                              | Protection                                                                |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| App master key (KEK)                                                                                     | OS keychain (Windows Credential Manager / macOS Keychain / libsecret) through `keytar`, or the `APP_MASTER_KEY` env var from a secret manager in deployment | Never in `.env` committed files, never in the DB                          |
+| JWT signing keys                                                                                         | Env / secret manager; EdDSA (Ed25519) key pair, rotatable with a `kid`                                                                                      | Access token 15 min                                                       |
+| Refresh tokens                                                                                           | DB stores **only the SHA-256 hash** plus family id                                                                                                          | Rotation on every use; reuse → revoke the whole family and force re-login |
+| User password (app login)                                                                                | DB, **Argon2id** (m=64 MiB, t=3, p=1)                                                                                                                       | Login rate-limited; lockout with backoff                                  |
+| TOTP 2FA secret (app login)                                                                              | DB, encrypted (envelope)                                                                                                                                    | Required for trade approval and settings changes                          |
+| Third-party API keys (market-data vendor, SMTP, Telegram bot, LLM provider, mailbox OAuth refresh token) | `credentials_vault` table, **AES-256-GCM** envelope encryption: a per-record DEK wrapped by the KEK, AAD = `user_id                                         | provider                                                                  | record_id` | Decrypted only in-process, just in time; never logged |
+| Browser profile (future, only if authorized)                                                             | Separate directory owned by the OS user, ACL-restricted, encrypted at rest (DPAPI on Windows)                                                               | One-click destroy; never mounted into the API container                   |
+| KTrade / PSX password, PIN, OTP                                                                          | **Not stored. Ever.**                                                                                                                                       | You enter them directly into KTrade's own page                            |
 
 ## 3. Credential entry ("secure local configuration interface")
 
@@ -37,19 +37,19 @@ _Threat model: a single owner, self-hosted, managing a real brokerage account. T
 
 ## 5. Application security controls
 
-| Area | Control |
-|---|---|
-| Auth | JWT access (memory/httpOnly via BFF), rotating refresh cookie (`HttpOnly; Secure; SameSite=Strict; Path=/api/auth`), optional TOTP, **step-up re-auth** for order approval, kill-switch off, credential and risk-limit changes |
-| Sessions | Sessions are listed in Security Settings; a single session or all of them can be revoked; idle timeout 30 min; absolute 7 days |
-| RBAC | `OWNER` (everything) and `VIEWER` (read-only: no orders, settings or credentials) |
-| CSRF | SameSite=Strict, plus a double-submit token on every state-changing BFF route |
-| XSS | React escaping, no `dangerouslySetInnerHTML`, strict CSP (`default-src 'self'`, nonce-based scripts), and imported text treated as data |
-| Injection | Prisma parameterized queries only; `$queryRawUnsafe` banned by lint; uploads validated by Zod per row |
-| Uploads | Size cap, MIME and magic-byte check, parsing in a worker with a timeout, no macro execution (XLSX through exceljs, PDF text extraction only) |
-| Rate limiting | Redis throttler: login 5/min/IP, order preview 30/min, approve 10/min, assistant 20/min |
-| Transport | Nginx TLS 1.2+, HSTS, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `frame-ancestors 'none'` |
-| Logging | pino with redaction paths (`*.password`, `*.token`, `authorization`, `cookie`, `*.secret`, account numbers masked); no request bodies on auth or credential routes |
-| AI assistant | Read-only tools only, no access to the vault or trading tools; prompts and results exclude secrets; portfolio data is sent to the LLM provider only after you opt in, with provider shown |
+| Area          | Control                                                                                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Auth          | JWT access (memory/httpOnly via BFF), rotating refresh cookie (`HttpOnly; Secure; SameSite=Strict; Path=/api/auth`), optional TOTP, **step-up re-auth** for order approval, kill-switch off, credential and risk-limit changes |
+| Sessions      | Sessions are listed in Security Settings; a single session or all of them can be revoked; idle timeout 30 min; absolute 7 days                                                                                                 |
+| RBAC          | `OWNER` (everything) and `VIEWER` (read-only: no orders, settings or credentials)                                                                                                                                              |
+| CSRF          | SameSite=Strict, plus a double-submit token on every state-changing BFF route                                                                                                                                                  |
+| XSS           | React escaping, no `dangerouslySetInnerHTML`, strict CSP (`default-src 'self'`, nonce-based scripts), and imported text treated as data                                                                                        |
+| Injection     | Prisma parameterized queries only; `$queryRawUnsafe` banned by lint; uploads validated by Zod per row                                                                                                                          |
+| Uploads       | Size cap, MIME and magic-byte check, parsing in a worker with a timeout, no macro execution (XLSX through exceljs, PDF text extraction only)                                                                                   |
+| Rate limiting | Redis throttler: login 5/min/IP, order preview 30/min, approve 10/min, assistant 20/min                                                                                                                                        |
+| Transport     | Nginx TLS 1.2+, HSTS, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `frame-ancestors 'none'`                                                                                                 |
+| Logging       | pino with redaction paths (`*.password`, `*.token`, `authorization`, `cookie`, `*.secret`, account numbers masked); no request bodies on auth or credential routes                                                             |
+| AI assistant  | Read-only tools only, no access to the vault or trading tools; prompts and results exclude secrets; portfolio data is sent to the LLM provider only after you opt in, with provider shown                                      |
 
 ## 6. Trading-specific safeguards
 
@@ -62,6 +62,7 @@ _Threat model: a single owner, self-hosted, managing a real brokerage account. T
 ## 7. Disconnect & destroy
 
 **Settings → Integrations → Disconnect** (per integration), and **Security → Destroy all sessions & integration data**:
+
 1. Revokes OAuth grants where the provider supports revocation (e.g. mailbox).
 2. Deletes the vault records and their wrapped DEKs (crypto-shredding).
 3. For a browser profile: closes the agent, deletes the profile directory, and deletes its key.

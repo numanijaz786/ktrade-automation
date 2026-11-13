@@ -14,7 +14,15 @@ interface SourceProps {
 }
 
 /** A PKR amount with its provenance badge. */
-export function Money({ value, source, asOf, note, compactBadge = true, className, ...fmt }: { value: string | null | undefined; className?: string } & SourceProps & MoneyFormatOptions) {
+export function Money({
+  value,
+  source,
+  asOf,
+  note,
+  compactBadge = true,
+  className,
+  ...fmt
+}: { value: string | null | undefined; className?: string } & SourceProps & MoneyFormatOptions) {
   return (
     <span className={cn('inline-flex items-center gap-1.5 tabular', className)}>
       <span>{formatPKR(value, fmt)}</span>
@@ -40,10 +48,18 @@ export function PnlText({
   compactBadge = true,
   className,
   ...fmt
-}: { value: string | null | undefined; percent?: boolean; showIcon?: boolean; className?: string } & SourceProps & MoneyFormatOptions) {
+}: {
+  value: string | null | undefined;
+  percent?: boolean;
+  showIcon?: boolean;
+  className?: string;
+} & SourceProps &
+  MoneyFormatOptions) {
   const tone = toneOf(value);
   const Icon = ICON[tone];
-  const text = percent ? formatPercent(value, { signed: true, dp: fmt.dp }) : formatPKR(value, { signed: true, ...fmt });
+  const text = percent
+    ? formatPercent(value, { signed: true, dp: fmt.dp })
+    : formatPKR(value, { signed: true, ...fmt });
   return (
     <span className={cn('inline-flex items-center gap-1 tabular', toneClass(tone), className)}>
       {showIcon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}

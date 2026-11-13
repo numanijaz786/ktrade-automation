@@ -6,13 +6,7 @@ export type TradeSide = 'BUY' | 'SELL';
 export type TradeOrderType = 'MARKET' | 'LIMIT' | 'STOP_LOSS' | 'STOP_LIMIT';
 export type StrategySignalType = 'ENTRY' | 'EXIT';
 export type StrategySignalReason =
-  | 'RULE_ENTRY'
-  | 'RULE_EXIT'
-  | 'STOP_LOSS'
-  | 'TRAILING_STOP'
-  | 'TAKE_PROFIT'
-  | 'PRICE_TARGET'
-  | 'MANUAL';
+  'RULE_ENTRY' | 'RULE_EXIT' | 'STOP_LOSS' | 'TRAILING_STOP' | 'TAKE_PROFIT' | 'PRICE_TARGET' | 'MANUAL';
 export type StrategyTemplateType =
   | 'MA_CROSSOVER'
   | 'RSI'

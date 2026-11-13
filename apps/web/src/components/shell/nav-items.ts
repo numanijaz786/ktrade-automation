@@ -83,4 +83,3 @@ export function isActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
-

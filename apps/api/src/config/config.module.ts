@@ -13,7 +13,13 @@ export class AppConfig {
 @Global()
 @Module({
   imports: [NestConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv })],
-  providers: [{ provide: AppConfig, useFactory: (c: ConfigService<Env, true>) => new AppConfig(c), inject: [ConfigService] }],
+  providers: [
+    {
+      provide: AppConfig,
+      useFactory: (c: ConfigService<Env, true>) => new AppConfig(c),
+      inject: [ConfigService],
+    },
+  ],
   exports: [AppConfig],
 })
 export class ConfigModule {}

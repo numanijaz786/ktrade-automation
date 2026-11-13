@@ -37,13 +37,19 @@ function NavMenu({ pathname }: { pathname: string | null }) {
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
-                      <Link href={item.href} aria-current={active ? 'page' : undefined} onClick={() => isMobile && setOpenMobile(false)}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? 'page' : undefined}
+                        onClick={() => isMobile && setOpenMobile(false)}
+                      >
                         <item.icon aria-hidden="true" />
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
                     {item.href === '/notifications' && !!unread?.length && (
-                      <SidebarMenuBadge aria-label={`${unread.length} unread`}>{unread.length}</SidebarMenuBadge>
+                      <SidebarMenuBadge aria-label={`${unread.length} unread`}>
+                        {unread.length}
+                      </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>
                 );

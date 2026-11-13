@@ -93,7 +93,14 @@ export function generateBars(seed: DemoStockSeed, days: readonly string[]): RawB
   return path.map((b) => {
     const o = toPaisa(b.open * k);
     const c = toPaisa(b.close * k);
-    return { date: b.date, open: o, close: c, high: Math.max(toPaisa(b.hi * k), o, c), low: Math.min(toPaisa(b.lo * k), o, c), volume: b.volume };
+    return {
+      date: b.date,
+      open: o,
+      close: c,
+      high: Math.max(toPaisa(b.hi * k), o, c),
+      low: Math.min(toPaisa(b.lo * k), o, c),
+      volume: b.volume,
+    };
   });
 }
 

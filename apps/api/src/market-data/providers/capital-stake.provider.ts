@@ -30,7 +30,14 @@ export class CapitalStakeProvider implements MarketDataProvider {
 
   /** All false: nothing is implemented, so nothing is advertised. */
   capabilities(): MarketDataCapabilities {
-    return { quotes: false, intradayBars: false, eodBars: false, corporateActions: false, streaming: false, delayMinutes: 0 };
+    return {
+      quotes: false,
+      intradayBars: false,
+      eodBars: false,
+      corporateActions: false,
+      streaming: false,
+      delayMinutes: 0,
+    };
   }
 
   getQuotes(_symbols: readonly string[]): Promise<QuoteDto[]> {
@@ -46,7 +53,11 @@ export class CapitalStakeProvider implements MarketDataProvider {
   }
 
   async healthCheck(): Promise<ProviderHealth> {
-    return { ok: false, checkedAt: this.clock.now().toISOString(), message: CAPITAL_STAKE_UNAVAILABLE_REASON };
+    return {
+      ok: false,
+      checkedAt: this.clock.now().toISOString(),
+      message: CAPITAL_STAKE_UNAVAILABLE_REASON,
+    };
   }
 
   private refuse(): MarketDataProviderUnavailableError {

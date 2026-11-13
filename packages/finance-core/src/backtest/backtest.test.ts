@@ -25,18 +25,36 @@ const crossStrategy = {
   entryRules: { crossesAbove: [{ field: 'close' }, { const: '10' }] },
   exitRules: { crossesBelow: [{ field: 'close' }, { const: '10' }] },
 };
-const scenario = (): OhlcvBar[] => [bar(0, 9, 9), bar(1, 9, 11), bar(2, 12, 13), bar(3, 14, 9), bar(4, 8, 8), bar(5, 8, 12), bar(6, 10, 10)];
+const scenario = (): OhlcvBar[] => [
+  bar(0, 9, 9),
+  bar(1, 9, 11),
+  bar(2, 12, 13),
+  bar(3, 14, 9),
+  bar(4, 8, 8),
+  bar(5, 8, 12),
+  bar(6, 10, 10),
+];
 
 describe('backtest simulator: hand-computed scenario', () => {
   const r = runBacktest({ bars: scenario(), strategy: crossStrategy, initialCapital: '1000', fee: flatFee });
 
   it('fills at the next open, sizes with fees, and tracks cash/equity', () => {
-    expect(r.fills.map((f) => [f.barIndex, f.side, f.qty.toString(), f.price.toString(), f.fee.toString()])).toEqual([
+    expect(
+      r.fills.map((f) => [f.barIndex, f.side, f.qty.toString(), f.price.toString(), f.fee.toString()]),
+    ).toEqual([
       [2, 'BUY', '83', '12', '1'], // 83*12 + 1 = 997 <= 1000
       [4, 'SELL', '83', '8', '1'],
       [6, 'BUY', '66', '10', '1'], // cash 666: 66*10 + 1 = 661
     ]);
-    expect(r.equityCurve.map((p) => p.equity.toString())).toEqual(['1000', '1000', '1082', '750', '666', '666', '665']);
+    expect(r.equityCurve.map((p) => p.equity.toString())).toEqual([
+      '1000',
+      '1000',
+      '1082',
+      '750',
+      '666',
+      '666',
+      '665',
+    ]);
     expect(r.signals.map((s) => [s.signal.barIndex, s.signal.type, s.filled])).toEqual([
       [1, 'ENTRY', true],
       [3, 'EXIT', true],
@@ -47,7 +65,13 @@ describe('backtest simulator: hand-computed scenario', () => {
   it('records the round trip with P&L including fees', () => {
     expect(r.trades).toHaveLength(1);
     const t = r.trades[0]!;
-    expect([t.entryTs, t.exitTs, t.qty.toString(), t.entryPrice.toString(), t.exitPrice.toString()]).toEqual([day(2), day(4), '83', '12', '8']);
+    expect([t.entryTs, t.exitTs, t.qty.toString(), t.entryPrice.toString(), t.exitPrice.toString()]).toEqual([
+      day(2),
+      day(4),
+      '83',
+      '12',
+      '8',
+    ]);
     expect(t.netPnl.toString()).toBe('-334'); // 664 - 996 - 2
     expect(t.exitReason).toBe('RULE_EXIT');
     expect(t.barsHeld).toBe(2);
@@ -73,26 +97,57 @@ describe('backtest simulator: hand-computed scenario', () => {
   });
 
   it('applies adverse slippage', () => {
-    const s = runBacktest({ bars: scenario(), strategy: crossStrategy, initialCapital: '1000', fee: flatFee, slippageBps: '100' });
+    const s = runBacktest({
+      bars: scenario(),
+      strategy: crossStrategy,
+      initialCapital: '1000',
+      fee: flatFee,
+      slippageBps: '100',
+    });
     expect(s.fills.map((f) => f.price.toString())).toEqual(['12.12', '7.92', '10.1']);
   });
 
   it('does not fill a signal on the last bar', () => {
-    const s = runBacktest({ bars: scenario().slice(0, 2), strategy: crossStrategy, initialCapital: '1000', fee: flatFee });
+    const s = runBacktest({
+      bars: scenario().slice(0, 2),
+      strategy: crossStrategy,
+      initialCapital: '1000',
+      fee: flatFee,
+    });
     expect(s.fills).toEqual([]);
     expect(s.signals[0]).toMatchObject({ filled: false, note: 'signal on last bar: no next bar to fill' });
   });
 
   it('volume participation cap: partial entry; exit remainder keeps working', () => {
-    const bars = [bar(0, 9, 9), bar(1, 9, 11), bar(2, 12, 13, '200'), bar(3, 14, 9), bar(4, 8, 8, '300'), bar(5, 8, 8, '1000')];
-    const s = runBacktest({ bars, strategy: crossStrategy, initialCapital: '1000', fee: flatFee, volumeParticipationPct: '10' });
+    const bars = [
+      bar(0, 9, 9),
+      bar(1, 9, 11),
+      bar(2, 12, 13, '200'),
+      bar(3, 14, 9),
+      bar(4, 8, 8, '300'),
+      bar(5, 8, 8, '1000'),
+    ];
+    const s = runBacktest({
+      bars,
+      strategy: crossStrategy,
+      initialCapital: '1000',
+      fee: flatFee,
+      volumeParticipationPct: '10',
+    });
     expect(s.fills.map((f) => [f.barIndex, f.side, f.qty.toString()])).toEqual([
       [2, 'BUY', '20'],
       [4, 'SELL', '20'], // holds 20, cap 30 not binding
     ]);
     expect(s.signals[0]!.note).toBe('partially filled (volume cap); remainder cancelled');
     const s2 = runBacktest({
-      bars: [bar(0, 9, 9), bar(1, 9, 11), bar(2, 12, 13), bar(3, 14, 9), bar(4, 8, 8, '100'), bar(5, 8, 8, '1000')],
+      bars: [
+        bar(0, 9, 9),
+        bar(1, 9, 11),
+        bar(2, 12, 13),
+        bar(3, 14, 9),
+        bar(4, 8, 8, '100'),
+        bar(5, 8, 8, '1000'),
+      ],
       strategy: crossStrategy,
       initialCapital: '1000',
       fee: flatFee,
@@ -108,13 +163,27 @@ describe('backtest simulator: hand-computed scenario', () => {
 
   it('overlay stop-loss exits with reason STOP_LOSS', () => {
     const bars = [bar(0, 9, 9), bar(1, 9, 11), bar(2, 12, 12), bar(3, 12, 11.4), bar(4, 11, 11)];
-    const s = runBacktest({ bars, strategy: { ...crossStrategy, stopLossPct: '5' }, initialCapital: '1000', fee: flatFee });
+    const s = runBacktest({
+      bars,
+      strategy: { ...crossStrategy, stopLossPct: '5' },
+      initialCapital: '1000',
+      fee: flatFee,
+    });
     expect(s.trades[0]!.exitReason).toBe('STOP_LOSS'); // 11.4 <= 12 * 0.95
   });
 
   it('rejects unsorted bars and bad config', () => {
-    expect(() => runBacktest({ bars: [bar(1, 1, 1), bar(0, 1, 1)], strategy: crossStrategy, initialCapital: '1', fee: flatFee })).toThrow(RangeError);
-    expect(() => runBacktest({ bars: [], strategy: crossStrategy, initialCapital: '0', fee: flatFee })).toThrow(RangeError);
+    expect(() =>
+      runBacktest({
+        bars: [bar(1, 1, 1), bar(0, 1, 1)],
+        strategy: crossStrategy,
+        initialCapital: '1',
+        fee: flatFee,
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      runBacktest({ bars: [], strategy: crossStrategy, initialCapital: '0', fee: flatFee }),
+    ).toThrow(RangeError);
   });
 
   it('maxAffordableQty is maximal with non-linear fees', () => {
@@ -131,23 +200,45 @@ describe('backtest simulator: hand-computed scenario', () => {
 
 describe('backtest properties', () => {
   const barsArb = fc
-    .array(fc.tuple(fc.integer({ min: 50, max: 150 }), fc.integer({ min: 50, max: 150 })), { minLength: 2, maxLength: 45 })
+    .array(fc.tuple(fc.integer({ min: 50, max: 150 }), fc.integer({ min: 50, max: 150 })), {
+      minLength: 2,
+      maxLength: 45,
+    })
     .map((rows) => rows.map(([o, c], i) => bar(i, o, c)));
-  const strategy = { ...buildTemplateStrategy('MA_CROSSOVER', { fastPeriod: 2, slowPeriod: 5 }), stopLossPct: '4', trailingStopPct: '6' };
+  const strategy = {
+    ...buildTemplateStrategy('MA_CROSSOVER', { fastPeriod: 2, slowPeriod: 5 }),
+    stopLossPct: '4',
+    trailingStopPct: '6',
+  };
   const fee: BacktestFeeFn = (_s, q, p) => round(q.times(p).times('0.002'), 2);
 
   it('no look-ahead: changing future bars never changes past signals, fills or equity', () => {
     fc.assert(
       fc.property(barsArb, barsArb, barsArb, (past, futA, futB) => {
         const shift = (bs: OhlcvBar[]): OhlcvBar[] => bs.map((b, i) => ({ ...b, ts: day(past.length + i) }));
-        const a = runBacktest({ bars: [...past, ...shift(futA)], strategy, initialCapital: '100000', fee, slippageBps: '10' });
-        const b = runBacktest({ bars: [...past, ...shift(futB)], strategy, initialCapital: '100000', fee, slippageBps: '10' });
+        const a = runBacktest({
+          bars: [...past, ...shift(futA)],
+          strategy,
+          initialCapital: '100000',
+          fee,
+          slippageBps: '10',
+        });
+        const b = runBacktest({
+          bars: [...past, ...shift(futB)],
+          strategy,
+          initialCapital: '100000',
+          fee,
+          slippageBps: '10',
+        });
         const t = past.length - 1;
-        const sig = (r: typeof a) => JSON.stringify(r.signals.filter((s) => s.signal.barIndex <= t).map((s) => s.signal));
+        const sig = (r: typeof a) =>
+          JSON.stringify(r.signals.filter((s) => s.signal.barIndex <= t).map((s) => s.signal));
         const fil = (r: typeof a) => JSON.stringify(r.fills.filter((f) => f.barIndex <= t));
         expect(sig(a)).toBe(sig(b));
         expect(fil(a)).toBe(fil(b));
-        expect(JSON.stringify(a.equityCurve.slice(0, t + 1))).toBe(JSON.stringify(b.equityCurve.slice(0, t + 1)));
+        expect(JSON.stringify(a.equityCurve.slice(0, t + 1))).toBe(
+          JSON.stringify(b.equityCurve.slice(0, t + 1)),
+        );
       }),
       { numRuns: 40 },
     );
@@ -163,7 +254,9 @@ describe('backtest properties', () => {
         // accounting identity: final equity = initial + Σ trade P&L + open position unrealised (net of entry fee)
         const closed = a.trades.reduce((s, t) => s.plus(t.netPnl), d('0'));
         const open = a.openPosition
-          ? a.openPosition.marketValue.minus(a.openPosition.qty.times(a.openPosition.avgCost)).minus(a.fills[a.fills.length - 1]!.fee)
+          ? a.openPosition.marketValue
+              .minus(a.openPosition.qty.times(a.openPosition.avgCost))
+              .minus(a.fills[a.fills.length - 1]!.fee)
           : d('0');
         expect(a.metrics.finalEquity.eq(d('50000').plus(closed).plus(open))).toBe(true);
       }),
@@ -185,13 +278,29 @@ describe('metrics', () => {
   const opts = { feesTotal: d('0'), buyAndHoldReturnPct: null };
 
   it('CAGR over exactly one year; null under one day', () => {
-    const m = computeBacktestMetrics(d('100'), [pt('2023-01-01T00:00:00Z', '100'), pt('2024-01-01T00:00:00Z', '110')], [], opts);
+    const m = computeBacktestMetrics(
+      d('100'),
+      [pt('2023-01-01T00:00:00Z', '100'), pt('2024-01-01T00:00:00Z', '110')],
+      [],
+      opts,
+    );
     expect(m.cagrPct!.toString()).toBe('10');
-    expect(computeBacktestMetrics(d('100'), [pt('2023-01-01T00:00:00Z', '100'), pt('2023-01-01T12:00:00Z', '110')], [], opts).cagrPct).toBeNull();
+    expect(
+      computeBacktestMetrics(
+        d('100'),
+        [pt('2023-01-01T00:00:00Z', '100'), pt('2023-01-01T12:00:00Z', '110')],
+        [],
+        opts,
+      ).cagrPct,
+    ).toBeNull();
   });
 
   it('Sharpe from sample stdev of per-bar returns, annualised, with risk-free rate', () => {
-    const curve = [pt('2024-01-01T00:00:00Z', '100'), pt('2024-01-02T00:00:00Z', '101'), pt('2024-01-03T00:00:00Z', '103.02')];
+    const curve = [
+      pt('2024-01-01T00:00:00Z', '100'),
+      pt('2024-01-02T00:00:00Z', '101'),
+      pt('2024-01-03T00:00:00Z', '103.02'),
+    ];
     // returns 0.01, 0.02 -> mean 0.015, sample var 0.00005
     const m = computeBacktestMetrics(d('100'), curve, [], opts);
     expect(round(m.sharpe!, 4).toString()).toBe('33.6749'); // 0.015 / 0.0070711 * sqrt(252)
@@ -211,10 +320,21 @@ describe('metrics', () => {
 });
 
 describe('paper fills', () => {
-  const q = (last: string, volume?: string) => ({ last: d(last), volume: volume === undefined ? null : d(volume) });
+  const q = (last: string, volume?: string) => ({
+    last: d(last),
+    volume: volume === undefined ? null : d(volume),
+  });
   it('market orders fill at last with adverse slippage', () => {
-    expect(paperFill({ side: 'BUY', type: 'MARKET', qty: d('10') }, q('100'), { slippageBps: d('50') }).price!.toString()).toBe('100.5');
-    expect(paperFill({ side: 'SELL', type: 'MARKET', qty: d('10') }, q('100'), { slippageBps: d('50') }).price!.toString()).toBe('99.5');
+    expect(
+      paperFill({ side: 'BUY', type: 'MARKET', qty: d('10') }, q('100'), {
+        slippageBps: d('50'),
+      }).price!.toString(),
+    ).toBe('100.5');
+    expect(
+      paperFill({ side: 'SELL', type: 'MARKET', qty: d('10') }, q('100'), {
+        slippageBps: d('50'),
+      }).price!.toString(),
+    ).toBe('99.5');
   });
   it('limit buy fills only when last <= limit, never above the limit', () => {
     const o = { side: 'BUY', type: 'LIMIT', qty: d('10'), limitPrice: d('100') } as const;

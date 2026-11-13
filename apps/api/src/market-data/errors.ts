@@ -12,7 +12,10 @@ export class MarketDataProviderUnavailableError extends ConflictException {
     readonly providerKey: string,
     readonly reason: string,
   ) {
-    super({ message: `Market-data provider "${providerKey}" is unavailable: ${reason}`, code: 'PROVIDER_UNAVAILABLE' });
+    super({
+      message: `Market-data provider "${providerKey}" is unavailable: ${reason}`,
+      code: 'PROVIDER_UNAVAILABLE',
+    });
   }
 }
 
@@ -20,7 +23,10 @@ export class MarketDataProviderUnavailableError extends ConflictException {
 export class MarketDataCapabilityError extends ConflictException {
   readonly code = 'CAPABILITY_UNAVAILABLE';
   constructor(providerKey: string, capability: string) {
-    super({ message: `Market-data provider "${providerKey}" does not support ${capability}`, code: 'CAPABILITY_UNAVAILABLE' });
+    super({
+      message: `Market-data provider "${providerKey}" does not support ${capability}`,
+      code: 'CAPABILITY_UNAVAILABLE',
+    });
   }
 }
 

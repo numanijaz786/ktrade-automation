@@ -22,7 +22,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export const totpConfirmSchema = z.object({ code: totpCodeSchema });
 export type TotpConfirmInput = z.infer<typeof totpConfirmSchema>;
 
-export const changePasswordSchema = z.object({ currentPassword: z.string().min(1).max(128), newPassword: passwordSchema });
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: passwordSchema,
+});
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export interface AuthTokensResponse {

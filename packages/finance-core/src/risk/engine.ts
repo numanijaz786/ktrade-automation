@@ -110,8 +110,10 @@ export function riskOrderPrice(order: RiskOrderInput): Decimal {
 }
 
 function validate(order: RiskOrderInput): void {
-  if (!order.qty.isInteger() || !order.qty.gt(0)) throw new RangeError('risk: qty must be a positive whole number');
-  if (PRICED.includes(order.type) && !order.limitPrice) throw new RangeError(`risk: ${order.type} order requires limitPrice`);
+  if (!order.qty.isInteger() || !order.qty.gt(0))
+    throw new RangeError('risk: qty must be a positive whole number');
+  if (PRICED.includes(order.type) && !order.limitPrice)
+    throw new RangeError(`risk: ${order.type} order requires limitPrice`);
   if ((order.type === 'STOP_LOSS' || order.type === 'STOP_LIMIT') && !order.stopPrice) {
     throw new RangeError(`risk: ${order.type} order requires stopPrice`);
   }
@@ -127,31 +129,66 @@ export function evaluateRisk(input: RiskEngineInput): RiskEvaluation {
   const price = riskOrderPrice(order);
   const value = order.qty.times(price);
   const results: RiskCheckResult[] = [];
-  const add = (rule: RiskRule, passed: boolean, observed: string | null, limit: string | null, message: string): void => {
+  const add = (
+    rule: RiskRule,
+    passed: boolean,
+    observed: string | null,
+    limit: string | null,
+    message: string,
+  ): void => {
     results.push({ rule, passed, observed, limit, message });
   };
   const na = (rule: RiskRule, why: string): void => add(rule, true, null, null, `not applicable (${why})`);
-  const noLimit = (rule: RiskRule, observed: string | null): void => add(rule, true, observed, null, 'no limit configured');
+  const noLimit = (rule: RiskRule, observed: string | null): void =>
+    add(rule, true, observed, null, 'no limit configured');
 
   // 1 KILL_SWITCH
   if (!live) na('KILL_SWITCH', 'paper');
   else
-    add('KILL_SWITCH', f.killSwitchOn, String(f.killSwitchOn), 'true', f.killSwitchOn ? 'live trading enabled' : 'live trading is disabled by the global kill switch');
+    add(
+      'KILL_SWITCH',
+      f.killSwitchOn,
+      String(f.killSwitchOn),
+      'true',
+      f.killSwitchOn ? 'live trading enabled' : 'live trading is disabled by the global kill switch',
+    );
 
   // 2 CAPABILITY
   if (!live) na('CAPABILITY', 'paper');
   else
-    add('CAPABILITY', f.capabilityUsable, String(f.capabilityUsable), 'true', f.capabilityUsable ? 'adapter capability usable' : 'adapter capability not implemented/verified/authorized/enabled');
+    add(
+      'CAPABILITY',
+      f.capabilityUsable,
+      String(f.capabilityUsable),
+      'true',
+      f.capabilityUsable
+        ? 'adapter capability usable'
+        : 'adapter capability not implemented/verified/authorized/enabled',
+    );
 
   // 3 MARKET_HOURS
-  add('MARKET_HOURS', f.marketOpen, f.marketOpen ? 'open' : 'closed', 'open', f.marketOpen ? 'market open' : 'market is closed');
+  add(
+    'MARKET_HOURS',
+    f.marketOpen,
+    f.marketOpen ? 'open' : 'closed',
+    'open',
+    f.marketOpen ? 'market open' : 'market is closed',
+  );
 
   // 4 BUYING_POWER
   if (!buy) na('BUYING_POWER', 'sell');
   else {
     const available = p.cash.minus(p.pendingBuyValue);
     const ok = available.gte(order.estimatedTotal);
-    add('BUYING_POWER', ok, s(order.estimatedTotal), s(available), ok ? 'sufficient buying power' : `needs ${order.estimatedTotal.toString()} but only ${available.toString()} available (cash − pending buys)`);
+    add(
+      'BUYING_POWER',
+      ok,
+      s(order.estimatedTotal),
+      s(available),
+      ok
+        ? 'sufficient buying power'
+        : `needs ${order.estimatedTotal.toString()} but only ${available.toString()} available (cash − pending buys)`,
+    );
   }
 
   // 5 HOLDING_QTY
@@ -159,32 +196,60 @@ export function evaluateRisk(input: RiskEngineInput): RiskEvaluation {
   else {
     const sellable = p.heldQty.minus(p.pendingSellQty);
     const ok = sellable.gte(order.qty);
-    add('HOLDING_QTY', ok, s(order.qty), s(sellable), ok ? 'sufficient holding' : `selling ${order.qty.toString()} but only ${sellable.toString()} sellable (held − pending sells)`);
+    add(
+      'HOLDING_QTY',
+      ok,
+      s(order.qty),
+      s(sellable),
+      ok
+        ? 'sufficient holding'
+        : `selling ${order.qty.toString()} but only ${sellable.toString()} sellable (held − pending sells)`,
+    );
   }
 
   // 6 MAX_ORDER_VALUE
   if (isNil(l.maxOrderValue)) noLimit('MAX_ORDER_VALUE', s(value));
   else {
     const ok = value.lte(l.maxOrderValue);
-    add('MAX_ORDER_VALUE', ok, s(value), s(l.maxOrderValue), ok ? 'order value within limit' : 'order value exceeds maximum');
+    add(
+      'MAX_ORDER_VALUE',
+      ok,
+      s(value),
+      s(l.maxOrderValue),
+      ok ? 'order value within limit' : 'order value exceeds maximum',
+    );
   }
 
   // 7 MAX_ORDER_QTY
   if (isNil(l.maxOrderQty)) noLimit('MAX_ORDER_QTY', s(order.qty));
   else {
     const ok = order.qty.lte(l.maxOrderQty);
-    add('MAX_ORDER_QTY', ok, s(order.qty), s(l.maxOrderQty), ok ? 'quantity within limit' : 'quantity exceeds maximum');
+    add(
+      'MAX_ORDER_QTY',
+      ok,
+      s(order.qty),
+      s(l.maxOrderQty),
+      ok ? 'quantity within limit' : 'quantity exceeds maximum',
+    );
   }
 
   // 8 PRICE_BAND — |limit − last| / last × 100 ≤ priceBandPct (priced orders only)
-  if (!PRICED.includes(order.type) || !order.limitPrice) na('PRICE_BAND', `${order.type.toLowerCase()} order has no limit price`);
+  if (!PRICED.includes(order.type) || !order.limitPrice)
+    na('PRICE_BAND', `${order.type.toLowerCase()} order has no limit price`);
   else if (isNil(l.priceBandPct)) noLimit('PRICE_BAND', null);
   else {
     const dev = pct(order.limitPrice.minus(order.refPrice).abs(), order.refPrice);
-    if (dev === null) add('PRICE_BAND', false, null, s(l.priceBandPct), 'reference price is zero; cannot check price band');
+    if (dev === null)
+      add('PRICE_BAND', false, null, s(l.priceBandPct), 'reference price is zero; cannot check price band');
     else {
       const ok = dev.lte(l.priceBandPct);
-      add('PRICE_BAND', ok, s(dev), s(l.priceBandPct), ok ? 'limit within price band' : `limit deviates ${dev.toString()}% from last price`);
+      add(
+        'PRICE_BAND',
+        ok,
+        s(dev),
+        s(l.priceBandPct),
+        ok ? 'limit within price band' : `limit deviates ${dev.toString()}% from last price`,
+      );
     }
   }
 
@@ -193,7 +258,13 @@ export function evaluateRisk(input: RiskEngineInput): RiskEvaluation {
   if (isNil(l.maxDailyTradedValue)) noLimit('DAILY_VALUE', s(dailyAfter));
   else {
     const ok = dailyAfter.lte(l.maxDailyTradedValue);
-    add('DAILY_VALUE', ok, s(dailyAfter), s(l.maxDailyTradedValue), ok ? 'daily traded value within limit' : 'daily traded value limit would be exceeded');
+    add(
+      'DAILY_VALUE',
+      ok,
+      s(dailyAfter),
+      s(l.maxDailyTradedValue),
+      ok ? 'daily traded value within limit' : 'daily traded value limit would be exceeded',
+    );
   }
 
   // 10 DAILY_COUNT
@@ -201,7 +272,13 @@ export function evaluateRisk(input: RiskEngineInput): RiskEvaluation {
   if (isNil(l.maxDailyOrders)) noLimit('DAILY_COUNT', String(countAfter));
   else {
     const ok = countAfter <= l.maxDailyOrders;
-    add('DAILY_COUNT', ok, String(countAfter), String(l.maxDailyOrders), ok ? 'daily order count within limit' : 'daily order count limit reached');
+    add(
+      'DAILY_COUNT',
+      ok,
+      String(countAfter),
+      String(l.maxDailyOrders),
+      ok ? 'daily order count within limit' : 'daily order count limit reached',
+    );
   }
 
   // 11 CONCENTRATION — post-trade weight (BUY only; sells reduce concentration)
@@ -209,10 +286,23 @@ export function evaluateRisk(input: RiskEngineInput): RiskEvaluation {
   else if (isNil(l.maxPositionPct)) noLimit('CONCENTRATION', null);
   else {
     const weight = pct(p.positionValue.plus(value), p.portfolioValue);
-    if (weight === null) add('CONCENTRATION', false, null, s(l.maxPositionPct), 'portfolio value is zero; cannot check concentration');
+    if (weight === null)
+      add(
+        'CONCENTRATION',
+        false,
+        null,
+        s(l.maxPositionPct),
+        'portfolio value is zero; cannot check concentration',
+      );
     else {
       const ok = weight.lte(l.maxPositionPct);
-      add('CONCENTRATION', ok, s(weight), s(l.maxPositionPct), ok ? 'post-trade weight within limit' : 'post-trade position weight exceeds limit');
+      add(
+        'CONCENTRATION',
+        ok,
+        s(weight),
+        s(l.maxPositionPct),
+        ok ? 'post-trade weight within limit' : 'post-trade position weight exceeds limit',
+      );
     }
   }
 
@@ -221,23 +311,47 @@ export function evaluateRisk(input: RiskEngineInput): RiskEvaluation {
   else if (isNil(l.maxDailyLossPct)) noLimit('DAILY_LOSS', s(p.todayPnlPct));
   else {
     const ok = !p.todayPnlPct.lt(l.maxDailyLossPct.neg());
-    add('DAILY_LOSS', ok, s(p.todayPnlPct), s(l.maxDailyLossPct.neg()), ok ? 'daily loss within limit' : 'daily loss limit breached; buys blocked');
+    add(
+      'DAILY_LOSS',
+      ok,
+      s(p.todayPnlPct),
+      s(l.maxDailyLossPct.neg()),
+      ok ? 'daily loss within limit' : 'daily loss limit breached; buys blocked',
+    );
   }
 
   // 13 MARKET_ORDERS_ALLOWED
   if (order.type !== 'MARKET') na('MARKET_ORDERS_ALLOWED', 'not a market order');
-  else add('MARKET_ORDERS_ALLOWED', l.allowMarketOrders, 'MARKET', String(l.allowMarketOrders), l.allowMarketOrders ? 'market orders allowed' : 'market orders are disabled');
+  else
+    add(
+      'MARKET_ORDERS_ALLOWED',
+      l.allowMarketOrders,
+      'MARKET',
+      String(l.allowMarketOrders),
+      l.allowMarketOrders ? 'market orders allowed' : 'market orders are disabled',
+    );
 
   // 14 PRICE_SOURCE — LIVE refuses SIMULATED or stale prices
   if (!live) {
-    add('PRICE_SOURCE', true, f.priceIsSimulated ? 'SIMULATED' : f.priceIsStale ? 'STALE' : 'OK', null, 'not applicable (paper)');
+    add(
+      'PRICE_SOURCE',
+      true,
+      f.priceIsSimulated ? 'SIMULATED' : f.priceIsStale ? 'STALE' : 'OK',
+      null,
+      'not applicable (paper)',
+    );
   } else {
     const ok = !f.priceIsSimulated && !f.priceIsStale;
     const observed = f.priceIsSimulated ? 'SIMULATED' : f.priceIsStale ? 'STALE' : 'OK';
-    add('PRICE_SOURCE', ok, observed, 'live, non-simulated', ok ? 'price source acceptable' : `live orders refuse ${observed.toLowerCase()} prices`);
+    add(
+      'PRICE_SOURCE',
+      ok,
+      observed,
+      'live, non-simulated',
+      ok ? 'price source acceptable' : `live orders refuse ${observed.toLowerCase()} prices`,
+    );
   }
 
   const failedRules = results.filter((r) => !r.passed).map((r) => r.rule);
   return { passed: failedRules.length === 0, results, failedRules };
 }
-

@@ -19,8 +19,12 @@ export function applySlippage(side: TradeSide, price: Decimal, slippageBps: Deci
 }
 
 /** floor(volume × pct / 100), or null when no cap applies. */
-export function volumeCapQty(volume: Decimal | null | undefined, participationPct: Decimal | null | undefined): Decimal | null {
-  if (participationPct === null || participationPct === undefined || volume === null || volume === undefined) return null;
+export function volumeCapQty(
+  volume: Decimal | null | undefined,
+  participationPct: Decimal | null | undefined,
+): Decimal | null {
+  if (participationPct === null || participationPct === undefined || volume === null || volume === undefined)
+    return null;
   if (!participationPct.gt(0)) throw new RangeError('volume participation pct must be > 0');
   return round(volume.times(participationPct).div(HUNDRED), 0, 'DOWN');
 }
@@ -64,11 +68,22 @@ export interface PaperFillResult {
  *  - Partial fills: qty = min(remaining, floor(quote.volume × pct/100)) when a participation cap is set and
  *    the quote has volume; a cap of 0 shares means no fill on this quote.
  */
-export function paperFill(order: PaperWorkingOrder, quote: PaperQuote, options: PaperFillOptions = {}): PaperFillResult {
-  if (!order.qty.isInteger() || !order.qty.gt(0)) throw new RangeError('paperFill: qty must be a positive whole number');
+export function paperFill(
+  order: PaperWorkingOrder,
+  quote: PaperQuote,
+  options: PaperFillOptions = {},
+): PaperFillResult {
+  if (!order.qty.isInteger() || !order.qty.gt(0))
+    throw new RangeError('paperFill: qty must be a positive whole number');
   if (!quote.last.gt(0)) throw new RangeError('paperFill: quote.last must be > 0');
   const slip = options.slippageBps ?? ZERO;
-  const none = (reason: string): PaperFillResult => ({ filled: false, qty: ZERO, price: null, remainingQty: order.qty, reason });
+  const none = (reason: string): PaperFillResult => ({
+    filled: false,
+    qty: ZERO,
+    price: null,
+    remainingQty: order.qty,
+    reason,
+  });
   let price: Decimal;
   if (order.type === 'MARKET') {
     price = applySlippage(order.side, quote.last, slip);
@@ -77,10 +92,12 @@ export function paperFill(order: PaperWorkingOrder, quote: PaperQuote, options: 
     if (!limit || !limit.gt(0)) throw new RangeError('paperFill: LIMIT order requires a positive limitPrice');
     const slipped = applySlippage(order.side, quote.last, slip);
     if (order.side === 'BUY') {
-      if (quote.last.gt(limit)) return none(`last ${quote.last.toString()} above buy limit ${limit.toString()}`);
+      if (quote.last.gt(limit))
+        return none(`last ${quote.last.toString()} above buy limit ${limit.toString()}`);
       price = min(slipped, limit);
     } else {
-      if (quote.last.lt(limit)) return none(`last ${quote.last.toString()} below sell limit ${limit.toString()}`);
+      if (quote.last.lt(limit))
+        return none(`last ${quote.last.toString()} below sell limit ${limit.toString()}`);
       price = max(slipped, limit);
     }
   }
@@ -109,8 +126,14 @@ export function barLimitFill(
 ): { filled: boolean; price: Decimal | null } {
   if (side === 'BUY') {
     if (!bar.low.lt(limitPrice)) return { filled: false, price: null };
-    return { filled: true, price: min(applySlippage('BUY', min(bar.open, limitPrice), slippageBps), limitPrice) };
+    return {
+      filled: true,
+      price: min(applySlippage('BUY', min(bar.open, limitPrice), slippageBps), limitPrice),
+    };
   }
   if (!bar.high.gt(limitPrice)) return { filled: false, price: null };
-  return { filled: true, price: max(applySlippage('SELL', max(bar.open, limitPrice), slippageBps), limitPrice) };
+  return {
+    filled: true,
+    price: max(applySlippage('SELL', max(bar.open, limitPrice), slippageBps), limitPrice),
+  };
 }

@@ -4,32 +4,32 @@ _Status: Phase 2 deliverable, awaiting approval before Phase 3. Updated 2026-11-
 
 **Objective:** a personal smart-trading platform for one KTrade account. It automates everything that can be legally and technically automated today: analysis, strategies, signals, paper trading, portfolio sync from broker-confirmed sources, monitoring and alerts. It keeps **live order submission** behind a capability chain that unlocks only with KTrade's written authorization.
 
-| Doc | Content |
-|---|---|
-| [01](01-ktrade-feasibility-report.md) | KTrade / PSX integration feasibility |
-| [03](03-browser-automation-investigation.md) | Browser-automation investigation & disabled adapter design |
-| [04](04-security-and-credential-management.md) | Security & credentials |
-| [05](05-database-design.md) | Database design + ERD (schema: [`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.prisma)) |
-| [06](06-accounting-methodology.md) | Accounting methodology |
-| [07](07-api-specification.md) | API specification |
-| [08](08-strategy-and-trading-engine.md) | Strategy, signal & trading engine |
-| [09](09-sync-and-market-data.md) | Portfolio sync, market data, sample data |
+| Doc                                            | Content                                                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [01](01-ktrade-feasibility-report.md)          | KTrade / PSX integration feasibility                                                                |
+| [03](03-browser-automation-investigation.md)   | Browser-automation investigation & disabled adapter design                                          |
+| [04](04-security-and-credential-management.md) | Security & credentials                                                                              |
+| [05](05-database-design.md)                    | Database design + ERD (schema: [`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.prisma)) |
+| [06](06-accounting-methodology.md)             | Accounting methodology                                                                              |
+| [07](07-api-specification.md)                  | API specification                                                                                   |
+| [08](08-strategy-and-trading-engine.md)        | Strategy, signal & trading engine                                                                   |
+| [09](09-sync-and-market-data.md)               | Portfolio sync, market data, sample data                                                            |
 
 ## 1. What is automated, and what is gated
 
-| Area | Automation level today | Unlock condition for more |
-|---|---|---|
-| Market data, charts, movers | Automatic. SIMULATED until a licensed vendor key is added; then live or delayed | You subscribe to a vendor (e.g. Capital Stake) |
-| Technical analysis & signals | **Fully automatic**: scheduled evaluation, scoring, explanations | — |
-| Strategies (7 built-ins + custom rule builder) | **Fully automatic** in backtest and paper modes | — |
-| Paper trading | **Fully automatic**: auto-execution of strategy signals | — |
-| Alerts & notifications (in-app, email, Telegram) | **Fully automatic** | — |
-| Portfolio sync | **Automatic** through contract-note emails (read-only mailbox OAuth); statements by upload | — |
-| Analytics, reports, dividends | Automatic from the ledger | — |
-| AI assistant | Automatic analysis (read-only) | — |
-| Live order *preparation & validation* | **Automatic**: signals become pre-filled, risk-checked orders | — |
-| Live order *submission* | **Manual**: you approve, then place the order in the KTrade app | KTrade written permission → browser adapter (submit-by-you), then optionally pre-authorized auto-execution |
-| Broker-side reads (cash, order book) | Next-day, from contract notes and statements | KTrade written permission → browser adapter read-only |
+| Area                                             | Automation level today                                                                     | Unlock condition for more                                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Market data, charts, movers                      | Automatic. SIMULATED until a licensed vendor key is added; then live or delayed            | You subscribe to a vendor (e.g. Capital Stake)                                                             |
+| Technical analysis & signals                     | **Fully automatic**: scheduled evaluation, scoring, explanations                           | —                                                                                                          |
+| Strategies (7 built-ins + custom rule builder)   | **Fully automatic** in backtest and paper modes                                            | —                                                                                                          |
+| Paper trading                                    | **Fully automatic**: auto-execution of strategy signals                                    | —                                                                                                          |
+| Alerts & notifications (in-app, email, Telegram) | **Fully automatic**                                                                        | —                                                                                                          |
+| Portfolio sync                                   | **Automatic** through contract-note emails (read-only mailbox OAuth); statements by upload | —                                                                                                          |
+| Analytics, reports, dividends                    | Automatic from the ledger                                                                  | —                                                                                                          |
+| AI assistant                                     | Automatic analysis (read-only)                                                             | —                                                                                                          |
+| Live order _preparation & validation_            | **Automatic**: signals become pre-filled, risk-checked orders                              | —                                                                                                          |
+| Live order _submission_                          | **Manual**: you approve, then place the order in the KTrade app                            | KTrade written permission → browser adapter (submit-by-you), then optionally pre-authorized auto-execution |
+| Broker-side reads (cash, order book)             | Next-day, from contract notes and statements                                               | KTrade written permission → browser adapter read-only                                                      |
 
 ## 2. System context
 
@@ -77,40 +77,47 @@ Dependency rule: `finance-core` and `broker-sdk` depend on nothing app-specific.
 
 ## 4. Backend modules
 
-| Module | Responsibility | Doc |
-|---|---|---|
-| `auth`, `users`, `rbac` | Argon2id, JWT + rotating refresh, TOTP, step-up, sessions | 04 |
-| `audit` | Append-only audit trail (interceptor + domain events) | 04 |
-| `vault` | Envelope encryption of third-party secrets | 04 |
-| `broker` | Adapter registry, capability chain guard, connections | §5 |
-| `sync` | Imports, parser registry, mailbox poller, reconciliation, discrepancy checks | 09 |
-| `ledger` | Transactions, fees, cash, holdings and lot projections, replay | 06 |
-| `portfolio` | Valuation, snapshots, dashboard aggregates | 06 |
-| `corporate-actions`, `dividends` | Bonus, split, rights, entitlements, WHT | 06 |
-| `market-data` | Provider registry, quotes, bars, movers, watchlists, freshness | 09 |
-| `strategies` | Templates, DSL, evaluation scheduler, signals, scoring | 08 |
-| `backtesting` | Event-driven simulator, metrics, benchmark | 08 |
-| `trading` | Order intents, preview, risk engine, approval policies, execution router, kill switch | 08 |
-| `paper` | `PaperBrokerAdapter`, fill models | 08 |
-| `alerts`, `notifications` | Rule evaluation, channels, dedupe, quiet hours | 07 |
-| `analytics`, `reports` | Period performance, PDF/CSV/XLSX | 07 |
-| `assistant` | LLM provider abstraction, read-only tools, citations | 07 |
-| `settings`, `health` | Fees/taxes/risk configuration, readiness | — |
+| Module                           | Responsibility                                                                        | Doc |
+| -------------------------------- | ------------------------------------------------------------------------------------- | --- |
+| `auth`, `users`, `rbac`          | Argon2id, JWT + rotating refresh, TOTP, step-up, sessions                             | 04  |
+| `audit`                          | Append-only audit trail (interceptor + domain events)                                 | 04  |
+| `vault`                          | Envelope encryption of third-party secrets                                            | 04  |
+| `broker`                         | Adapter registry, capability chain guard, connections                                 | §5  |
+| `sync`                           | Imports, parser registry, mailbox poller, reconciliation, discrepancy checks          | 09  |
+| `ledger`                         | Transactions, fees, cash, holdings and lot projections, replay                        | 06  |
+| `portfolio`                      | Valuation, snapshots, dashboard aggregates                                            | 06  |
+| `corporate-actions`, `dividends` | Bonus, split, rights, entitlements, WHT                                               | 06  |
+| `market-data`                    | Provider registry, quotes, bars, movers, watchlists, freshness                        | 09  |
+| `strategies`                     | Templates, DSL, evaluation scheduler, signals, scoring                                | 08  |
+| `backtesting`                    | Event-driven simulator, metrics, benchmark                                            | 08  |
+| `trading`                        | Order intents, preview, risk engine, approval policies, execution router, kill switch | 08  |
+| `paper`                          | `PaperBrokerAdapter`, fill models                                                     | 08  |
+| `alerts`, `notifications`        | Rule evaluation, channels, dedupe, quiet hours                                        | 07  |
+| `analytics`, `reports`           | Period performance, PDF/CSV/XLSX                                                      | 07  |
+| `assistant`                      | LLM provider abstraction, read-only tools, citations                                  | 07  |
+| `settings`, `health`             | Fees/taxes/risk configuration, readiness                                              | —   |
 
 ## 5. Extensibility: broker adapters
 
 ```ts
 // packages/broker-sdk
 export type Capability =
-  | 'readAccount' | 'readCash' | 'readHoldings' | 'readOrders' | 'readExecutions'
-  | 'prepareOrder' | 'placeOrder' | 'cancelOrder' | 'streamOrderUpdates';
+  | 'readAccount'
+  | 'readCash'
+  | 'readHoldings'
+  | 'readOrders'
+  | 'readExecutions'
+  | 'prepareOrder'
+  | 'placeOrder'
+  | 'cancelOrder'
+  | 'streamOrderUpdates';
 
 export interface CapabilityState {
-  implemented: boolean;   // code exists and passes the adapter contract tests
-  verified: boolean;      // checked in a supervised session against the real platform
-  authorized: boolean;    // broker's written permission on record
+  implemented: boolean; // code exists and passes the adapter contract tests
+  verified: boolean; // checked in a supervised session against the real platform
+  authorized: boolean; // broker's written permission on record
   authorizationRef?: string;
-  enabled: boolean;       // you switched it on (TOTP, audited)
+  enabled: boolean; // you switched it on (TOTP, audited)
 }
 
 export interface BrokerAdapter {
@@ -120,8 +127,8 @@ export interface BrokerAdapter {
   getHoldings?(ctx): Promise<Sourced<HoldingDto[]>>;
   getOrders?(ctx, q): Promise<Sourced<BrokerOrderDto[]>>;
   getExecutions?(ctx, q): Promise<Sourced<ExecutionDto[]>>;
-  prepareOrder?(ctx, o: ApprovedOrder): Promise<PreparedOrderResult>;    // fills a form; does not submit
-  placeOrder?(ctx, o: ApprovedOrder): Promise<SubmissionReceipt>;        // never returns "filled"
+  prepareOrder?(ctx, o: ApprovedOrder): Promise<PreparedOrderResult>; // fills a form; does not submit
+  placeOrder?(ctx, o: ApprovedOrder): Promise<SubmissionReceipt>; // never returns "filled"
   cancelOrder?(ctx, brokerOrderRef: string): Promise<CancelReceipt>;
   getOrderStatus?(ctx, brokerOrderRef: string): Promise<Sourced<BrokerOrderStatus>>;
 }
@@ -139,14 +146,14 @@ export interface BrokerAdapter {
 
 ## 6. Data provenance (shown everywhere in the UI)
 
-| Badge | Meaning |
-|---|---|
-| ✅ Confirmed | Contract note or broker/CDC statement |
+| Badge              | Meaning                                                        |
+| ------------------ | -------------------------------------------------------------- |
+| ✅ Confirmed       | Contract note or broker/CDC statement                          |
 | 👁 Broker-displayed | Read from the broker UI or API, not yet matched to a statement |
-| 📡 Market data | Licensed provider (with delay shown) |
-| ✍ Manual | Entered by you |
-| ≈ Estimated | From fee/tax tables or reference prices |
-| 🧪 Simulated | Paper, backtest, demo or sample data |
+| 📡 Market data     | Licensed provider (with delay shown)                           |
+| ✍ Manual          | Entered by you                                                 |
+| ≈ Estimated        | From fee/tax tables or reference prices                        |
+| 🧪 Simulated       | Paper, backtest, demo or sample data                           |
 
 Aggregates show a breakdown (for example "82% confirmed / 18% estimated"). Simulated values are never mixed into LIVE totals.
 
@@ -155,6 +162,7 @@ Aggregates show a breakdown (for example "82% confirmed / 18% estimated"). Simul
 Next.js App Router with route groups `(auth)` and `(app)`. The BFF route handlers proxy to the API and hold tokens in httpOnly cookies. Data fetching uses TanStack Query with WebSocket-driven cache updates; forms use react-hook-form with the shared Zod schemas; tables use TanStack Table with server pagination, filters and search. Charts: lightweight-charts for price and equity curves with indicator overlays, and Recharts for allocation, bars and P&L. The layout is responsive, with a sidebar on desktop, a collapsible rail on tablet and a bottom nav on mobile. Global banners show the data mode (SIMULATED / delayed / live), the kill-switch state, and "Live execution is manual".
 
 **Pages (19):**
+
 1. Login / Register
 2. Dashboard
 3. Portfolio
@@ -186,33 +194,33 @@ Next.js App Router with route groups `(auth)` and `(app)`. The BFF route handler
 
 ## 9. Testing strategy
 
-| Layer | Tooling | Focus |
-|---|---|---|
-| finance-core | Vitest + fast-check | Fee rules, WAC/FIFO fixtures (doc 06), replay == incremental, indicators vs reference values, rule DSL, risk checks, fill models |
-| parsers | Golden files (redacted real samples) | Every field of every sample |
-| API | Jest + Supertest + Testcontainers (PG, Redis) | Auth and refresh reuse, RBAC, idempotent order replay, risk limits, kill switch, preview-hash mismatch, import dedupe, reconciliation |
-| broker-sdk | Contract suite | Paper + mock adapters; KTrade stubs **must refuse** |
-| Strategy engine | Deterministic bar fixtures | No look-ahead, exit priority, cooldown, signal dedupe across retries |
-| Web | Vitest + Testing Library; Playwright smoke | Login → dashboard → paper order → fill |
+| Layer           | Tooling                                       | Focus                                                                                                                                 |
+| --------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| finance-core    | Vitest + fast-check                           | Fee rules, WAC/FIFO fixtures (doc 06), replay == incremental, indicators vs reference values, rule DSL, risk checks, fill models      |
+| parsers         | Golden files (redacted real samples)          | Every field of every sample                                                                                                           |
+| API             | Jest + Supertest + Testcontainers (PG, Redis) | Auth and refresh reuse, RBAC, idempotent order replay, risk limits, kill switch, preview-hash mismatch, import dedupe, reconciliation |
+| broker-sdk      | Contract suite                                | Paper + mock adapters; KTrade stubs **must refuse**                                                                                   |
+| Strategy engine | Deterministic bar fixtures                    | No look-ahead, exit priority, cooldown, signal dedupe across retries                                                                  |
+| Web             | Vitest + Testing Library; Playwright smoke    | Login → dashboard → paper order → fill                                                                                                |
 
 No test touches a live broker or real funds. CI has no broker credentials.
 
 ## 10. Phase plan
 
-| Phase | Deliverable | Status |
-|---|---|---|
-| 1 | Feasibility + browser-automation investigation | ✅ Done |
-| 2 | Architecture, schema (validated and applied on PG16), ERD, accounting, API spec, engine design, sync and market-data design | ✅ **Done (this doc set). Awaiting your approval** |
-| 3 | Monorepo, scaffolds, Docker, CI, finance-core skeleton | Next |
-| 4 | Auth, RBAC, audit, vault, migrations (+ raw SQL), seed | |
-| 5 | broker-sdk + adapters (Paper, stubs), sync pipeline, generic CSV parser; KTrade parsers once samples arrive; mailbox OAuth | Contract-note parser needs samples |
-| 6 | Ledger, fees, WAC/FIFO, corporate actions, portfolio and dashboard | |
-| 7 | Market data: Simulated + CSV providers, quotes WS, charts, movers, watchlists; Capital Stake adapter scaffold | Live data needs a vendor key |
-| 8 | Trading: preview, risk engine, approval, manual-ticket flow, kill switch | |
-| 9 | Indicators, rule DSL, strategies, signals, backtester, paper trading | |
-| 10 | Alerts, notifications, dividends, analytics, exports | |
-| 11 | AI assistant | Needs an LLM API key |
-| 12 | Hardening, full test pass, deployment and security docs | |
+| Phase | Deliverable                                                                                                                 | Status                                             |
+| ----- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1     | Feasibility + browser-automation investigation                                                                              | ✅ Done                                            |
+| 2     | Architecture, schema (validated and applied on PG16), ERD, accounting, API spec, engine design, sync and market-data design | ✅ **Done (this doc set). Awaiting your approval** |
+| 3     | Monorepo, scaffolds, Docker, CI, finance-core skeleton                                                                      | Next                                               |
+| 4     | Auth, RBAC, audit, vault, migrations (+ raw SQL), seed                                                                      |                                                    |
+| 5     | broker-sdk + adapters (Paper, stubs), sync pipeline, generic CSV parser; KTrade parsers once samples arrive; mailbox OAuth  | Contract-note parser needs samples                 |
+| 6     | Ledger, fees, WAC/FIFO, corporate actions, portfolio and dashboard                                                          |                                                    |
+| 7     | Market data: Simulated + CSV providers, quotes WS, charts, movers, watchlists; Capital Stake adapter scaffold               | Live data needs a vendor key                       |
+| 8     | Trading: preview, risk engine, approval, manual-ticket flow, kill switch                                                    |                                                    |
+| 9     | Indicators, rule DSL, strategies, signals, backtester, paper trading                                                        |                                                    |
+| 10    | Alerts, notifications, dividends, analytics, exports                                                                        |                                                    |
+| 11    | AI assistant                                                                                                                | Needs an LLM API key                               |
+| 12    | Hardening, full test pass, deployment and security docs                                                                     |                                                    |
 
 ## 11. Inputs still needed from you (none block Phase 3)
 

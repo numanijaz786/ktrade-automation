@@ -24,7 +24,9 @@ export class HealthController {
 
   @Get('ready')
   @ApiOperation({ summary: 'Readiness: database and Redis reachable' })
-  async ready(@Res({ passthrough: true }) res: Response): Promise<{ status: 'ready' | 'not_ready'; checks: Record<string, boolean> }> {
+  async ready(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ status: 'ready' | 'not_ready'; checks: Record<string, boolean> }> {
     const [database, redis] = await Promise.all([this.prisma.ping(), this.redis.ping()]);
     const ok = database && redis;
     res.status(ok ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE);

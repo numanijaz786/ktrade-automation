@@ -170,7 +170,11 @@ export class LedgerOversellError extends LedgerError {
     public readonly requested: Decimal,
     public readonly available: Decimal,
   ) {
-    super('OVERSELL', `Event ${eventId}: cannot remove ${requested.toString()} shares, only ${available.toString()} held`, eventId);
+    super(
+      'OVERSELL',
+      `Event ${eventId}: cannot remove ${requested.toString()} shares, only ${available.toString()} held`,
+      eventId,
+    );
     this.name = 'LedgerOversellError';
   }
 }

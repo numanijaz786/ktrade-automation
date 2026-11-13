@@ -1,6 +1,6 @@
 # 08 — Strategy, Signal & Trading Engine
 
-Goal: one engine that runs the **same strategy code** in backtest, paper and live modes. Only the *clock*, the *data feed* and the *execution sink* differ between modes. That way a strategy behaves identically in all three, and moving from backtest to paper to live changes configuration, not code.
+Goal: one engine that runs the **same strategy code** in backtest, paper and live modes. Only the _clock_, the _data feed_ and the _execution sink_ differ between modes. That way a strategy behaves identically in all three, and moving from backtest to paper to live changes configuration, not code.
 
 ## 1. Component overview
 
@@ -38,6 +38,7 @@ flowchart LR
 ## 2. Indicators (`finance-core/indicators`)
 
 Pure, incremental, decimal-based functions with streaming state, so live evaluation doesn't recompute the full history:
+
 - SMA, EMA, WMA
 - RSI (Wilder)
 - MACD (line, signal, histogram)
@@ -51,11 +52,17 @@ Each indicator declares a `warmupBars` count. No signal is produced until warmup
 
 ```jsonc
 {
-  "all": [                                   // all | any | not
-    { "crossesAbove": [ {"ind":"EMA","period":"$fastPeriod"}, {"ind":"EMA","period":"$slowPeriod"} ] },
-    { "gt":  [ {"ind":"RSI","period":14}, {"const":"50"} ] },
-    { "gt":  [ {"field":"volume"}, {"mul":[{"ind":"VOLUME_SMA","period":20},{"const":"1.5"}]} ] }
-  ]
+  "all": [
+    // all | any | not
+    {
+      "crossesAbove": [
+        { "ind": "EMA", "period": "$fastPeriod" },
+        { "ind": "EMA", "period": "$slowPeriod" },
+      ],
+    },
+    { "gt": [{ "ind": "RSI", "period": 14 }, { "const": "50" }] },
+    { "gt": [{ "field": "volume" }, { "mul": [{ "ind": "VOLUME_SMA", "period": 20 }, { "const": "1.5" }] }] },
+  ],
 }
 ```
 
@@ -71,16 +78,16 @@ Each indicator declares a `warmupBars` count. No signal is produced until warmup
 
 ### Built-in templates (compile to the DSL, parameters editable)
 
-| Template | Entry | Exit | Default params |
-|---|---|---|---|
-| MA Crossover | fast EMA crosses above slow | fast crosses below slow | fast 9, slow 21, type EMA |
-| RSI | RSI crosses above `oversold` | RSI crosses below `overbought` | 14, 30, 70 |
-| MACD | MACD crosses above signal (optionally hist > 0) | MACD crosses below signal | 12, 26, 9 |
-| Stop-loss % | — | `close ≤ avgCost × (1 − sl%)` | 5% |
-| Take-profit % | — | `close ≥ avgCost × (1 + tp%)` | 10% |
-| Trailing stop % | — | `close ≤ highSinceEntry × (1 − ts%)` | 7% |
-| Price alert | `close ≥ / ≤ target` (signal or alert only) | `close ≥ / ≤ exit target` | — |
-| Custom rules | user-built in the UI rule builder | user-built | — |
+| Template        | Entry                                           | Exit                                 | Default params            |
+| --------------- | ----------------------------------------------- | ------------------------------------ | ------------------------- |
+| MA Crossover    | fast EMA crosses above slow                     | fast crosses below slow              | fast 9, slow 21, type EMA |
+| RSI             | RSI crosses above `oversold`                    | RSI crosses below `overbought`       | 14, 30, 70                |
+| MACD            | MACD crosses above signal (optionally hist > 0) | MACD crosses below signal            | 12, 26, 9                 |
+| Stop-loss %     | —                                               | `close ≤ avgCost × (1 − sl%)`        | 5%                        |
+| Take-profit %   | —                                               | `close ≥ avgCost × (1 + tp%)`        | 10%                       |
+| Trailing stop % | —                                               | `close ≤ highSinceEntry × (1 − ts%)` | 7%                        |
+| Price alert     | `close ≥ / ≤ target` (signal or alert only)     | `close ≥ / ≤ exit target`            | —                         |
+| Custom rules    | user-built in the UI rule builder               | user-built                           | —                         |
 
 Stop-loss, take-profit and trailing-stop can also be **overlays** on any entry strategy, through the `stopLossPct`, `takeProfitPct` and `trailingStopPct` columns.
 
@@ -89,6 +96,7 @@ Stop-loss, take-profit and trailing-stop can also be **overlays** on any entry s
 ## 4. Position sizing & strategy-level risk
 
 `suggestedQty = min(`
+
 - `floor(maxInvestment_remaining / (price × (1 + feeEstimatePct)))`,
 - `maxPositionQty`,
 - `riskPerTradePct × equity / (price − stopPrice)` (when a stop is defined),
@@ -98,28 +106,29 @@ Stop-loss, take-profit and trailing-stop can also be **overlays** on any entry s
 
 ## 5. Execution modes
 
-| | Backtest | Paper | Live |
-|---|---|---|---|
-| Clock | historical bars, event loop | scheduler (BullMQ repeatable job at bar close, PSX market hours, holidays skipped) | same as paper |
-| Data | `stock_prices` (any source; result labelled with the weakest provenance) | active `MarketDataProvider` | active provider. Requires `PROVIDER`-grade data; **SIMULATED prices are refused for live** |
-| Fill model | signal at close of bar *t* → fill at **open of t+1** (no look-ahead) ± slippage bps; limit orders fill only if the bar trades through the limit | next quote after the order ± slippage; limit fills when last crosses the limit; partial fills optional via volume cap (% of bar volume) | broker |
-| Fees | fee engine (same as ledger) | fee engine | contract note (estimates until then) |
-| Signal → order | automatic | automatic **if `autoExecute`**, otherwise a prepared order waits for a click | **prepared order, manual approval** (§7) |
-| Provenance | SIMULATED | SIMULATED | BROKER_CONFIRMED after reconciliation |
+|                | Backtest                                                                                                                                        | Paper                                                                                                                                   | Live                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Clock          | historical bars, event loop                                                                                                                     | scheduler (BullMQ repeatable job at bar close, PSX market hours, holidays skipped)                                                      | same as paper                                                                              |
+| Data           | `stock_prices` (any source; result labelled with the weakest provenance)                                                                        | active `MarketDataProvider`                                                                                                             | active provider. Requires `PROVIDER`-grade data; **SIMULATED prices are refused for live** |
+| Fill model     | signal at close of bar _t_ → fill at **open of t+1** (no look-ahead) ± slippage bps; limit orders fill only if the bar trades through the limit | next quote after the order ± slippage; limit fills when last crosses the limit; partial fills optional via volume cap (% of bar volume) | broker                                                                                     |
+| Fees           | fee engine (same as ledger)                                                                                                                     | fee engine                                                                                                                              | contract note (estimates until then)                                                       |
+| Signal → order | automatic                                                                                                                                       | automatic **if `autoExecute`**, otherwise a prepared order waits for a click                                                            | **prepared order, manual approval** (§7)                                                   |
+| Provenance     | SIMULATED                                                                                                                                       | SIMULATED                                                                                                                               | BROKER_CONFIRMED after reconciliation                                                      |
 
 **Backtest metrics:**
+
 - total return, CAGR, max drawdown, Sharpe (daily, rf configurable)
 - win rate, profit factor, average win/loss, exposure %, fees paid
 - **buy-and-hold benchmark** on the same symbol and period
 
-Every backtest result page and API response shows: *"Past simulated performance does not guarantee future returns. Results exclude market impact and may use simulated or delayed data."* Walk-forward and out-of-sample splits are supported, to reduce overfitting.
+Every backtest result page and API response shows: _"Past simulated performance does not guarantee future returns. Results exclude market impact and may use simulated or delayed data."_ Walk-forward and out-of-sample splits are supported, to reduce overfitting.
 
 ## 6. Paper trading
 
 - Any number of `PAPER` portfolios, each with its own `initialCash`, risk limits and strategies.
 - The `PaperBrokerAdapter` implements the **same `BrokerAdapter` interface** as live adapters, with the same order state machine, `order_events` and risk checks. Paper trading therefore exercises the real workflow end to end.
 - Manual paper orders come from the Buy/Sell page; strategy orders come from signals.
-- "Mirror" mode (optional): your live strategies also run in shadow paper mode, so you can compare what they *would* have done with what you actually did.
+- "Mirror" mode (optional): your live strategies also run in shadow paper mode, so you can compare what they _would_ have done with what you actually did.
 
 ## 7. Order pipeline & approval policy
 
@@ -162,6 +171,7 @@ ExecutionRouter
 ```
 
 **Rules:**
+
 - Approval binds to the **preview hash**. Any change to symbol, side, qty, price or type invalidates it.
 - A click or HTTP 200 from an adapter is never treated as a fill. Status only advances on an adapter status read (`BROKER_DISPLAYED`) or a contract note (`BROKER_CONFIRMED`). Ambiguous outcomes become `UNKNOWN`, block further orders on that symbol, and alert you.
 - Live orders are **never retried automatically**.
@@ -169,17 +179,17 @@ ExecutionRouter
 
 ## 8. Scheduling (BullMQ queues)
 
-| Queue | Trigger | Job |
-|---|---|---|
-| `market.quotes` | every N s during market hours (provider-dependent) | refresh quotes → Redis + `stock_quotes` → WebSocket |
-| `market.bars` | bar close per interval; EOD at 16:00 PKT | upsert `stock_prices` |
-| `strategy.evaluate` | after `market.bars` for that interval | evaluate active strategies → signals |
-| `orders.lifecycle` | signal created, preview expiry, adapter polling | prepare / expire / status sync |
-| `paper.fills` | quote updates | match working paper orders |
-| `alerts.evaluate` | quote update, portfolio revaluation, order events | fire alerts → notifications |
-| `portfolio.snapshot` | EOD | write `portfolio_snapshots` |
-| `sync.mailbox`, `sync.imports` | every 15 min / on upload | contract-note ingestion → reconcile |
-| `backtest.run` | on request | run, persist results |
+| Queue                          | Trigger                                            | Job                                                 |
+| ------------------------------ | -------------------------------------------------- | --------------------------------------------------- |
+| `market.quotes`                | every N s during market hours (provider-dependent) | refresh quotes → Redis + `stock_quotes` → WebSocket |
+| `market.bars`                  | bar close per interval; EOD at 16:00 PKT           | upsert `stock_prices`                               |
+| `strategy.evaluate`            | after `market.bars` for that interval              | evaluate active strategies → signals                |
+| `orders.lifecycle`             | signal created, preview expiry, adapter polling    | prepare / expire / status sync                      |
+| `paper.fills`                  | quote updates                                      | match working paper orders                          |
+| `alerts.evaluate`              | quote update, portfolio revaluation, order events  | fire alerts → notifications                         |
+| `portfolio.snapshot`           | EOD                                                | write `portfolio_snapshots`                         |
+| `sync.mailbox`, `sync.imports` | every 15 min / on upload                           | contract-note ingestion → reconcile                 |
+| `backtest.run`                 | on request                                         | run, persist results                                |
 
 Jobs are idempotent: job ids are derived from `(strategyId, barTs)` and similar, and are backed by DB unique constraints.
 
@@ -188,4 +198,4 @@ Jobs are idempotent: job ids are derived from `(strategyId, barTs)` and similar,
 - **Signal scoring:** a 0–100 confidence score built from agreement of trend (MA), momentum (RSI/MACD), volume confirmation and volatility regime (ATR percentile). Each component is shown.
 - **Multi-timeframe confirmation:** entry on D1 only if the weekly trend is aligned (optional).
 - **Market regime filter:** suppress entries when the KSE-100 is below its 200-day MA (optional; requires index data from the provider).
-- **AI commentary** (Phase 11) can *explain* a signal from the trace but cannot create or approve orders.
+- **AI commentary** (Phase 11) can _explain_ a signal from the trace but cannot create or approve orders.

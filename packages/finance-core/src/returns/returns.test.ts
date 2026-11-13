@@ -1,7 +1,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { d } from '../decimal.js';
-import { aggregateMonthlyPnl, dailyPerformance, maxDrawdown, timeWeightedReturn, twrIndex } from './performance.js';
+import {
+  aggregateMonthlyPnl,
+  dailyPerformance,
+  maxDrawdown,
+  timeWeightedReturn,
+  twrIndex,
+} from './performance.js';
 import {
   accountValue,
   dailyPnl,
@@ -58,7 +64,12 @@ describe('daily performance & TWR', () => {
   it('daily P&L and returns with flows at end of day', () => {
     const days = dailyPerformance(pts);
     expect(days.map((x) => x.pnl.toString())).toEqual(['0', '1000', '500', '0']);
-    expect(days.map((x) => x.dailyReturn?.toFixed(10) ?? null)).toEqual([null, '0.1000000000', '0.0454545455', '0.0000000000']);
+    expect(days.map((x) => x.dailyReturn?.toFixed(10) ?? null)).toEqual([
+      null,
+      '0.1000000000',
+      '0.0454545455',
+      '0.0000000000',
+    ]);
   });
 
   it('TWR links daily returns and is unaffected by flow timing', () => {
@@ -71,22 +82,40 @@ describe('daily performance & TWR', () => {
 
   it('TWR is null when undefined (too short, or gain on zero capital)', () => {
     expect(timeWeightedReturn([{ date: '2025-01-01', value: '1' }])).toBeNull();
-    expect(timeWeightedReturn([{ date: '2025-01-01', value: '0' }, { date: '2025-01-02', value: '5' }])).toBeNull();
+    expect(
+      timeWeightedReturn([
+        { date: '2025-01-01', value: '0' },
+        { date: '2025-01-02', value: '5' },
+      ]),
+    ).toBeNull();
   });
 
   it('rejects unordered dates', () => {
-    expect(() => dailyPerformance([{ date: '2025-01-02', value: '1' }, { date: '2025-01-02', value: '1' }])).toThrow(RangeError);
+    expect(() =>
+      dailyPerformance([
+        { date: '2025-01-02', value: '1' },
+        { date: '2025-01-02', value: '1' },
+      ]),
+    ).toThrow(RangeError);
   });
 
   it('property: with no flows, TWR = V_end / V_start − 1', () => {
     fc.assert(
-      fc.property(fc.array(fc.integer({ min: 1, max: 10_000_000 }), { minLength: 2, maxLength: 30 }), (vals) => {
-        const series = vals.map((v, i) => ({ date: `2025-01-${String(i + 1).padStart(2, '0')}`, value: v.toString() }));
-        const twr = timeWeightedReturn(series)!;
-        const expected = d(vals[vals.length - 1]!.toString()).div(vals[0]!.toString()).minus(1);
-        // r_t near −100% carries ~1e-34 absolute error, amplified by 1/(1+r_t) ≤ 1e7 per step
-        expect(twr.minus(expected).abs().lte(expected.abs().plus(1).times('1e-24'))).toBe(true);
-      }),
+      fc.property(
+        fc.array(fc.integer({ min: 1, max: 10_000_000 }), { minLength: 2, maxLength: 30 }),
+        (vals) => {
+          const series = vals.map((v, i) => ({
+            date: `2025-01-${String(i + 1).padStart(2, '0')}`,
+            value: v.toString(),
+          }));
+          const twr = timeWeightedReturn(series)!;
+          const expected = d(vals[vals.length - 1]!.toString())
+            .div(vals[0]!.toString())
+            .minus(1);
+          // r_t near −100% carries ~1e-34 absolute error, amplified by 1/(1+r_t) ≤ 1e7 per step
+          expect(twr.minus(expected).abs().lte(expected.abs().plus(1).times('1e-24'))).toBe(true);
+        },
+      ),
     );
   });
 
@@ -114,7 +143,12 @@ describe('maxDrawdown', () => {
     expect(r?.recoveryDate).toBe('2025-01-05');
   });
   it('0 for a rising series; null for empty / non-positive series', () => {
-    expect(maxDrawdown([{ date: '2025-01-01', value: '1' }, { date: '2025-01-02', value: '2' }])?.maxDrawdown.isZero()).toBe(true);
+    expect(
+      maxDrawdown([
+        { date: '2025-01-01', value: '1' },
+        { date: '2025-01-02', value: '2' },
+      ])?.maxDrawdown.isZero(),
+    ).toBe(true);
     expect(maxDrawdown([])).toBeNull();
     expect(maxDrawdown([{ date: '2025-01-01', value: '0' }])).toBeNull();
   });
@@ -158,7 +192,14 @@ describe('xirr', () => {
       { date: '2025-01-01', amount: '-1000' },
     ]);
     expect(r.lt(0)).toBe(true);
-    expect(xnpv(r, [{ date: '2025-01-01', amount: '-1000' }, { date: '2025-07-01', amount: '800' }]).abs().lt('1e-6')).toBe(true);
+    expect(
+      xnpv(r, [
+        { date: '2025-01-01', amount: '-1000' },
+        { date: '2025-07-01', amount: '800' },
+      ])
+        .abs()
+        .lt('1e-6'),
+    ).toBe(true);
   });
 
   it('falls back to bisection when Newton cannot start (guess ≤ −1)', () => {

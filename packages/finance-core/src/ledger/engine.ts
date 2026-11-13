@@ -10,7 +10,17 @@
  * Lots are ALWAYS maintained and consumed FIFO (for holding periods and the FIFO comparison view),
  * regardless of the method used for the holding's totalCost.
  */
-import { type Decimal, type DecimalInput, d, MONEY_DP, ONE, roundMoney, roundPrice, sum, ZERO } from '../decimal.js';
+import {
+  type Decimal,
+  type DecimalInput,
+  d,
+  MONEY_DP,
+  ONE,
+  roundMoney,
+  roundPrice,
+  sum,
+  ZERO,
+} from '../decimal.js';
 import { assertIsoDate } from '../fees/isoDate.js';
 import {
   type CostBasisMethod,
@@ -51,20 +61,31 @@ export interface LedgerReplayResult {
   results: LedgerEventResult[];
 }
 
-const avgOf = (totalCost: Decimal, qty: Decimal): Decimal => (qty.isZero() ? ZERO : roundPrice(totalCost.div(qty)));
+const avgOf = (totalCost: Decimal, qty: Decimal): Decimal =>
+  qty.isZero() ? ZERO : roundPrice(totalCost.div(qty));
 
 function quantityOf(value: DecimalInput, eventId: string): Decimal {
   const q = d(value);
-  if (!q.gt(ZERO)) throw new LedgerError('INVALID_QUANTITY', `Event ${eventId}: quantity must be > 0`, eventId);
+  if (!q.gt(ZERO))
+    throw new LedgerError('INVALID_QUANTITY', `Event ${eventId}: quantity must be > 0`, eventId);
   if (q.decimalPlaces() > MONEY_DP) {
-    throw new LedgerError('INVALID_QUANTITY', `Event ${eventId}: quantity has more than ${MONEY_DP} dp`, eventId);
+    throw new LedgerError(
+      'INVALID_QUANTITY',
+      `Event ${eventId}: quantity has more than ${MONEY_DP} dp`,
+      eventId,
+    );
   }
   return q;
 }
 
-function nonNegative(value: DecimalInput | undefined, eventId: string, code: 'INVALID_PRICE' | 'INVALID_FEES' | 'INVALID_COST'): Decimal {
+function nonNegative(
+  value: DecimalInput | undefined,
+  eventId: string,
+  code: 'INVALID_PRICE' | 'INVALID_FEES' | 'INVALID_COST',
+): Decimal {
   const v = value === undefined ? ZERO : d(value);
-  if (v.isNeg()) throw new LedgerError(code, `Event ${eventId}: ${code.slice(8).toLowerCase()} must be ≥ 0`, eventId);
+  if (v.isNeg())
+    throw new LedgerError(code, `Event ${eventId}: ${code.slice(8).toLowerCase()} must be ≥ 0`, eventId);
   return v;
 }
 
@@ -191,7 +212,8 @@ export function applyEvent(
   method: CostBasisMethod = 'WEIGHTED_AVERAGE',
   options: LedgerOptions = {},
 ): LedgerStep {
-  if (method !== 'WEIGHTED_AVERAGE' && method !== 'FIFO') throw new RangeError(`Unknown cost-basis method ${String(method)}`);
+  if (method !== 'WEIGHTED_AVERAGE' && method !== 'FIFO')
+    throw new RangeError(`Unknown cost-basis method ${String(method)}`);
   assertIsoDate(event.date, `event ${event.id} date`);
   if (state.lastEventDate !== null && event.date < state.lastEventDate) {
     throw new LedgerError(
@@ -224,7 +246,15 @@ export function applyEvent(
       const f = nonNegative(event.fees, event.id, 'INVALID_FEES');
       const gross = roundMoney(q.times(p));
       const cost = roundMoney(q.times(p).plus(f));
-      const lot = makeLot(event.id, event.id, event.date, event.date, event.type === 'BUY' ? 'PURCHASE' : 'RIGHTS', q, cost);
+      const lot = makeLot(
+        event.id,
+        event.id,
+        event.date,
+        event.date,
+        event.type === 'BUY' ? 'PURCHASE' : 'RIGHTS',
+        q,
+        cost,
+      );
       draft = {
         ...base,
         quantity: state.quantity.plus(q),
@@ -240,7 +270,8 @@ export function applyEvent(
     case 'TRANSFER_IN': {
       const q = quantityOf(event.quantity, event.id);
       const cost = roundMoney(nonNegative(event.totalCost, event.id, 'INVALID_COST'));
-      const hp = event.acquiredDate === undefined ? event.date : assertIsoDate(event.acquiredDate, 'acquiredDate');
+      const hp =
+        event.acquiredDate === undefined ? event.date : assertIsoDate(event.acquiredDate, 'acquiredDate');
       const lot = makeLot(event.id, event.id, event.date, hp, 'TRANSFER_IN', q, cost);
       draft = {
         ...base,
@@ -291,7 +322,8 @@ export function applyEvent(
       break;
   }
 
-  const realizedPnl = draft.realizedDelta === null ? state.realizedPnl : state.realizedPnl.plus(draft.realizedDelta);
+  const realizedPnl =
+    draft.realizedDelta === null ? state.realizedPnl : state.realizedPnl.plus(draft.realizedDelta);
   const next: LedgerState = {
     quantity: draft.quantity,
     totalCost: draft.totalCost,

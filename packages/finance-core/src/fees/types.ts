@@ -21,12 +21,7 @@ export type FeeComponent =
 export type FeeAppliesTo = 'BUY' | 'SELL' | 'BOTH' | 'DIVIDEND';
 
 export type FeeMethod =
-  | 'PCT_OF_VALUE'
-  | 'PER_SHARE'
-  | 'MAX_OF_PCT_OR_PER_SHARE'
-  | 'FIXED'
-  | 'PCT_OF_COMPONENT'
-  | 'AT_ACTUAL';
+  'PCT_OF_VALUE' | 'PER_SHARE' | 'MAX_OF_PCT_OR_PER_SHARE' | 'FIXED' | 'PCT_OF_COMPONENT' | 'AT_ACTUAL';
 
 /** Trade direction for fee purposes (mirrors OrderSide). */
 export type FeeTradeSide = 'BUY' | 'SELL';

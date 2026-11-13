@@ -18,7 +18,14 @@ import {
 
 const mk = (close: string | number, i: number, high?: string, volume = '1000'): OhlcvBar => {
   const c = d(String(close));
-  return { ts: new Date(Date.UTC(2024, 0, 1 + i)).toISOString(), open: c, high: d(high ?? c.toString()), low: c, close: c, volume: d(volume) };
+  return {
+    ts: new Date(Date.UTC(2024, 0, 1 + i)).toISOString(),
+    open: c,
+    high: d(high ?? c.toString()),
+    low: c,
+    close: c,
+    volume: d(volume),
+  };
 };
 const series = (closes: (string | number)[]): OhlcvBar[] => closes.map((c, i) => mk(c, i));
 const pos = (avgCost: string, high: string, qty = '10', barsHeld = 1): StrategyPosition => ({
@@ -42,7 +49,10 @@ describe('templates', () => {
   it('defaults match docs/08', () => {
     const r = resolveTemplateParams('MA_CROSSOVER');
     expect(r).toEqual({ ok: true, params: { fastPeriod: 9, slowPeriod: 21, maType: 'EMA' } });
-    expect(resolveTemplateParams('RSI')).toEqual({ ok: true, params: { rsiPeriod: 14, oversold: '30', overbought: '70' } });
+    expect(resolveTemplateParams('RSI')).toEqual({
+      ok: true,
+      params: { rsiPeriod: 14, oversold: '30', overbought: '70' },
+    });
     expect(resolveTemplateParams('MACD')).toEqual({
       ok: true,
       params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, requireMacdAboveZero: false },
@@ -53,7 +63,12 @@ describe('templates', () => {
   });
 
   it('validates parameters with paths', () => {
-    const r = resolveTemplateParams('MA_CROSSOVER', { fastPeriod: 30, slowPeriod: 20, maType: 'HMA', junk: 1 });
+    const r = resolveTemplateParams('MA_CROSSOVER', {
+      fastPeriod: 30,
+      slowPeriod: 20,
+      maType: 'HMA',
+      junk: 1,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errors.map((e) => [e.path, e.code])).toEqual([
@@ -68,12 +83,21 @@ describe('templates', () => {
   });
 
   it('MA crossover (SMA 2/3) enters on the cross and exits on the reverse cross', () => {
-    const s = compileStrategy(buildTemplateStrategy('MA_CROSSOVER', { fastPeriod: 2, slowPeriod: 3, maType: 'SMA' }));
+    const s = compileStrategy(
+      buildTemplateStrategy('MA_CROSSOVER', { fastPeriod: 2, slowPeriod: 3, maType: 'SMA' }),
+    );
     const runner = s.createRunner();
     const bars = series([5, 4, 3, 4, 6, 7, 5, 3]);
     const out = bars.map((b, i) => runner.onBar(b, i >= 5 && i <= 7 ? pos('6', '7') : null));
     expect(out.map((x) => (x ? `${x.type}:${x.reason}` : null))).toEqual([
-      null, null, null, null, 'ENTRY:RULE_ENTRY', null, null, 'EXIT:RULE_EXIT',
+      null,
+      null,
+      null,
+      null,
+      'ENTRY:RULE_ENTRY',
+      null,
+      null,
+      'EXIT:RULE_EXIT',
     ]);
     const entry = out[4]!;
     expect(entry.side).toBe('BUY');
@@ -94,7 +118,13 @@ describe('templates', () => {
   });
 
   it('PRICE_ALERT entry and exit targets use reason PRICE_TARGET', () => {
-    const s = compileStrategy(buildTemplateStrategy('PRICE_ALERT', { targetPrice: '100', exitTargetPrice: '90', exitDirection: 'BELOW' }));
+    const s = compileStrategy(
+      buildTemplateStrategy('PRICE_ALERT', {
+        targetPrice: '100',
+        exitTargetPrice: '90',
+        exitDirection: 'BELOW',
+      }),
+    );
     expect(evaluateStrategyAt(s, series([99, 100]), null)?.reason).toBe('PRICE_TARGET');
     const exit = evaluateStrategyAt(s, series([99, 89]), pos('100', '100'));
     expect([exit?.type, exit?.reason]).toEqual(['EXIT', 'PRICE_TARGET']);
@@ -173,7 +203,13 @@ describe('strategy evaluator', () => {
 
   it('rejects invalid overlays and cooldown with paths', () => {
     try {
-      compileStrategy({ stopLossPct: '0', trailingStopPct: '100', takeProfitPct: 'abc', cooldownBars: -1, entryRules: { x: 1 } });
+      compileStrategy({
+        stopLossPct: '0',
+        trailingStopPct: '100',
+        takeProfitPct: 'abc',
+        cooldownBars: -1,
+        entryRules: { x: 1 },
+      });
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(StrategyValidationError);
@@ -190,21 +226,36 @@ describe('strategy evaluator', () => {
   it('runner and evaluateStrategyAt agree; signals never depend on future bars', () => {
     const s = compileStrategy(buildTemplateStrategy('MA_CROSSOVER', { fastPeriod: 2, slowPeriod: 4 }));
     fc.assert(
-      fc.property(fc.array(fc.integer({ min: 1, max: 100 }), { minLength: 1, maxLength: 30 }), fc.array(fc.integer({ min: 1, max: 100 }), { maxLength: 5 }), (closes, fut) => {
-        const r = s.createRunner();
-        const all = series([...closes, ...fut]);
-        const streamed = all.map((b) => r.onBar(b, null));
-        const t = closes.length - 1;
-        const direct = evaluateStrategyAt(s, all.slice(0, t + 1), null);
-        expect(JSON.stringify(direct)).toBe(JSON.stringify(streamed[t]));
-      }),
+      fc.property(
+        fc.array(fc.integer({ min: 1, max: 100 }), { minLength: 1, maxLength: 30 }),
+        fc.array(fc.integer({ min: 1, max: 100 }), { maxLength: 5 }),
+        (closes, fut) => {
+          const r = s.createRunner();
+          const all = series([...closes, ...fut]);
+          const streamed = all.map((b) => r.onBar(b, null));
+          const t = closes.length - 1;
+          const direct = evaluateStrategyAt(s, all.slice(0, t + 1), null);
+          expect(JSON.stringify(direct)).toBe(JSON.stringify(streamed[t]));
+        },
+      ),
       { numRuns: 60 },
     );
   });
 });
 
 describe('signal score', () => {
-  const cfg = { trendFastPeriod: 2, trendSlowPeriod: 3, rsiPeriod: 2, macdFast: 2, macdSlow: 3, macdSignal: 2, volumePeriod: 2, atrPeriod: 2, volatilityLookback: 5, volatilityMinSamples: 2 };
+  const cfg = {
+    trendFastPeriod: 2,
+    trendSlowPeriod: 3,
+    rsiPeriod: 2,
+    macdFast: 2,
+    macdSlow: 3,
+    macdSignal: 2,
+    volumePeriod: 2,
+    atrPeriod: 2,
+    volatilityLookback: 5,
+    volatilityMinSamples: 2,
+  };
 
   it('is 50 with no information and deterministic with documented weights', () => {
     const sc = new SignalScorer();
@@ -233,7 +284,11 @@ describe('signal score', () => {
     const total = (comps: typeof entry.components): Decimal => {
       const av = comps.filter((c) => c.available);
       const w = av.reduce((a, c) => a + c.weight, 0);
-      return round(av.reduce((a, c) => a.plus(c.score!.times(fromInt(c.weight))), d('0')).div(fromInt(w)), 0, 'HALF_UP');
+      return round(
+        av.reduce((a, c) => a.plus(c.score!.times(fromInt(c.weight))), d('0')).div(fromInt(w)),
+        0,
+        'HALF_UP',
+      );
     };
     expect(entry.total.eq(total(entry.components))).toBe(true);
     expect(exit.total.eq(total(exit.components))).toBe(true);
@@ -241,14 +296,24 @@ describe('signal score', () => {
 
   it('total always within 0..100 (property)', () => {
     fc.assert(
-      fc.property(fc.array(fc.tuple(fc.integer({ min: 1, max: 1000 }), fc.integer({ min: 0, max: 50 }), fc.integer({ min: 0, max: 5000 })), { maxLength: 40 }), (rows) => {
-        const sc = new SignalScorer(cfg);
-        rows.forEach(([c, h, v], i) => sc.update(mk(c, i, String(c + h), String(v))));
-        for (const dir of ['ENTRY', 'EXIT'] as const) {
-          const t = sc.score(dir).total;
-          expect(t.gte(0) && t.lte(100) && t.isInteger()).toBe(true);
-        }
-      }),
+      fc.property(
+        fc.array(
+          fc.tuple(
+            fc.integer({ min: 1, max: 1000 }),
+            fc.integer({ min: 0, max: 50 }),
+            fc.integer({ min: 0, max: 5000 }),
+          ),
+          { maxLength: 40 },
+        ),
+        (rows) => {
+          const sc = new SignalScorer(cfg);
+          rows.forEach(([c, h, v], i) => sc.update(mk(c, i, String(c + h), String(v))));
+          for (const dir of ['ENTRY', 'EXIT'] as const) {
+            const t = sc.score(dir).total;
+            expect(t.gte(0) && t.lte(100) && t.isInteger()).toBe(true);
+          }
+        },
+      ),
       { numRuns: 60 },
     );
   });
@@ -281,28 +346,49 @@ describe('position sizer', () => {
 
   it('returns 0 (not tradable) when budget is insufficient or concentration exhausted', () => {
     expect(sizePosition({ price: d('100'), maxInvestmentRemaining: d('99.99') }).tradable).toBe(false);
-    const r = sizePosition({ price: d('10'), maxInvestmentRemaining: d('1000'), maxPositionPct: d('10'), portfolioValue: d('1000'), currentPositionValue: d('500') });
+    const r = sizePosition({
+      price: d('10'),
+      maxInvestmentRemaining: d('1000'),
+      maxPositionPct: d('10'),
+      portfolioValue: d('1000'),
+      currentPositionValue: d('500'),
+    });
     expect(r.qty.toString()).toBe('0');
   });
 
   it('rejects invalid inputs', () => {
     expect(() => sizePosition({ price: d('0'), maxInvestmentRemaining: d('1') })).toThrow(RangeError);
-    expect(() => sizePosition({ price: d('10'), maxInvestmentRemaining: d('1'), riskPerTradePct: d('1'), equity: d('1'), stopPrice: d('10') })).toThrow(RangeError);
-    expect(() => sizePosition({ price: d('10'), maxInvestmentRemaining: d('1'), maxPositionPct: d('1') })).toThrow(RangeError);
+    expect(() =>
+      sizePosition({
+        price: d('10'),
+        maxInvestmentRemaining: d('1'),
+        riskPerTradePct: d('1'),
+        equity: d('1'),
+        stopPrice: d('10'),
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      sizePosition({ price: d('10'), maxInvestmentRemaining: d('1'), maxPositionPct: d('1') }),
+    ).toThrow(RangeError);
   });
 
   it('never exceeds the budget including fees (property)', () => {
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 0, max: 100_000_000 }), fc.integer({ min: 0, max: 500 }), (priceCents, budgetCents, feeBp) => {
-        const price = d(String(priceCents)).div(100);
-        const budget = d(String(budgetCents)).div(100);
-        const fee = d(String(feeBp)).div(100);
-        const r = sizePosition({ price, maxInvestmentRemaining: budget, feeEstimatePct: fee });
-        expect(r.qty.isInteger() && r.qty.gte(0)).toBe(true);
-        const cost = (q: Decimal): Decimal => q.times(price).times(d('1').plus(fee.div(100)));
-        expect(cost(r.qty).lte(budget)).toBe(true);
-        expect(cost(r.qty.plus(1)).gt(budget)).toBe(true); // maximal
-      }),
+      fc.property(
+        fc.integer({ min: 1, max: 1_000_000 }),
+        fc.integer({ min: 0, max: 100_000_000 }),
+        fc.integer({ min: 0, max: 500 }),
+        (priceCents, budgetCents, feeBp) => {
+          const price = d(String(priceCents)).div(100);
+          const budget = d(String(budgetCents)).div(100);
+          const fee = d(String(feeBp)).div(100);
+          const r = sizePosition({ price, maxInvestmentRemaining: budget, feeEstimatePct: fee });
+          expect(r.qty.isInteger() && r.qty.gte(0)).toBe(true);
+          const cost = (q: Decimal): Decimal => q.times(price).times(d('1').plus(fee.div(100)));
+          expect(cost(r.qty).lte(budget)).toBe(true);
+          expect(cost(r.qty.plus(1)).gt(budget)).toBe(true); // maximal
+        },
+      ),
       { numRuns: 200 },
     );
   });

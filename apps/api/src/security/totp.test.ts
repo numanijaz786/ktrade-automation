@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { base32Decode, base32Encode, generateTotpSecret, hotp, otpauthUri, timeStep, verifyTotp } from './totp.js';
+import {
+  base32Decode,
+  base32Encode,
+  generateTotpSecret,
+  hotp,
+  otpauthUri,
+  timeStep,
+  verifyTotp,
+} from './totp.js';
 
 // RFC 6238 Appendix B: SHA1 seed "12345678901234567890", 8-digit codes.
 const RFC_SECRET = Buffer.from('12345678901234567890', 'ascii');
@@ -51,6 +59,8 @@ describe('TOTP (RFC 6238)', () => {
   });
 
   it('builds an otpauth URI for authenticator apps', () => {
-    expect(otpauthUri('ABC', 'me@example.com')).toMatch(/^otpauth:\/\/totp\/KTrade%20Smart%20Trading%3Ame%40example\.com\?secret=ABC/);
+    expect(otpauthUri('ABC', 'me@example.com')).toMatch(
+      /^otpauth:\/\/totp\/KTrade%20Smart%20Trading%3Ame%40example\.com\?secret=ABC/,
+    );
   });
 });

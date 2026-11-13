@@ -11,7 +11,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </div>
       <div className="w-full max-w-sm">{children}</div>
       <p className="max-w-sm text-center text-xs text-muted-foreground">
-        Demo build: sign-in is simulated and no credentials leave your browser. Tokens are never stored in localStorage; the real BFF uses httpOnly cookies.
+        Demo build: sign-in is simulated and no credentials leave your browser. Tokens are never stored in
+        localStorage; the real BFF uses httpOnly cookies.
       </p>
     </main>
   );

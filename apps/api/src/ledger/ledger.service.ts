@@ -15,7 +15,8 @@ import type { DataSource, FeeComponent, OrderSide } from '@ktrade/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 
 type Tx = Prisma.TransactionClient;
-const dec = (v: { toString(): string } | null | undefined): Decimal => (v === null || v === undefined ? ZERO : d(v.toString()));
+const dec = (v: { toString(): string } | null | undefined): Decimal =>
+  v === null || v === undefined ? ZERO : d(v.toString());
 const iso = (date: Date): string => date.toISOString().slice(0, 10);
 
 export interface FeeLineInput {
@@ -42,7 +43,12 @@ export interface PostTradeInput {
 }
 
 export const feeLinesFromBreakdown = (lines: readonly FeeLine[]): FeeLineInput[] =>
-  lines.map((l) => ({ component: l.component, amount: l.amount, capitalised: l.capitalised, source: 'ESTIMATED' }));
+  lines.map((l) => ({
+    component: l.component,
+    amount: l.amount,
+    capitalised: l.capitalised,
+    source: 'ESTIMATED',
+  }));
 
 /**
  * The only writer of trades to the ledger (docs/05 §5, docs/06).
@@ -62,18 +68,29 @@ export class LedgerService {
    *   `rebuildSymbol` once per affected symbol inside the same DB transaction — same result, O(n) instead of O(n²).
    *   The caller MUST rebuild before committing, otherwise projections are stale.
    */
-  async postTrade(tx: Tx, input: PostTradeInput, options: { rebuild?: boolean } = {}): Promise<{ transactionId: string }> {
+  async postTrade(
+    tx: Tx,
+    input: PostTradeInput,
+    options: { rebuild?: boolean } = {},
+  ): Promise<{ transactionId: string }> {
     if (!input.quantity.isInteger() || input.quantity.lte(0)) {
-      throw new UnprocessableEntityException({ message: 'Quantity must be a positive whole number of shares', code: 'INVALID_QUANTITY' });
+      throw new UnprocessableEntityException({
+        message: 'Quantity must be a positive whole number of shares',
+        code: 'INVALID_QUANTITY',
+      });
     }
-    if (input.price.lte(0)) throw new UnprocessableEntityException({ message: 'Price must be positive', code: 'INVALID_PRICE' });
+    if (input.price.lte(0))
+      throw new UnprocessableEntityException({ message: 'Price must be positive', code: 'INVALID_PRICE' });
     await this.lock(tx, input.portfolioId, input.stockId);
 
     const gross = roundMoney(input.quantity.times(input.price));
     const capitalised = sum(input.fees.filter((f) => f.capitalised).map((f) => f.amount));
     const taxes = sum(input.fees.filter((f) => !f.capitalised).map((f) => f.amount));
     // Signed cash impact: buys pay gross + all fees/taxes; sells receive gross − fees − taxes.
-    const net = input.side === 'BUY' ? gross.plus(capitalised).plus(taxes).neg() : gross.minus(capitalised).minus(taxes);
+    const net =
+      input.side === 'BUY'
+        ? gross.plus(capitalised).plus(taxes).neg()
+        : gross.minus(capitalised).minus(taxes);
 
     const created = await tx.transaction.create({
       data: {
@@ -95,7 +112,12 @@ export class LedgerService {
         fees: {
           create: input.fees
             .filter((f) => !f.amount.isZero() || f.source === 'ESTIMATED')
-            .map((f) => ({ component: f.component, amount: f.amount.toFixed(4), source: f.source, scheduleId: input.feeScheduleId ?? null })),
+            .map((f) => ({
+              component: f.component,
+              amount: f.amount.toFixed(4),
+              source: f.source,
+              scheduleId: input.feeScheduleId ?? null,
+            })),
         },
       },
     });
@@ -119,7 +141,10 @@ export class LedgerService {
   /** Recompute holding, lots and per-transaction cost-basis columns for one symbol from the ledger. */
   async rebuildSymbol(tx: Tx, portfolioId: string, stockId: string): Promise<void> {
     await this.lock(tx, portfolioId, stockId);
-    const portfolio = await tx.portfolio.findUniqueOrThrow({ where: { id: portfolioId }, select: { costBasisMethod: true } });
+    const portfolio = await tx.portfolio.findUniqueOrThrow({
+      where: { id: portfolioId },
+      select: { costBasisMethod: true },
+    });
     const rows = await tx.transaction.findMany({
       // Reversed originals and their reversal entries cancel out and are both excluded.
       where: { portfolioId, stockId, reversedById: null, reverses: { is: null } },
@@ -212,9 +237,21 @@ export class LedgerService {
     switch (r.type) {
       case 'BUY':
       case 'RIGHTS_SUBSCRIPTION':
-        return { ...base, type: r.type, quantity: dec(r.quantity), price: dec(r.price), fees: dec(r.feesTotal) };
+        return {
+          ...base,
+          type: r.type,
+          quantity: dec(r.quantity),
+          price: dec(r.price),
+          fees: dec(r.feesTotal),
+        };
       case 'SELL':
-        return { ...base, type: 'SELL', quantity: dec(r.quantity), price: dec(r.price), fees: dec(r.feesTotal) };
+        return {
+          ...base,
+          type: 'SELL',
+          quantity: dec(r.quantity),
+          price: dec(r.price),
+          fees: dec(r.feesTotal),
+        };
       case 'TRANSFER_IN':
         return { ...base, type: 'TRANSFER_IN', quantity: dec(r.quantity), totalCost: dec(r.grossAmount) };
       case 'TRANSFER_OUT':
@@ -223,7 +260,10 @@ export class LedgerService {
       case 'SPLIT_ADJUSTMENT': {
         const ca = r.corporateAction;
         if (!ca?.ratioNumerator || !ca.ratioDenominator) {
-          throw new ConflictException({ message: `Corporate-action transaction ${r.id} lacks its ratio`, code: 'LEDGER_INVALID_RATIO' });
+          throw new ConflictException({
+            message: `Corporate-action transaction ${r.id} lacks its ratio`,
+            code: 'LEDGER_INVALID_RATIO',
+          });
         }
         const ratio = { ratioNew: dec(ca.ratioNumerator), ratioOld: dec(ca.ratioDenominator) };
         if (r.type === 'BONUS_IN') return { ...base, type: 'BONUS', ...ratio };

@@ -47,12 +47,16 @@ const floorNonNeg = (x: Decimal): Decimal => (x.lte(0) ? ZERO : round(x, 0, 'DOW
 export function sizePosition(input: PositionSizingInput): PositionSizingResult {
   const { price } = input;
   if (!price.gt(0)) throw new RangeError('sizePosition: price must be > 0');
-  if (input.maxInvestmentRemaining.isNeg()) throw new RangeError('sizePosition: maxInvestmentRemaining must be >= 0');
+  if (input.maxInvestmentRemaining.isNeg())
+    throw new RangeError('sizePosition: maxInvestmentRemaining must be >= 0');
   const fee = input.feeEstimatePct ?? ZERO;
   if (fee.isNeg()) throw new RangeError('sizePosition: feeEstimatePct must be >= 0');
 
   const candidates: SizingCandidate[] = [
-    { constraint: 'BUDGET', qty: floorNonNeg(input.maxInvestmentRemaining.div(price.times(ONE.plus(fee.div(HUNDRED))))) },
+    {
+      constraint: 'BUDGET',
+      qty: floorNonNeg(input.maxInvestmentRemaining.div(price.times(ONE.plus(fee.div(HUNDRED))))),
+    },
   ];
   if (input.maxPositionQty !== undefined && input.maxPositionQty !== null) {
     if (input.maxPositionQty.isNeg()) throw new RangeError('sizePosition: maxPositionQty must be >= 0');
@@ -65,13 +69,19 @@ export function sizePosition(input: PositionSizingInput): PositionSizingResult {
     if (equity === null) throw new RangeError('sizePosition: equity is required with riskPerTradePct');
     if (risk.isNeg()) throw new RangeError('sizePosition: riskPerTradePct must be >= 0');
     if (!stop.lt(price)) throw new RangeError('sizePosition: stopPrice must be below price for a long entry');
-    candidates.push({ constraint: 'RISK_PER_TRADE', qty: floorNonNeg(risk.div(HUNDRED).times(equity).div(price.minus(stop))) });
+    candidates.push({
+      constraint: 'RISK_PER_TRADE',
+      qty: floorNonNeg(risk.div(HUNDRED).times(equity).div(price.minus(stop))),
+    });
   }
   const conc = input.maxPositionPct ?? null;
   if (conc !== null) {
     const pv = input.portfolioValue ?? null;
     if (pv === null) throw new RangeError('sizePosition: portfolioValue is required with maxPositionPct');
-    const room = conc.div(HUNDRED).times(pv).minus(input.currentPositionValue ?? ZERO);
+    const room = conc
+      .div(HUNDRED)
+      .times(pv)
+      .minus(input.currentPositionValue ?? ZERO);
     candidates.push({ constraint: 'CONCENTRATION', qty: floorNonNeg(room.div(price)) });
   }
   let best = candidates[0] as SizingCandidate;

@@ -52,7 +52,8 @@ export interface DataTableProps<T> {
   rowClassName?: (row: Row<T>) => string | undefined;
 }
 
-const equalsFilter: FilterFn<unknown> = (row, columnId, value) => value === undefined || value === '__all' || String(row.getValue(columnId)) === value;
+const equalsFilter: FilterFn<unknown> = (row, columnId, value) =>
+  value === undefined || value === '__all' || String(row.getValue(columnId)) === value;
 
 /**
  * Client-side table: global search, facet filters, sortable headers (aria-sort), pagination,
@@ -113,7 +114,10 @@ export function DataTable<T>({
         <div className="flex flex-wrap items-center gap-2">
           {!noSearch && (
             <div className="relative w-full sm:w-64">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Search
+                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
                 value={globalFilter}
                 onChange={(e) => {
@@ -168,17 +172,34 @@ export function DataTable<T>({
                     return (
                       <TableHead
                         key={h.id}
-                        aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : h.column.getCanSort() ? 'none' : undefined}
+                        aria-sort={
+                          sorted === 'asc'
+                            ? 'ascending'
+                            : sorted === 'desc'
+                              ? 'descending'
+                              : h.column.getCanSort()
+                                ? 'none'
+                                : undefined
+                        }
                         className={cn('h-9 text-xs whitespace-nowrap', align === 'right' && 'text-right')}
                       >
                         {h.isPlaceholder ? null : h.column.getCanSort() ? (
                           <button
                             type="button"
                             onClick={h.column.getToggleSortingHandler()}
-                            className={cn('-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring', align === 'right' && 'flex-row-reverse')}
+                            className={cn(
+                              '-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+                              align === 'right' && 'flex-row-reverse',
+                            )}
                           >
                             {flexRender(h.column.columnDef.header, h.getContext())}
-                            {sorted === 'asc' ? <ArrowUp className="size-3" aria-hidden="true" /> : sorted === 'desc' ? <ArrowDown className="size-3" aria-hidden="true" /> : <ArrowUpDown className="size-3 opacity-40" aria-hidden="true" />}
+                            {sorted === 'asc' ? (
+                              <ArrowUp className="size-3" aria-hidden="true" />
+                            ) : sorted === 'desc' ? (
+                              <ArrowDown className="size-3" aria-hidden="true" />
+                            ) : (
+                              <ArrowUpDown className="size-3 opacity-40" aria-hidden="true" />
+                            )}
                           </button>
                         ) : (
                           flexRender(h.column.columnDef.header, h.getContext())
@@ -211,7 +232,14 @@ export function DataTable<T>({
                     {row.getVisibleCells().map((cell) => {
                       const align = (cell.column.columnDef.meta as { align?: 'right' } | undefined)?.align;
                       return (
-                        <TableCell key={cell.id} className={cn('tabular', dense ? 'py-1.5' : 'py-2.5', align === 'right' && 'text-right')}>
+                        <TableCell
+                          key={cell.id}
+                          className={cn(
+                            'tabular',
+                            dense ? 'py-1.5' : 'py-2.5',
+                            align === 'right' && 'text-right',
+                          )}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       );
@@ -221,7 +249,15 @@ export function DataTable<T>({
               ) : (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={columns.length} className="p-4">
-                    <EmptyState title={globalFilter || columnFilters.length ? 'No matches' : emptyTitle} description={globalFilter || columnFilters.length ? 'Try a different search or filter.' : emptyDescription} className="border-0" />
+                    <EmptyState
+                      title={globalFilter || columnFilters.length ? 'No matches' : emptyTitle}
+                      description={
+                        globalFilter || columnFilters.length
+                          ? 'Try a different search or filter.'
+                          : emptyDescription
+                      }
+                      className="border-0"
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -239,10 +275,22 @@ export function DataTable<T>({
           </span>
           {pageCount > 1 && (
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon-sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Previous page">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                aria-label="Previous page"
+              >
                 <ChevronLeft />
               </Button>
-              <Button variant="outline" size="icon-sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="Next page">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                aria-label="Next page"
+              >
                 <ChevronRight />
               </Button>
             </div>

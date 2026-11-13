@@ -11,9 +11,36 @@
 import { weakestSource, type DataSource, type OrderStatus } from '@ktrade/shared';
 import { Dec } from '../decimal';
 import { estimateFees } from '../fees';
-import { DEMO_DAYS, avgCost, daysAgo, entryDate, makeTrade, positionSource, replay, seedLivePortfolio, seedPaperPortfolio, type LedgerEntry, type LedgerState } from '../demo/ledger';
-import { allBars, barsFor, DEMO_TODAY, mulberry32, paisaToString, gaussian, type RawBar } from '../demo/prices';
-import { BACKTEST_DISCLAIMER, defaultParams, runBacktest, runStrategy, scoreAt, STRATEGY_TEMPLATES } from '../demo/strategy-engine';
+import {
+  DEMO_DAYS,
+  avgCost,
+  daysAgo,
+  entryDate,
+  makeTrade,
+  positionSource,
+  replay,
+  seedLivePortfolio,
+  seedPaperPortfolio,
+  type LedgerEntry,
+  type LedgerState,
+} from '../demo/ledger';
+import {
+  allBars,
+  barsFor,
+  DEMO_TODAY,
+  mulberry32,
+  paisaToString,
+  gaussian,
+  type RawBar,
+} from '../demo/prices';
+import {
+  BACKTEST_DISCLAIMER,
+  defaultParams,
+  runBacktest,
+  runStrategy,
+  scoreAt,
+  STRATEGY_TEMPLATES,
+} from '../demo/strategy-engine';
 import { DEMO_SYMBOLS, DEMO_UNIVERSE, findSeed } from '../demo/universe';
 import { countRows, demoRowKey, parseDemoCsv } from '../demo/csv';
 import {
@@ -134,7 +161,14 @@ export interface DemoApiClientOptions {
 }
 
 const PRICE_SOURCE: DataSource = 'SIMULATED';
-const ACTIVE_ORDER_STATUSES: OrderStatus[] = ['APPROVED', 'AWAITING_MANUAL_PLACEMENT', 'PLACED_BY_USER', 'SUBMITTED', 'ACCEPTED', 'PARTIALLY_FILLED'];
+const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  'APPROVED',
+  'AWAITING_MANUAL_PLACEMENT',
+  'PLACED_BY_USER',
+  'SUBMITTED',
+  'ACCEPTED',
+  'PARTIALLY_FILLED',
+];
 const MANUAL_WARNING = 'Live execution is manual: place this order in the KTrade app after approval.';
 
 function clone<T>(v: T): T {
@@ -191,7 +225,16 @@ export class DemoApiClient implements ApiClient {
     for (const [symbol, bars] of allBars()) {
       const today = bars[bars.length - 1];
       const prev = bars[bars.length - 2];
-      quotes.set(symbol, { symbol, last: today.close, open: today.open, high: today.high, low: today.low, prevClose: prev.close, volume: today.volume, asOf: nowIso });
+      quotes.set(symbol, {
+        symbol,
+        last: today.close,
+        open: today.open,
+        high: today.high,
+        low: today.low,
+        prevClose: prev.close,
+        volume: today.volume,
+        asOf: nowIso,
+      });
     }
     const live = seedLivePortfolio(LIVE_PORTFOLIO_ID);
     const paper = seedPaperPortfolio(PAPER_PORTFOLIO_ID);
@@ -208,8 +251,23 @@ export class DemoApiClient implements ApiClient {
         [PAPER_PORTFOLIO_ID, paper.dividends],
       ]),
       portfolios: [
-        { id: LIVE_PORTFOLIO_ID, name: 'KTrade account (demo)', kind: 'LIVE', costBasisMethod: 'WEIGHTED_AVERAGE', createdAt: `${daysAgo(262)}T04:00:00Z`, demo: true },
-        { id: PAPER_PORTFOLIO_ID, name: 'Paper — strategies', kind: 'PAPER', costBasisMethod: 'WEIGHTED_AVERAGE', initialCash: '1000000.00', createdAt: `${daysAgo(125)}T04:00:00Z`, demo: true },
+        {
+          id: LIVE_PORTFOLIO_ID,
+          name: 'KTrade account (demo)',
+          kind: 'LIVE',
+          costBasisMethod: 'WEIGHTED_AVERAGE',
+          createdAt: `${daysAgo(262)}T04:00:00Z`,
+          demo: true,
+        },
+        {
+          id: PAPER_PORTFOLIO_ID,
+          name: 'Paper — strategies',
+          kind: 'PAPER',
+          costBasisMethod: 'WEIGHTED_AVERAGE',
+          initialCash: '1000000.00',
+          createdAt: `${daysAgo(125)}T04:00:00Z`,
+          demo: true,
+        },
       ],
       orders: [],
       watchlists: seedWatchlists(),
@@ -225,11 +283,25 @@ export class DemoApiClient implements ApiClient {
       mailbox: seedMailbox(),
       discrepancies: seedDiscrepancies(),
       connections: seedConnections(),
-      killSwitch: { liveTradingEnabled: false, reason: 'Default: OFF — enable with step-up to prepare live orders (execution stays manual)', updatedAt: `${daysAgo(30)}T04:00:00Z` },
+      killSwitch: {
+        liveTradingEnabled: false,
+        reason: 'Default: OFF — enable with step-up to prepare live orders (execution stays manual)',
+        updatedAt: `${daysAgo(30)}T04:00:00Z`,
+      },
       riskLimits: new Map(
         [LIVE_PORTFOLIO_ID, PAPER_PORTFOLIO_ID].map((id) => [
           id,
-          { portfolioId: id, maxOrderValue: '500000.00', maxOrderQty: '10000', priceBandPct: '5', maxDailyValue: '1000000.00', maxDailyCount: 10, maxPositionPct: '25', maxDailyLossPct: '3', liveAutoExecutionEnabled: false },
+          {
+            portfolioId: id,
+            maxOrderValue: '500000.00',
+            maxOrderQty: '10000',
+            priceBandPct: '5',
+            maxDailyValue: '1000000.00',
+            maxDailyCount: 10,
+            maxPositionPct: '25',
+            maxDailyLossPct: '3',
+            liveAutoExecutionEnabled: false,
+          },
         ]),
       ),
       sessions: seedSessions(),
@@ -244,9 +316,19 @@ export class DemoApiClient implements ApiClient {
     this.s = s;
     // Discrepancy figures come from the seeded ledger.
     const pso = replay(live.entries).positions.get('PSO')?.qty ?? Dec.zero();
-    s.discrepancies[0] = { ...s.discrepancies[0], ledger: pso.toString(), broker: pso.sub(5).toString(), difference: '5' };
+    s.discrepancies[0] = {
+      ...s.discrepancies[0],
+      ledger: pso.toString(),
+      broker: pso.sub(5).toString(),
+      difference: '5',
+    };
     const cashNow = replay(live.entries).cash;
-    s.discrepancies[1] = { ...s.discrepancies[1], ledger: cashNow.add('12.40').toFixed(2), broker: cashNow.toFixed(2), difference: '-12.40' };
+    s.discrepancies[1] = {
+      ...s.discrepancies[1],
+      ledger: cashNow.add('12.40').toFixed(2),
+      broker: cashNow.toFixed(2),
+      difference: '-12.40',
+    };
     s.orders = this.seedOrders(s);
     s.strategies = this.seedStrategies();
     s.signals = this.buildSignals(s.strategies);
@@ -373,7 +455,12 @@ export class DemoApiClient implements ApiClient {
             idx.set(p.symbol, j);
             mv = mv.add(p.qty.mul(Dec.fromMinor(b[j].close, 2)));
           }
-          points.push({ date: day, value: st.cash.add(mv), deposits: st.deposits, flow: st.deposits.sub(before) });
+          points.push({
+            date: day,
+            value: st.cash.add(mv),
+            deposits: st.deposits,
+            flow: st.deposits.sub(before),
+          });
         }
       }
       s.seriesCache.set(pfId, { version, points: points.slice() });
@@ -382,7 +469,8 @@ export class DemoApiClient implements ApiClient {
     if (points.length && points[points.length - 1].date === DEMO_TODAY) {
       const { state } = this.holdings(s, pfId);
       let mv = Dec.zero();
-      for (const p of state.positions.values()) if (p.qty.gt(0)) mv = mv.add(p.qty.mul(this.last(s, p.symbol)));
+      for (const p of state.positions.values())
+        if (p.qty.gt(0)) mv = mv.add(p.qty.mul(this.last(s, p.symbol)));
       points[points.length - 1] = { ...points[points.length - 1], value: state.cash.add(mv) };
     }
     return points;
@@ -408,7 +496,13 @@ export class DemoApiClient implements ApiClient {
   private pendingBuyValue(s: State, pfId: string, excludeId?: string): Dec {
     return Dec.sum(
       s.orders
-        .filter((o) => o.portfolioId === pfId && o.side === 'BUY' && o.id !== excludeId && ACTIVE_ORDER_STATUSES.includes(o.status))
+        .filter(
+          (o) =>
+            o.portfolioId === pfId &&
+            o.side === 'BUY' &&
+            o.id !== excludeId &&
+            ACTIVE_ORDER_STATUSES.includes(o.status),
+        )
         .map((o) => Dec.of(o.estimate.total).mul(Dec.of(o.quantity).sub(o.filledQuantity)).div(o.quantity)),
     );
   }
@@ -416,12 +510,25 @@ export class DemoApiClient implements ApiClient {
   private pendingSellQty(s: State, pfId: string, symbol: string, excludeId?: string): Dec {
     return Dec.sum(
       s.orders
-        .filter((o) => o.portfolioId === pfId && o.symbol === symbol && o.side === 'SELL' && o.id !== excludeId && ACTIVE_ORDER_STATUSES.includes(o.status))
+        .filter(
+          (o) =>
+            o.portfolioId === pfId &&
+            o.symbol === symbol &&
+            o.side === 'SELL' &&
+            o.id !== excludeId &&
+            ACTIVE_ORDER_STATUSES.includes(o.status),
+        )
         .map((o) => Dec.of(o.quantity).sub(o.filledQuantity)),
     );
   }
 
-  private riskChecks(s: State, o: Pick<Order, 'id' | 'portfolioId' | 'mode' | 'symbol' | 'side' | 'type' | 'quantity' | 'limitPrice' | 'estimate'>): RiskCheck[] {
+  private riskChecks(
+    s: State,
+    o: Pick<
+      Order,
+      'id' | 'portfolioId' | 'mode' | 'symbol' | 'side' | 'type' | 'quantity' | 'limitPrice' | 'estimate'
+    >,
+  ): RiskCheck[] {
     const limits = s.riskLimits.get(o.portfolioId)!;
     const { list, state } = this.holdings(s, o.portfolioId);
     const qty = Dec.of(o.quantity);
@@ -430,7 +537,13 @@ export class DemoApiClient implements ApiClient {
     const last = this.last(s, o.symbol);
     const live = o.mode === 'LIVE';
     const today = this.iso().slice(0, 10);
-    const todays = s.orders.filter((x) => x.portfolioId === o.portfolioId && x.id !== o.id && x.createdAt.slice(0, 10) === today && (ACTIVE_ORDER_STATUSES.includes(x.status) || x.status === 'FILLED'));
+    const todays = s.orders.filter(
+      (x) =>
+        x.portfolioId === o.portfolioId &&
+        x.id !== o.id &&
+        x.createdAt.slice(0, 10) === today &&
+        (ACTIVE_ORDER_STATUSES.includes(x.status) || x.status === 'FILLED'),
+    );
     const dailyValue = Dec.sum(todays.map((x) => x.estimate.notional)).add(notional);
     const mvTotal = Dec.sum(list.map((h) => h.marketValue));
     const account = mvTotal.add(state.cash);
@@ -441,40 +554,124 @@ export class DemoApiClient implements ApiClient {
     const checks: RiskCheck[] = [];
     checks.push(
       live
-        ? { rule: 'KILL_SWITCH', passed: s.killSwitch.liveTradingEnabled, observed: s.killSwitch.liveTradingEnabled ? 'ON' : 'OFF', limit: 'ON', message: s.killSwitch.liveTradingEnabled ? 'Live trading switch is on' : `Kill switch engaged: ${s.killSwitch.reason}` }
+        ? {
+            rule: 'KILL_SWITCH',
+            passed: s.killSwitch.liveTradingEnabled,
+            observed: s.killSwitch.liveTradingEnabled ? 'ON' : 'OFF',
+            limit: 'ON',
+            message: s.killSwitch.liveTradingEnabled
+              ? 'Live trading switch is on'
+              : `Kill switch engaged: ${s.killSwitch.reason}`,
+          }
         : { rule: 'KILL_SWITCH', passed: true, message: 'Not applicable to paper trading' },
     );
     checks.push(
       live
-        ? { rule: 'CAPABILITY', passed: true, observed: 'MANUAL_TICKET', message: 'No KTrade adapter is authorized, so the order is routed to a manual ticket you place yourself' }
-        : { rule: 'CAPABILITY', passed: true, observed: 'PAPER', message: 'Paper broker: all capabilities enabled' },
+        ? {
+            rule: 'CAPABILITY',
+            passed: true,
+            observed: 'MANUAL_TICKET',
+            message:
+              'No KTrade adapter is authorized, so the order is routed to a manual ticket you place yourself',
+          }
+        : {
+            rule: 'CAPABILITY',
+            passed: true,
+            observed: 'PAPER',
+            message: 'Paper broker: all capabilities enabled',
+          },
     );
-    checks.push({ rule: 'MARKET_HOURS', passed: true, observed: 'Simulated session', message: 'Demo calendar treats the simulated session as open (real: Mon–Fri 09:30–15:30 PKT)' });
+    checks.push({
+      rule: 'MARKET_HOURS',
+      passed: true,
+      observed: 'Simulated session',
+      message: 'Demo calendar treats the simulated session as open (real: Mon–Fri 09:30–15:30 PKT)',
+    });
     if (o.side === 'BUY') {
       const available = state.cash.sub(this.pendingBuyValue(s, o.portfolioId, o.id));
-      checks.push({ rule: 'BUYING_POWER', passed: available.gte(total), observed: available.toFixed(2), limit: total.toFixed(2), message: available.gte(total) ? 'Cash minus pending buys covers the estimated total' : 'Insufficient cash after pending buys' });
+      checks.push({
+        rule: 'BUYING_POWER',
+        passed: available.gte(total),
+        observed: available.toFixed(2),
+        limit: total.toFixed(2),
+        message: available.gte(total)
+          ? 'Cash minus pending buys covers the estimated total'
+          : 'Insufficient cash after pending buys',
+      });
       checks.push({ rule: 'HOLDING_QTY', passed: true, message: 'Not applicable to buys' });
     } else {
       const held = Dec.of(list.find((h) => h.symbol === o.symbol)?.quantity ?? '0');
       const available = held.sub(this.pendingSellQty(s, o.portfolioId, o.symbol, o.id));
       checks.push({ rule: 'BUYING_POWER', passed: true, message: 'Not applicable to sells' });
-      checks.push({ rule: 'HOLDING_QTY', passed: available.gte(qty), observed: available.toString(), limit: qty.toString(), message: available.gte(qty) ? 'Held minus pending sells covers the quantity' : 'Not enough shares (short selling is not modelled)' });
+      checks.push({
+        rule: 'HOLDING_QTY',
+        passed: available.gte(qty),
+        observed: available.toString(),
+        limit: qty.toString(),
+        message: available.gte(qty)
+          ? 'Held minus pending sells covers the quantity'
+          : 'Not enough shares (short selling is not modelled)',
+      });
     }
-    checks.push({ rule: 'MAX_ORDER_VALUE', passed: notional.lte(limits.maxOrderValue), observed: notional.toFixed(2), limit: limits.maxOrderValue, message: 'Order value within the per-order cap' });
-    checks.push({ rule: 'MAX_ORDER_QTY', passed: qty.lte(limits.maxOrderQty), observed: qty.toString(), limit: limits.maxOrderQty, message: 'Quantity within the per-order cap' });
+    checks.push({
+      rule: 'MAX_ORDER_VALUE',
+      passed: notional.lte(limits.maxOrderValue),
+      observed: notional.toFixed(2),
+      limit: limits.maxOrderValue,
+      message: 'Order value within the per-order cap',
+    });
+    checks.push({
+      rule: 'MAX_ORDER_QTY',
+      passed: qty.lte(limits.maxOrderQty),
+      observed: qty.toString(),
+      limit: limits.maxOrderQty,
+      message: 'Quantity within the per-order cap',
+    });
     if (o.limitPrice && !last.isZero()) {
       const dev = Dec.of(o.limitPrice).sub(last).abs().div(last).mul(100);
-      checks.push({ rule: 'PRICE_BAND', passed: dev.lte(limits.priceBandPct), observed: `${dev.toFixed(2)}%`, limit: `${limits.priceBandPct}%`, message: 'Limit price close enough to the last price' });
+      checks.push({
+        rule: 'PRICE_BAND',
+        passed: dev.lte(limits.priceBandPct),
+        observed: `${dev.toFixed(2)}%`,
+        limit: `${limits.priceBandPct}%`,
+        message: 'Limit price close enough to the last price',
+      });
     } else {
       checks.push({ rule: 'PRICE_BAND', passed: true, message: 'Market order: reference price used' });
     }
-    checks.push({ rule: 'DAILY_VALUE', passed: dailyValue.lte(limits.maxDailyValue), observed: dailyValue.toFixed(2), limit: limits.maxDailyValue, message: "Today's approved value within the daily cap" });
-    checks.push({ rule: 'DAILY_COUNT', passed: todays.length + 1 <= limits.maxDailyCount, observed: String(todays.length + 1), limit: String(limits.maxDailyCount), message: "Today's order count within the daily cap" });
+    checks.push({
+      rule: 'DAILY_VALUE',
+      passed: dailyValue.lte(limits.maxDailyValue),
+      observed: dailyValue.toFixed(2),
+      limit: limits.maxDailyValue,
+      message: "Today's approved value within the daily cap",
+    });
+    checks.push({
+      rule: 'DAILY_COUNT',
+      passed: todays.length + 1 <= limits.maxDailyCount,
+      observed: String(todays.length + 1),
+      limit: String(limits.maxDailyCount),
+      message: "Today's order count within the daily cap",
+    });
     if (o.side === 'BUY') {
       const post = account.isZero() ? Dec.zero() : posMv.add(notional).div(account).mul(100);
-      checks.push({ rule: 'CONCENTRATION', passed: post.lte(limits.maxPositionPct), observed: `${post.toFixed(2)}%`, limit: `${limits.maxPositionPct}%`, message: 'Post-trade position weight within the cap' });
+      checks.push({
+        rule: 'CONCENTRATION',
+        passed: post.lte(limits.maxPositionPct),
+        observed: `${post.toFixed(2)}%`,
+        limit: `${limits.maxPositionPct}%`,
+        message: 'Post-trade position weight within the cap',
+      });
       const blocked = todayPct.lt(Dec.of(limits.maxDailyLossPct).neg());
-      checks.push({ rule: 'DAILY_LOSS', passed: !blocked, observed: `${todayPct.toFixed(2)}%`, limit: `−${limits.maxDailyLossPct}%`, message: blocked ? 'Portfolio is down more than the daily loss limit; buys are blocked' : 'Daily loss limit not breached' });
+      checks.push({
+        rule: 'DAILY_LOSS',
+        passed: !blocked,
+        observed: `${todayPct.toFixed(2)}%`,
+        limit: `−${limits.maxDailyLossPct}%`,
+        message: blocked
+          ? 'Portfolio is down more than the daily loss limit; buys are blocked'
+          : 'Daily loss limit not breached',
+      });
     } else {
       checks.push({ rule: 'CONCENTRATION', passed: true, message: 'Sells reduce concentration' });
       checks.push({ rule: 'DAILY_LOSS', passed: true, message: 'Only blocks buys' });
@@ -485,10 +682,15 @@ export class DemoApiClient implements ApiClient {
   private validatePreview(req: OrderPreviewRequest) {
     const errs: string[] = [];
     if (!findSeed(req.symbol)) errs.push(`Unknown symbol ${req.symbol}`);
-    if (!/^\d+$/.test(req.quantity) || Dec.of(req.quantity).lte(0)) errs.push('Quantity must be a whole number of shares > 0');
-    if ((req.type === 'LIMIT' || req.type === 'STOP_LIMIT') && !req.limitPrice) errs.push('Limit price is required');
-    if ((req.type === 'STOP_LOSS' || req.type === 'STOP_LIMIT') && !req.stopPrice) errs.push('Stop price is required');
-    for (const p of [req.limitPrice, req.stopPrice]) if (p !== undefined && (!/^\d+(\.\d{1,2})?$/.test(p) || Dec.of(p).lte(0))) errs.push('Prices must be positive with at most 2 decimals');
+    if (!/^\d+$/.test(req.quantity) || Dec.of(req.quantity).lte(0))
+      errs.push('Quantity must be a whole number of shares > 0');
+    if ((req.type === 'LIMIT' || req.type === 'STOP_LIMIT') && !req.limitPrice)
+      errs.push('Limit price is required');
+    if ((req.type === 'STOP_LOSS' || req.type === 'STOP_LIMIT') && !req.stopPrice)
+      errs.push('Stop price is required');
+    for (const p of [req.limitPrice, req.stopPrice])
+      if (p !== undefined && (!/^\d+(\.\d{1,2})?$/.test(p) || Dec.of(p).lte(0)))
+        errs.push('Prices must be positive with at most 2 decimals');
     if (errs.length) throw new ApiError('VALIDATION_FAILED', 422, 'Invalid order', errs.join('; '));
   }
 
@@ -502,16 +704,38 @@ export class DemoApiClient implements ApiClient {
     const estimate = estimateFees(req.side, req.quantity, px);
     const now = this.iso();
     const id = this.id('ord');
-    const draft = { id, portfolioId: req.portfolioId, mode, symbol: req.symbol, side: req.side, type: req.type, quantity: req.quantity, limitPrice: req.limitPrice ?? null, estimate } as const;
+    const draft = {
+      id,
+      portfolioId: req.portfolioId,
+      mode,
+      symbol: req.symbol,
+      side: req.side,
+      type: req.type,
+      quantity: req.quantity,
+      limitPrice: req.limitPrice ?? null,
+      estimate,
+    } as const;
     const riskChecks = this.riskChecks(s, draft);
     const passed = riskChecks.every((c) => c.passed);
-    const hashInput = JSON.stringify([req.portfolioId, req.symbol, req.side, req.type, req.quantity, req.limitPrice ?? '', req.stopPrice ?? '', estimate.total]);
+    const hashInput = JSON.stringify([
+      req.portfolioId,
+      req.symbol,
+      req.side,
+      req.type,
+      req.quantity,
+      req.limitPrice ?? '',
+      req.stopPrice ?? '',
+      estimate.total,
+    ]);
     const warnings: string[] = [];
     if (mode === 'LIVE') {
       warnings.push(MANUAL_WARNING);
-      warnings.push('Reference price is SIMULATED. The real API refuses live previews on simulated prices; the demo allows it so you can explore the flow.');
+      warnings.push(
+        'Reference price is SIMULATED. The real API refuses live previews on simulated prices; the demo allows it so you can explore the flow.',
+      );
     }
-    if (estimate.fees.some((f) => f.component === 'CDC_CHARGES')) warnings.push('CDC charges are at actual and will be known from the contract note.');
+    if (estimate.fees.some((f) => f.component === 'CDC_CHARGES'))
+      warnings.push('CDC charges are at actual and will be known from the contract note.');
     const status: OrderStatus = passed ? 'PREVIEWED' : 'REJECTED_BY_RISK';
     return {
       ...draft,
@@ -531,8 +755,23 @@ export class DemoApiClient implements ApiClient {
       filledQuantity: '0',
       avgFillPrice: null,
       events: [
-        this.event('DRAFT', 'USER', `Order ticket submitted (${req.origin.toLowerCase().replace('_', ' ')})`, now),
-        this.event(status, 'SYSTEM', passed ? 'Preview created; all 12 risk checks passed' : `Rejected: ${riskChecks.filter((c) => !c.passed).map((c) => c.rule).join(', ')}`, now),
+        this.event(
+          'DRAFT',
+          'USER',
+          `Order ticket submitted (${req.origin.toLowerCase().replace('_', ' ')})`,
+          now,
+        ),
+        this.event(
+          status,
+          'SYSTEM',
+          passed
+            ? 'Preview created; all 12 risk checks passed'
+            : `Rejected: ${riskChecks
+                .filter((c) => !c.passed)
+                .map((c) => c.rule)
+                .join(', ')}`,
+          now,
+        ),
       ],
       executions: [],
     };
@@ -550,18 +789,48 @@ export class DemoApiClient implements ApiClient {
       if (o.status === 'PREVIEWED' && Date.parse(o.previewExpiresAt) < now) {
         o.status = 'EXPIRED';
         o.updatedAt = o.previewExpiresAt;
-        o.events.push(this.event('EXPIRED', 'SYSTEM', 'Preview expired after 5 minutes without approval', o.previewExpiresAt));
+        o.events.push(
+          this.event(
+            'EXPIRED',
+            'SYSTEM',
+            'Preview expired after 5 minutes without approval',
+            o.previewExpiresAt,
+          ),
+        );
       }
     }
   }
 
   private requireStepUp(s: State, token: string) {
     const exp = s.stepUp.get(token);
-    if (!exp || exp < this.now()) throw new ApiError('STEP_UP_REQUIRED', 401, 'Step-up required', 'Confirm with your authenticator code (valid 5 minutes).');
+    if (!exp || exp < this.now())
+      throw new ApiError(
+        'STEP_UP_REQUIRED',
+        401,
+        'Step-up required',
+        'Confirm with your authenticator code (valid 5 minutes).',
+      );
   }
 
-  private applyFill(s: State, o: Order, qty: string, price: string, at: string, source: DataSource, note: string) {
-    const execution = { id: this.id('ex'), orderId: o.id, symbol: o.symbol, side: o.side, quantity: qty, price, executedAt: at, source };
+  private applyFill(
+    s: State,
+    o: Order,
+    qty: string,
+    price: string,
+    at: string,
+    source: DataSource,
+    note: string,
+  ) {
+    const execution = {
+      id: this.id('ex'),
+      orderId: o.id,
+      symbol: o.symbol,
+      side: o.side,
+      quantity: qty,
+      price,
+      executedAt: at,
+      source,
+    };
     o.executions.push(execution);
     const prevFilled = Dec.of(o.filledQuantity);
     const newFilled = prevFilled.add(qty);
@@ -571,12 +840,27 @@ export class DemoApiClient implements ApiClient {
     o.status = newFilled.gte(o.quantity) ? 'FILLED' : 'PARTIALLY_FILLED';
     o.updatedAt = this.iso();
     o.events.push(this.event(o.status, source === 'SIMULATED' ? 'SYSTEM' : 'USER', note, this.iso()));
-    const txn = makeTrade({ portfolioId: o.portfolioId, date: DEMO_TODAY, type: o.side, symbol: o.symbol, quantity: qty, price, source, orderId: o.id, reference: `Order ${o.id}` });
+    const txn = makeTrade({
+      portfolioId: o.portfolioId,
+      date: DEMO_TODAY,
+      type: o.side,
+      symbol: o.symbol,
+      quantity: qty,
+      price,
+      source,
+      orderId: o.id,
+      reference: `Order ${o.id}`,
+    });
     this.appendLedger(s, o.portfolioId, { kind: 'txn', txn });
   }
 
   private seedOrders(s: State): Order[] {
-    const mk = (req: OrderPreviewRequest, createdAt: string, steps: { status: OrderStatus; note: string; actor?: OrderEvent['actor']; at?: string }[], extra: Partial<Order> = {}): Order => {
+    const mk = (
+      req: OrderPreviewRequest,
+      createdAt: string,
+      steps: { status: OrderStatus; note: string; actor?: OrderEvent['actor']; at?: string }[],
+      extra: Partial<Order> = {},
+    ): Order => {
       const base = this.buildPreview(s, req);
       const expires = new Date(Date.parse(createdAt) + 5 * 60 * 1000).toISOString();
       const o: Order = { ...base, createdAt, updatedAt: createdAt, previewExpiresAt: expires, ...extra };
@@ -595,52 +879,195 @@ export class DemoApiClient implements ApiClient {
     const mariPx = paisaToString(barsFor('MARI').find((b) => b.date === daysAgo(10))?.close ?? 60000);
     const orders: Order[] = [];
     orders.push(
-      mk({ portfolioId: live, symbol: 'MARI', side: 'BUY', type: 'LIMIT', quantity: mariQty, limitPrice: mariPx, origin: 'MANUAL' }, t(10, '05:02'), [
-        { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(10, '05:03') },
-        { status: 'AWAITING_MANUAL_PLACEMENT', note: 'Manual ticket issued — place in the KTrade app', actor: 'SYSTEM', at: t(10, '05:03') },
-        { status: 'PLACED_BY_USER', note: 'You marked the order as placed (KTrade ref KT-88213)', at: t(10, '05:06') },
-        { status: 'FILLED', note: 'Fill recorded from contract note CN-2026-10-30-0042 (broker-confirmed)', actor: 'WORKER', at: t(9, '03:00') },
-      ], { brokerOrderRef: 'KT-88213', filledQuantity: mariQty, avgFillPrice: Dec.of(mariPx).toFixed(4) }),
+      mk(
+        {
+          portfolioId: live,
+          symbol: 'MARI',
+          side: 'BUY',
+          type: 'LIMIT',
+          quantity: mariQty,
+          limitPrice: mariPx,
+          origin: 'MANUAL',
+        },
+        t(10, '05:02'),
+        [
+          { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(10, '05:03') },
+          {
+            status: 'AWAITING_MANUAL_PLACEMENT',
+            note: 'Manual ticket issued — place in the KTrade app',
+            actor: 'SYSTEM',
+            at: t(10, '05:03'),
+          },
+          {
+            status: 'PLACED_BY_USER',
+            note: 'You marked the order as placed (KTrade ref KT-88213)',
+            at: t(10, '05:06'),
+          },
+          {
+            status: 'FILLED',
+            note: 'Fill recorded from contract note CN-2026-10-30-0042 (broker-confirmed)',
+            actor: 'WORKER',
+            at: t(9, '03:00'),
+          },
+        ],
+        { brokerOrderRef: 'KT-88213', filledQuantity: mariQty, avgFillPrice: Dec.of(mariPx).toFixed(4) },
+      ),
     );
-    orders[0].executions = [{ id: 'ex-mari', orderId: orders[0].id, symbol: 'MARI', side: 'BUY', quantity: mariQty, price: mariPx, executedAt: t(10, '05:20'), source: 'BROKER_CONFIRMED' }];
+    orders[0].executions = [
+      {
+        id: 'ex-mari',
+        orderId: orders[0].id,
+        symbol: 'MARI',
+        side: 'BUY',
+        quantity: mariQty,
+        price: mariPx,
+        executedAt: t(10, '05:20'),
+        source: 'BROKER_CONFIRMED',
+      },
+    ];
     const luck = paisaToString(s.quotes.get('LUCK')!.prevClose - 150);
     orders.push(
-      mk({ portfolioId: live, symbol: 'LUCK', side: 'BUY', type: 'LIMIT', quantity: '100', limitPrice: luck, origin: 'STRATEGY' }, t(0, '04:41'), [
-        { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(0, '04:42') },
-        { status: 'AWAITING_MANUAL_PLACEMENT', note: 'Manual ticket issued — place in the KTrade app', actor: 'SYSTEM', at: t(0, '04:42') },
-        { status: 'PLACED_BY_USER', note: 'You marked the order as placed', at: t(0, '04:47') },
-      ], { brokerOrderRef: null }),
+      mk(
+        {
+          portfolioId: live,
+          symbol: 'LUCK',
+          side: 'BUY',
+          type: 'LIMIT',
+          quantity: '100',
+          limitPrice: luck,
+          origin: 'STRATEGY',
+        },
+        t(0, '04:41'),
+        [
+          { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(0, '04:42') },
+          {
+            status: 'AWAITING_MANUAL_PLACEMENT',
+            note: 'Manual ticket issued — place in the KTrade app',
+            actor: 'SYSTEM',
+            at: t(0, '04:42'),
+          },
+          { status: 'PLACED_BY_USER', note: 'You marked the order as placed', at: t(0, '04:47') },
+        ],
+        { brokerOrderRef: null },
+      ),
     );
     const ffc = paisaToString(s.quotes.get('FFC')!.prevClose + 200);
     orders.push(
-      mk({ portfolioId: live, symbol: 'FFC', side: 'SELL', type: 'LIMIT', quantity: '50', limitPrice: ffc, origin: 'MANUAL' }, t(0, '05:15'), [
-        { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(0, '05:16') },
-        { status: 'AWAITING_MANUAL_PLACEMENT', note: 'Manual ticket issued — place in the KTrade app', actor: 'SYSTEM', at: t(0, '05:16') },
-      ]),
+      mk(
+        {
+          portfolioId: live,
+          symbol: 'FFC',
+          side: 'SELL',
+          type: 'LIMIT',
+          quantity: '50',
+          limitPrice: ffc,
+          origin: 'MANUAL',
+        },
+        t(0, '05:15'),
+        [
+          { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(0, '05:16') },
+          {
+            status: 'AWAITING_MANUAL_PLACEMENT',
+            note: 'Manual ticket issued — place in the KTrade app',
+            actor: 'SYSTEM',
+            at: t(0, '05:16'),
+          },
+        ],
+      ),
     );
     orders.push(
-      mk({ portfolioId: live, symbol: 'ENGRO', side: 'BUY', type: 'MARKET', quantity: '200', origin: 'MANUAL' }, t(5, '06:00'), [
-        { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(5, '06:01') },
-        { status: 'AWAITING_MANUAL_PLACEMENT', note: 'Manual ticket issued', actor: 'SYSTEM', at: t(5, '06:01') },
-        { status: 'CANCELLED', note: 'Cancelled before placement — nothing was sent to KTrade', at: t(5, '06:30') },
-      ]),
+      mk(
+        {
+          portfolioId: live,
+          symbol: 'ENGRO',
+          side: 'BUY',
+          type: 'MARKET',
+          quantity: '200',
+          origin: 'MANUAL',
+        },
+        t(5, '06:00'),
+        [
+          { status: 'APPROVED', note: 'Approved with step-up (TOTP)', at: t(5, '06:01') },
+          {
+            status: 'AWAITING_MANUAL_PLACEMENT',
+            note: 'Manual ticket issued',
+            actor: 'SYSTEM',
+            at: t(5, '06:01'),
+          },
+          {
+            status: 'CANCELLED',
+            note: 'Cancelled before placement — nothing was sent to KTrade',
+            at: t(5, '06:30'),
+          },
+        ],
+      ),
     );
-    orders.push(mk({ portfolioId: live, symbol: 'KEL', side: 'BUY', type: 'MARKET', quantity: '60000', origin: 'ALERT' }, t(4, '07:00'), []));
     orders.push(
-      mk({ portfolioId: live, symbol: 'PPL', side: 'BUY', type: 'MARKET', quantity: '150', origin: 'AI_SUGGESTION' }, t(3, '08:00'), [
-        { status: 'EXPIRED', note: 'Preview expired after 5 minutes without approval', actor: 'SYSTEM', at: t(3, '08:05') },
-      ]),
+      mk(
+        { portfolioId: live, symbol: 'KEL', side: 'BUY', type: 'MARKET', quantity: '60000', origin: 'ALERT' },
+        t(4, '07:00'),
+        [],
+      ),
+    );
+    orders.push(
+      mk(
+        {
+          portfolioId: live,
+          symbol: 'PPL',
+          side: 'BUY',
+          type: 'MARKET',
+          quantity: '150',
+          origin: 'AI_SUGGESTION',
+        },
+        t(3, '08:00'),
+        [
+          {
+            status: 'EXPIRED',
+            note: 'Preview expired after 5 minutes without approval',
+            actor: 'SYSTEM',
+            at: t(3, '08:05'),
+          },
+        ],
+      ),
     );
     const polBar = barsFor('POL').find((b) => b.date === daysAgo(12));
     const polTxn = s.ledgers.get(PAPER_PORTFOLIO_ID)!.find((e) => e.kind === 'txn' && e.txn.symbol === 'POL');
     const polQty = polTxn && polTxn.kind === 'txn' ? polTxn.txn.quantity : '100';
     const polPx = paisaToString(polBar?.close ?? 56000);
-    const paperOrder = mk({ portfolioId: PAPER_PORTFOLIO_ID, symbol: 'POL', side: 'BUY', type: 'MARKET', quantity: polQty, origin: 'STRATEGY' }, t(12, '10:31'), [
-      { status: 'APPROVED', note: 'Auto-approved (paper + strategy.autoExecute)', actor: 'STRATEGY', at: t(12, '10:31') },
-      { status: 'SUBMITTED', note: 'Sent to paper broker', actor: 'SYSTEM', at: t(12, '10:31') },
-      { status: 'FILLED', note: 'Simulated fill at next quote', actor: 'SYSTEM', at: t(12, '10:32') },
-    ], { filledQuantity: polQty, avgFillPrice: Dec.of(polPx).toFixed(4) });
-    paperOrder.executions = [{ id: 'ex-pol', orderId: paperOrder.id, symbol: 'POL', side: 'BUY', quantity: polQty, price: polPx, executedAt: t(12, '10:32'), source: 'SIMULATED' }];
+    const paperOrder = mk(
+      {
+        portfolioId: PAPER_PORTFOLIO_ID,
+        symbol: 'POL',
+        side: 'BUY',
+        type: 'MARKET',
+        quantity: polQty,
+        origin: 'STRATEGY',
+      },
+      t(12, '10:31'),
+      [
+        {
+          status: 'APPROVED',
+          note: 'Auto-approved (paper + strategy.autoExecute)',
+          actor: 'STRATEGY',
+          at: t(12, '10:31'),
+        },
+        { status: 'SUBMITTED', note: 'Sent to paper broker', actor: 'SYSTEM', at: t(12, '10:31') },
+        { status: 'FILLED', note: 'Simulated fill at next quote', actor: 'SYSTEM', at: t(12, '10:32') },
+      ],
+      { filledQuantity: polQty, avgFillPrice: Dec.of(polPx).toFixed(4) },
+    );
+    paperOrder.executions = [
+      {
+        id: 'ex-pol',
+        orderId: paperOrder.id,
+        symbol: 'POL',
+        side: 'BUY',
+        quantity: polQty,
+        price: polPx,
+        executedAt: t(12, '10:32'),
+        source: 'SIMULATED',
+      },
+    ];
     orders.push(paperOrder);
     return orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -650,10 +1077,58 @@ export class DemoApiClient implements ApiClient {
   private seedStrategies(): Strategy[] {
     const created = `${daysAgo(90)}T04:00:00Z`;
     return [
-      { id: 'st-ema', name: 'EMA 9/21 — energy', type: 'MA_CROSSOVER', mode: 'PAPER', symbols: ['OGDC', 'PPL', 'HUBC'], parameters: defaultParams('MA_CROSSOVER'), active: true, autoExecute: true, version: 3, createdAt: created, lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z` },
-      { id: 'st-rsi', name: 'RSI swing — banks', type: 'RSI', mode: 'PAPER', symbols: ['MCB', 'UBL', 'MEBL'], parameters: defaultParams('RSI'), active: true, autoExecute: false, version: 1, createdAt: created, lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z` },
-      { id: 'st-macd', name: 'MACD momentum — tech', type: 'MACD', mode: 'PAPER', symbols: ['SYS', 'TRG', 'NETSOL'], parameters: defaultParams('MACD'), active: true, autoExecute: false, version: 2, createdAt: created, lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z` },
-      { id: 'st-trail', name: 'Trailing stop 7% — LUCK', type: 'TRAILING_STOP', mode: 'LIVE', symbols: ['LUCK'], parameters: defaultParams('TRAILING_STOP'), active: false, autoExecute: false, version: 1, createdAt: created, lastEvaluatedAt: null },
+      {
+        id: 'st-ema',
+        name: 'EMA 9/21 — energy',
+        type: 'MA_CROSSOVER',
+        mode: 'PAPER',
+        symbols: ['OGDC', 'PPL', 'HUBC'],
+        parameters: defaultParams('MA_CROSSOVER'),
+        active: true,
+        autoExecute: true,
+        version: 3,
+        createdAt: created,
+        lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z`,
+      },
+      {
+        id: 'st-rsi',
+        name: 'RSI swing — banks',
+        type: 'RSI',
+        mode: 'PAPER',
+        symbols: ['MCB', 'UBL', 'MEBL'],
+        parameters: defaultParams('RSI'),
+        active: true,
+        autoExecute: false,
+        version: 1,
+        createdAt: created,
+        lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z`,
+      },
+      {
+        id: 'st-macd',
+        name: 'MACD momentum — tech',
+        type: 'MACD',
+        mode: 'PAPER',
+        symbols: ['SYS', 'TRG', 'NETSOL'],
+        parameters: defaultParams('MACD'),
+        active: true,
+        autoExecute: false,
+        version: 2,
+        createdAt: created,
+        lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z`,
+      },
+      {
+        id: 'st-trail',
+        name: 'Trailing stop 7% — LUCK',
+        type: 'TRAILING_STOP',
+        mode: 'LIVE',
+        symbols: ['LUCK'],
+        parameters: defaultParams('TRAILING_STOP'),
+        active: false,
+        autoExecute: false,
+        version: 1,
+        createdAt: created,
+        lastEvaluatedAt: null,
+      },
     ];
   }
 
@@ -678,7 +1153,11 @@ export class DemoApiClient implements ApiClient {
             price: { value: paisaToString(bar.close), source: PRICE_SOURCE, asOf: `${bar.date}T10:30:00Z` },
             score,
             scoreComponents: components,
-            status: newest ? 'NEW' : st.autoExecute && st.mode === 'PAPER' ? 'AUTO_EXECUTED_PAPER' : 'DISMISSED',
+            status: newest
+              ? 'NEW'
+              : st.autoExecute && st.mode === 'PAPER'
+                ? 'AUTO_EXECUTED_PAPER'
+                : 'DISMISSED',
             createdAt: `${bar.date}T10:35:00Z`,
             trace: ev.trace,
             explanation: ev.explanation,
@@ -700,14 +1179,28 @@ export class DemoApiClient implements ApiClient {
       const seed = findSeed(q.symbol)!;
       const move = gaussian(this.tickRand) * seed.vol * 0.12;
       const band = Math.round(q.prevClose * 0.075);
-      const next = Math.min(q.prevClose + band, Math.max(q.prevClose - band, Math.max(1, Math.round(q.last * (1 + move)))));
+      const next = Math.min(
+        q.prevClose + band,
+        Math.max(q.prevClose - band, Math.max(1, Math.round(q.last * (1 + move)))),
+      );
       q.last = next;
       q.high = Math.max(q.high, next);
       q.low = Math.min(q.low, next);
       q.volume += Math.round(seed.adv * 0.002 * (0.5 + this.tickRand()));
       q.asOf = asOf;
       const quote = this.quote(s, q.symbol);
-      changed.push({ symbol: q.symbol, last: quote.last, change: quote.change, changePct: quote.changePct, volume: quote.volume, high: quote.high, low: quote.low, asOf, source: PRICE_SOURCE, delayMinutes: 0 });
+      changed.push({
+        symbol: q.symbol,
+        last: quote.last,
+        change: quote.change,
+        changePct: quote.changePct,
+        volume: quote.volume,
+        high: quote.high,
+        low: quote.low,
+        asOf,
+        source: PRICE_SOURCE,
+        delayMinutes: 0,
+      });
     }
     for (const l of this.listeners) for (const t of changed) if (l.symbols.has(t.symbol)) l.cb(t);
   }
@@ -717,7 +1210,13 @@ export class DemoApiClient implements ApiClient {
   auth: ApiClient['auth'] = {
     login: (req) =>
       this.run((s) => {
-        if (!/^\S+@\S+\.\S+$/.test(req.email) || req.password.length < 8) throw new ApiError('INVALID_CREDENTIALS', 401, 'Invalid credentials', 'Demo: use any email and a password of 8+ characters.');
+        if (!/^\S+@\S+\.\S+$/.test(req.email) || req.password.length < 8)
+          throw new ApiError(
+            'INVALID_CREDENTIALS',
+            401,
+            'Invalid credentials',
+            'Demo: use any email and a password of 8+ characters.',
+          );
         s.user = { id: 'usr-demo', email: req.email, displayName: s.userSettings.displayName, role: 'OWNER' };
         return { user: s.user, totpRequired: false as const };
       }),
@@ -731,10 +1230,25 @@ export class DemoApiClient implements ApiClient {
       this.run((s) => {
         s.user = null;
       }),
-    me: () => this.run((s) => s.user ?? { id: 'usr-demo', email: 'owner@example.com', displayName: s.userSettings.displayName, role: 'OWNER' as const }),
+    me: () =>
+      this.run(
+        (s) =>
+          s.user ?? {
+            id: 'usr-demo',
+            email: 'owner@example.com',
+            displayName: s.userSettings.displayName,
+            role: 'OWNER' as const,
+          },
+      ),
     stepUp: (code) =>
       this.run((s) => {
-        if (!/^\d{6}$/.test(code) || code === '000000') throw new ApiError('INVALID_TOTP', 401, 'Invalid code', 'Demo: any 6 digits except 000000 are accepted.');
+        if (!/^\d{6}$/.test(code) || code === '000000')
+          throw new ApiError(
+            'INVALID_TOTP',
+            401,
+            'Invalid code',
+            'Demo: any 6 digits except 000000 are accepted.',
+          );
         const token = this.id('stepup');
         const exp = this.now() + 5 * 60 * 1000;
         s.stepUp.set(token, exp);
@@ -743,12 +1257,23 @@ export class DemoApiClient implements ApiClient {
   };
 
   system: ApiClient['system'] = {
-    dataMode: () => this.run(() => ({ priceSource: PRICE_SOURCE, providerKey: 'simulated', delayMinutes: 0, liveExecution: 'MANUAL' as const, demo: true })),
+    dataMode: () =>
+      this.run(() => ({
+        priceSource: PRICE_SOURCE,
+        providerKey: 'simulated',
+        delayMinutes: 0,
+        liveExecution: 'MANUAL' as const,
+        demo: true,
+      })),
     killSwitch: () => this.run((s) => s.killSwitch),
     setKillSwitch: ({ liveTradingEnabled, reason, stepUpToken }) =>
       this.run((s) => {
         this.requireStepUp(s, stepUpToken);
-        s.killSwitch = { liveTradingEnabled, reason: reason || (liveTradingEnabled ? 'Re-enabled' : 'Engaged by owner'), updatedAt: this.iso() };
+        s.killSwitch = {
+          liveTradingEnabled,
+          reason: reason || (liveTradingEnabled ? 'Re-enabled' : 'Engaged by owner'),
+          updatedAt: this.iso(),
+        };
         return s.killSwitch;
       }),
   };
@@ -767,11 +1292,17 @@ export class DemoApiClient implements ApiClient {
         const rets = this.dailyReturns(points);
         const monthStart = DEMO_TODAY.slice(0, 7);
         const monthPnl = Dec.sum(rets.filter((r) => r.date.startsWith(monthStart)).map((r) => r.pnl));
-        const twr = rets.reduce((acc, r) => acc.mul(Dec.of(1).add(r.ret)), Dec.of(1)).sub(1).mul(100);
+        const twr = rets
+          .reduce((acc, r) => acc.mul(Dec.of(1).add(r.ret)), Dec.of(1))
+          .sub(1)
+          .mul(100);
         const xirr = this.xirr(points, account);
         const priced = list.map((h) => h.lastPrice.source);
         const breakdown = this.breakdown(list);
-        const pendingOrders = s.orders.filter((o) => o.portfolioId === pfId && (ACTIVE_ORDER_STATUSES.includes(o.status) || o.status === 'PREVIEWED')).length;
+        const pendingOrders = s.orders.filter(
+          (o) =>
+            o.portfolioId === pfId && (ACTIVE_ORDER_STATUSES.includes(o.status) || o.status === 'PREVIEWED'),
+        ).length;
         const asOf = [...s.quotes.values()].reduce((a, q) => (q.asOf > a ? q.asOf : a), '');
         const src = priced.length ? weakestSource(priced) : PRICE_SOURCE;
         const isLive = this.portfolio(s, pfId).kind === 'LIVE';
@@ -782,14 +1313,31 @@ export class DemoApiClient implements ApiClient {
           marketValue: { value: mv.toFixed(2), source: src, sourceBreakdown: breakdown },
           cash: {
             ledger: { value: state.cash.toFixed(2), source: 'SIMULATED' },
-            broker: isLive ? { value: state.cash.toFixed(2), source: 'BROKER_CONFIRMED', asOf: `${daysAgo(1)}T11:00:00Z`, note: 'Demo item: shows how a statement-confirmed cash balance is labelled' } : null,
+            broker: isLive
+              ? {
+                  value: state.cash.toFixed(2),
+                  source: 'BROKER_CONFIRMED',
+                  asOf: `${daysAgo(1)}T11:00:00Z`,
+                  note: 'Demo item: shows how a statement-confirmed cash balance is labelled',
+                }
+              : null,
           },
           realizedPnl: { value: realized.toFixed(2), source: 'SIMULATED' },
           unrealizedPnl: { value: unreal.toFixed(2), source: src },
           todayPnl: { value: todayPnl.toFixed(2), source: src },
-          todayPnlPct: { value: account.sub(todayPnl).isZero() ? '0.00' : todayPnl.div(account.sub(todayPnl)).mul(100).toFixed(2), source: src },
+          todayPnlPct: {
+            value: account.sub(todayPnl).isZero()
+              ? '0.00'
+              : todayPnl.div(account.sub(todayPnl)).mul(100).toFixed(2),
+            source: src,
+          },
           monthPnl: { value: monthPnl.toFixed(2), source: src },
-          totalReturnPct: { value: state.deposits.isZero() ? '0.00' : account.sub(state.deposits).div(state.deposits).mul(100).toFixed(2), source: src },
+          totalReturnPct: {
+            value: state.deposits.isZero()
+              ? '0.00'
+              : account.sub(state.deposits).div(state.deposits).mul(100).toFixed(2),
+            source: src,
+          },
           twrPct: { value: twr.toFixed(2), source: src },
           xirrPct: { value: xirr, source: src },
           dividendsReceived: { value: state.dividends.toFixed(2), source: 'SIMULATED' },
@@ -806,13 +1354,15 @@ export class DemoApiClient implements ApiClient {
       this.run((s): DashboardCharts => {
         const all = this.series(s, pfId);
         const n = range === '1M' ? 21 : range === '3M' ? 63 : range === '1Y' ? 250 : all.length;
-        const pts = range === 'YTD' ? all.filter((p) => p.date >= `${DEMO_TODAY.slice(0, 4)}-01-01`) : all.slice(-n);
+        const pts =
+          range === 'YTD' ? all.filter((p) => p.date >= `${DEMO_TODAY.slice(0, 4)}-01-01`) : all.slice(-n);
         const rets = this.dailyReturns(all);
         const firstDate = pts[0]?.date ?? DEMO_TODAY;
         const { list } = this.holdings(s, pfId);
         const total = Dec.sum(list.map((h) => h.marketValue));
         const bySector = new Map<string, Dec>();
-        for (const h of list) bySector.set(h.sector, (bySector.get(h.sector) ?? Dec.zero()).add(h.marketValue));
+        for (const h of list)
+          bySector.set(h.sector, (bySector.get(h.sector) ?? Dec.zero()).add(h.marketValue));
         const months = new Map<string, { pnl: Dec; start: Dec }>();
         let prevVal = all[0]?.value ?? Dec.zero();
         for (let i = 1; i < all.length; i++) {
@@ -825,10 +1375,27 @@ export class DemoApiClient implements ApiClient {
         return {
           range,
           source: PRICE_SOURCE,
-          performance: pts.map((p) => ({ date: p.date, value: p.value.toFixed(2), invested: p.deposits.toFixed(2) })),
-          allocation: [...bySector.entries()].map(([sector, v]) => ({ sector, value: v.toFixed(2), weight: total.isZero() ? '0' : v.div(total).toFixed(6) })).sort((a, b) => Dec.of(b.value).cmp(a.value)),
-          dailyPnl: rets.filter((r) => r.date >= firstDate).slice(-60).map((r) => ({ date: r.date, pnl: r.pnl.toFixed(2) })),
-          monthly: [...months.entries()].slice(-12).map(([month, v]) => ({ month, pnl: v.pnl.toFixed(2), returnPct: v.start.isZero() ? '0.00' : v.pnl.div(v.start).mul(100).toFixed(2) })),
+          performance: pts.map((p) => ({
+            date: p.date,
+            value: p.value.toFixed(2),
+            invested: p.deposits.toFixed(2),
+          })),
+          allocation: [...bySector.entries()]
+            .map(([sector, v]) => ({
+              sector,
+              value: v.toFixed(2),
+              weight: total.isZero() ? '0' : v.div(total).toFixed(6),
+            }))
+            .sort((a, b) => Dec.of(b.value).cmp(a.value)),
+          dailyPnl: rets
+            .filter((r) => r.date >= firstDate)
+            .slice(-60)
+            .map((r) => ({ date: r.date, pnl: r.pnl.toFixed(2) })),
+          monthly: [...months.entries()].slice(-12).map(([month, v]) => ({
+            month,
+            pnl: v.pnl.toFixed(2),
+            returnPct: v.start.isZero() ? '0.00' : v.pnl.div(v.start).mul(100).toFixed(2),
+          })),
           distribution: list.map((h) => ({ symbol: h.symbol, value: h.marketValue, weight: h.weight })),
         };
       }),
@@ -838,7 +1405,8 @@ export class DemoApiClient implements ApiClient {
     const total = Dec.sum(list.map((h) => h.marketValue));
     if (total.isZero()) return { SIMULATED: '1' };
     const m = new Map<DataSource, Dec>();
-    for (const h of list) m.set(h.lastPrice.source, (m.get(h.lastPrice.source) ?? Dec.zero()).add(h.marketValue));
+    for (const h of list)
+      m.set(h.lastPrice.source, (m.get(h.lastPrice.source) ?? Dec.zero()).add(h.marketValue));
     return Object.fromEntries([...m.entries()].map(([k, v]) => [k, v.div(total).toFixed(4)]));
   }
 
@@ -846,9 +1414,14 @@ export class DemoApiClient implements ApiClient {
   private xirr(points: DayPoint[], terminal: Dec): string {
     const flows: { t: number; v: number }[] = [];
     const t0 = points.length ? Date.parse(points[0].date) : 0;
-    for (const p of points) if (!p.flow.isZero()) flows.push({ t: (Date.parse(p.date) - t0) / 31_536_000_000, v: -p.flow.toNumber() });
+    for (const p of points)
+      if (!p.flow.isZero())
+        flows.push({ t: (Date.parse(p.date) - t0) / 31_536_000_000, v: -p.flow.toNumber() });
     if (!flows.length || !points.length) return '0.00';
-    flows.push({ t: (Date.parse(points[points.length - 1].date) - t0) / 31_536_000_000, v: terminal.toNumber() });
+    flows.push({
+      t: (Date.parse(points[points.length - 1].date) - t0) / 31_536_000_000,
+      v: terminal.toNumber(),
+    });
     const npv = (r: number) => flows.reduce((a, f) => a + f.v / Math.pow(1 + r, f.t), 0);
     let lo = -0.99;
     let hi = 10;
@@ -868,7 +1441,9 @@ export class DemoApiClient implements ApiClient {
         const { list, state } = this.holdings(s, pfId);
         const holding = list.find((h) => h.symbol === symbol);
         if (!holding) throw new ApiError('NOT_FOUND', 404, 'Holding not found', symbol);
-        const txns = this.ledger(s, pfId).flatMap((e) => (e.kind === 'txn' && e.txn.symbol === symbol ? [e.txn] : []));
+        const txns = this.ledger(s, pfId).flatMap((e) =>
+          e.kind === 'txn' && e.txn.symbol === symbol ? [e.txn] : [],
+        );
         return {
           holding,
           lots: state.positions.get(symbol)?.lots ?? [],
@@ -880,7 +1455,13 @@ export class DemoApiClient implements ApiClient {
       this.run((s) =>
         this.ledger(s, pfId)
           .flatMap((e) => (e.kind === 'txn' ? [e.txn] : []))
-          .filter((t) => (!f.symbol || t.symbol === f.symbol) && (!f.type || t.type === f.type) && (!f.from || t.tradeDate >= f.from) && (!f.to || t.tradeDate <= f.to))
+          .filter(
+            (t) =>
+              (!f.symbol || t.symbol === f.symbol) &&
+              (!f.type || t.type === f.type) &&
+              (!f.from || t.tradeDate >= f.from) &&
+              (!f.to || t.tradeDate <= f.to),
+          )
           .reverse(),
       ),
     cashMovements: (pfId) =>
@@ -890,7 +1471,15 @@ export class DemoApiClient implements ApiClient {
             e.kind === 'cash'
               ? e.cash
               : e.txn.type === 'BUY' || e.txn.type === 'SELL'
-                ? { id: `cm-${e.txn.id}`, portfolioId: pfId, date: e.txn.tradeDate, type: e.txn.type === 'BUY' ? ('TRADE_DEBIT' as const) : ('TRADE_CREDIT' as const), amount: e.txn.netAmount, description: `${e.txn.type} ${e.txn.quantity} ${e.txn.symbol} @ ${e.txn.price} (incl. fees)`, source: e.txn.source }
+                ? {
+                    id: `cm-${e.txn.id}`,
+                    portfolioId: pfId,
+                    date: e.txn.tradeDate,
+                    type: e.txn.type === 'BUY' ? ('TRADE_DEBIT' as const) : ('TRADE_CREDIT' as const),
+                    amount: e.txn.netAmount,
+                    description: `${e.txn.type} ${e.txn.quantity} ${e.txn.symbol} @ ${e.txn.price} (incl. fees)`,
+                    source: e.txn.source,
+                  }
                 : null,
           )
           .filter((x): x is NonNullable<typeof x> => x !== null)
@@ -900,8 +1489,22 @@ export class DemoApiClient implements ApiClient {
       this.run((s) => {
         this.requireStepUp(s, token);
         const pf = this.portfolio(s, pfId);
-        if (pf.kind !== 'PAPER') throw new ApiError('INVALID_STATE', 409, 'Only paper portfolios can be reset');
-        s.ledgers.set(pfId, [{ kind: 'cash', cash: { id: this.id('cash'), portfolioId: pfId, date: DEMO_TODAY, type: 'DEPOSIT', amount: pf.initialCash ?? '1000000.00', description: 'Paper reset', source: 'SIMULATED' } }]);
+        if (pf.kind !== 'PAPER')
+          throw new ApiError('INVALID_STATE', 409, 'Only paper portfolios can be reset');
+        s.ledgers.set(pfId, [
+          {
+            kind: 'cash',
+            cash: {
+              id: this.id('cash'),
+              portfolioId: pfId,
+              date: DEMO_TODAY,
+              type: 'DEPOSIT',
+              amount: pf.initialCash ?? '1000000.00',
+              description: 'Paper reset',
+              source: 'SIMULATED',
+            },
+          },
+        ]);
         s.ledgerVersion.set(pfId, (s.ledgerVersion.get(pfId) ?? 0) + 1);
         s.orders = s.orders.filter((o) => o.portfolioId !== pfId);
         return pf;
@@ -920,20 +1523,45 @@ export class DemoApiClient implements ApiClient {
         this.expireStale(s);
         const o = this.order(s, id);
         this.requireStepUp(s, stepUpToken);
-        if (o.status === 'EXPIRED') throw new ApiError('PREVIEW_EXPIRED', 409, 'Preview expired', 'Create a new preview; prices and checks may have changed.');
-        if (o.status !== 'PREVIEWED') throw new ApiError('INVALID_STATE', 409, 'Order cannot be approved', `Status is ${o.status}`);
-        if (o.previewHash !== previewHash) throw new ApiError('PREVIEW_MISMATCH', 409, 'Preview changed', 'Approval must match the exact previewed order.');
+        if (o.status === 'EXPIRED')
+          throw new ApiError(
+            'PREVIEW_EXPIRED',
+            409,
+            'Preview expired',
+            'Create a new preview; prices and checks may have changed.',
+          );
+        if (o.status !== 'PREVIEWED')
+          throw new ApiError('INVALID_STATE', 409, 'Order cannot be approved', `Status is ${o.status}`);
+        if (o.previewHash !== previewHash)
+          throw new ApiError(
+            'PREVIEW_MISMATCH',
+            409,
+            'Preview changed',
+            'Approval must match the exact previewed order.',
+          );
         const now = this.iso();
         o.riskChecks = this.riskChecks(s, o);
         if (!o.riskChecks.every((c) => c.passed)) {
           o.status = 'REJECTED_BY_RISK';
           o.updatedAt = now;
-          o.events.push(this.event('REJECTED_BY_RISK', 'SYSTEM', 'Risk checks failed on re-check at approval', now));
-          throw new ApiError('RISK_CHECK_FAILED', 422, 'Risk checks failed', o.riskChecks.filter((c) => !c.passed).map((c) => c.rule).join(', '));
+          o.events.push(
+            this.event('REJECTED_BY_RISK', 'SYSTEM', 'Risk checks failed on re-check at approval', now),
+          );
+          throw new ApiError(
+            'RISK_CHECK_FAILED',
+            422,
+            'Risk checks failed',
+            o.riskChecks
+              .filter((c) => !c.passed)
+              .map((c) => c.rule)
+              .join(', '),
+          );
         }
         o.status = 'APPROVED';
         o.updatedAt = now;
-        o.events.push(this.event('APPROVED', 'USER', 'Approved with step-up (TOTP); risk checks re-run and passed', now));
+        o.events.push(
+          this.event('APPROVED', 'USER', 'Approved with step-up (TOTP); risk checks re-run and passed', now),
+        );
         if (o.mode === 'PAPER') {
           o.status = 'SUBMITTED';
           o.events.push(this.event('SUBMITTED', 'SYSTEM', 'Sent to paper broker', now));
@@ -941,34 +1569,87 @@ export class DemoApiClient implements ApiClient {
           this.applyFill(s, o, o.quantity, px, now, 'SIMULATED', 'Simulated paper fill');
         } else {
           o.status = 'AWAITING_MANUAL_PLACEMENT';
-          o.events.push(this.event('AWAITING_MANUAL_PLACEMENT', 'SYSTEM', 'Manual ticket issued — place this order in the KTrade app', now));
+          o.events.push(
+            this.event(
+              'AWAITING_MANUAL_PLACEMENT',
+              'SYSTEM',
+              'Manual ticket issued — place this order in the KTrade app',
+              now,
+            ),
+          );
         }
         return o;
       }),
     markPlaced: (id, { brokerOrderRef }) =>
       this.run((s) => {
         const o = this.order(s, id);
-        if (o.status !== 'AWAITING_MANUAL_PLACEMENT') throw new ApiError('INVALID_STATE', 409, 'Order is not awaiting placement', `Status is ${o.status}`);
+        if (o.status !== 'AWAITING_MANUAL_PLACEMENT')
+          throw new ApiError(
+            'INVALID_STATE',
+            409,
+            'Order is not awaiting placement',
+            `Status is ${o.status}`,
+          );
         o.status = 'PLACED_BY_USER';
         o.brokerOrderRef = brokerOrderRef?.trim() || null;
         o.updatedAt = this.iso();
-        o.events.push(this.event('PLACED_BY_USER', 'USER', `You marked the order as placed in KTrade${o.brokerOrderRef ? ` (ref ${o.brokerOrderRef})` : ''}. Not executed until a fill is recorded.`, o.updatedAt));
+        o.events.push(
+          this.event(
+            'PLACED_BY_USER',
+            'USER',
+            `You marked the order as placed in KTrade${o.brokerOrderRef ? ` (ref ${o.brokerOrderRef})` : ''}. Not executed until a fill is recorded.`,
+            o.updatedAt,
+          ),
+        );
         return o;
       }),
     recordFill: (id, fill) =>
       this.run((s) => {
         const o = this.order(s, id);
-        if (!['PLACED_BY_USER', 'AWAITING_MANUAL_PLACEMENT', 'PARTIALLY_FILLED'].includes(o.status)) throw new ApiError('INVALID_STATE', 409, 'Cannot record a fill', `Status is ${o.status}`);
-        if (!/^\d+$/.test(fill.quantity) || Dec.of(fill.quantity).lte(0)) throw new ApiError('VALIDATION_FAILED', 422, 'Invalid fill', 'Quantity must be a whole number > 0');
-        if (!/^\d+(\.\d{1,4})?$/.test(fill.price) || Dec.of(fill.price).lte(0)) throw new ApiError('VALIDATION_FAILED', 422, 'Invalid fill', 'Price must be positive');
+        if (!['PLACED_BY_USER', 'AWAITING_MANUAL_PLACEMENT', 'PARTIALLY_FILLED'].includes(o.status))
+          throw new ApiError('INVALID_STATE', 409, 'Cannot record a fill', `Status is ${o.status}`);
+        if (!/^\d+$/.test(fill.quantity) || Dec.of(fill.quantity).lte(0))
+          throw new ApiError('VALIDATION_FAILED', 422, 'Invalid fill', 'Quantity must be a whole number > 0');
+        if (!/^\d+(\.\d{1,4})?$/.test(fill.price) || Dec.of(fill.price).lte(0))
+          throw new ApiError('VALIDATION_FAILED', 422, 'Invalid fill', 'Price must be positive');
         const remaining = Dec.of(o.quantity).sub(o.filledQuantity);
-        if (Dec.of(fill.quantity).gt(remaining)) throw new ApiError('VALIDATION_FAILED', 422, 'Invalid fill', `Only ${remaining.toString()} shares remain unfilled`);
+        if (Dec.of(fill.quantity).gt(remaining))
+          throw new ApiError(
+            'VALIDATION_FAILED',
+            422,
+            'Invalid fill',
+            `Only ${remaining.toString()} shares remain unfilled`,
+          );
         if (o.status === 'AWAITING_MANUAL_PLACEMENT') {
           o.status = 'PLACED_BY_USER';
-          o.events.push(this.event('PLACED_BY_USER', 'USER', 'Implicitly marked placed when the fill was recorded', this.iso()));
+          o.events.push(
+            this.event(
+              'PLACED_BY_USER',
+              'USER',
+              'Implicitly marked placed when the fill was recorded',
+              this.iso(),
+            ),
+          );
         }
-        this.applyFill(s, o, fill.quantity, fill.price, fill.executedAt, 'USER_REPORTED', `Fill recorded by you: ${fill.quantity} @ ${fill.price} (user-reported until the contract note reconciles it)`);
-        s.notifications.unshift({ id: this.id('n'), type: 'ORDER_EXECUTED', title: `${o.symbol} fill recorded`, body: `${fill.quantity} shares @ Rs ${fill.price} (user-reported).`, createdAt: this.iso(), read: false, channel: 'IN_APP', link: '/orders' });
+        this.applyFill(
+          s,
+          o,
+          fill.quantity,
+          fill.price,
+          fill.executedAt,
+          'USER_REPORTED',
+          `Fill recorded by you: ${fill.quantity} @ ${fill.price} (user-reported until the contract note reconciles it)`,
+        );
+        s.notifications.unshift({
+          id: this.id('n'),
+          type: 'ORDER_EXECUTED',
+          title: `${o.symbol} fill recorded`,
+          body: `${fill.quantity} shares @ Rs ${fill.price} (user-reported).`,
+          createdAt: this.iso(),
+          read: false,
+          channel: 'IN_APP',
+          link: '/orders',
+        });
         return o;
       }),
     cancel: (id) =>
@@ -977,14 +1658,23 @@ export class DemoApiClient implements ApiClient {
         const now = this.iso();
         if (['PREVIEWED', 'APPROVED', 'AWAITING_MANUAL_PLACEMENT'].includes(o.status)) {
           o.status = 'CANCELLED';
-          o.events.push(this.event('CANCELLED', 'USER', 'Cancelled before placement — nothing was sent to KTrade', now));
+          o.events.push(
+            this.event('CANCELLED', 'USER', 'Cancelled before placement — nothing was sent to KTrade', now),
+          );
         } else if (['PLACED_BY_USER', 'PARTIALLY_FILLED', 'SUBMITTED', 'ACCEPTED'].includes(o.status)) {
           if (o.mode === 'PAPER') {
             o.status = 'CANCELLED';
             o.events.push(this.event('CANCELLED', 'SYSTEM', 'Paper order cancelled', now));
           } else {
             o.status = 'CANCEL_REQUESTED';
-            o.events.push(this.event('CANCEL_REQUESTED', 'USER', 'Cancel requested — cancel it in the KTrade app too; status becomes CANCELLED once confirmed', now));
+            o.events.push(
+              this.event(
+                'CANCEL_REQUESTED',
+                'USER',
+                'Cancel requested — cancel it in the KTrade app too; status becomes CANCELLED once confirmed',
+                now,
+              ),
+            );
           }
         } else {
           throw new ApiError('INVALID_STATE', 409, 'Order cannot be cancelled', `Status is ${o.status}`);
@@ -995,7 +1685,12 @@ export class DemoApiClient implements ApiClient {
     list: (f = {}) =>
       this.run((s) => {
         this.expireStale(s);
-        return s.orders.filter((o) => (!f.status || o.status === f.status) && (!f.mode || o.mode === f.mode) && (!f.symbol || o.symbol === f.symbol));
+        return s.orders.filter(
+          (o) =>
+            (!f.status || o.status === f.status) &&
+            (!f.mode || o.mode === f.mode) &&
+            (!f.symbol || o.symbol === f.symbol),
+        );
       }),
     get: (id) =>
       this.run((s) => {
@@ -1015,29 +1710,55 @@ export class DemoApiClient implements ApiClient {
   market: ApiClient['market'] = {
     stocks: (q = {}) =>
       this.run(() =>
-        DEMO_UNIVERSE.filter((st) => (!q.sector || st.sector === q.sector) && (!q.search || `${st.symbol} ${st.name}`.toLowerCase().includes(q.search.toLowerCase()))).map((st) => this.stockOf(st.symbol)),
+        DEMO_UNIVERSE.filter(
+          (st) =>
+            (!q.sector || st.sector === q.sector) &&
+            (!q.search || `${st.symbol} ${st.name}`.toLowerCase().includes(q.search.toLowerCase())),
+        ).map((st) => this.stockOf(st.symbol)),
       ),
     stock: (symbol) => this.run(() => this.stockOf(symbol)),
-    quotes: (symbols) => this.run((s) => (symbols?.length ? symbols : [...s.quotes.keys()]).filter((x) => s.quotes.has(x)).map((x) => this.quote(s, x))),
+    quotes: (symbols) =>
+      this.run((s) =>
+        (symbols?.length ? symbols : [...s.quotes.keys()])
+          .filter((x) => s.quotes.has(x))
+          .map((x) => this.quote(s, x)),
+      ),
     candles: (symbol, q = {}) =>
       this.run((s) => {
         const bars = barsFor(symbol);
         if (!bars.length) throw new ApiError('NOT_FOUND', 404, 'Unknown symbol', symbol);
         const live = s.quotes.get(symbol)!;
-        const withLive: RawBar[] = [...bars.slice(0, -1), { ...bars[bars.length - 1], close: live.last, high: live.high, low: live.low, volume: live.volume }];
+        const withLive: RawBar[] = [
+          ...bars.slice(0, -1),
+          { ...bars[bars.length - 1], close: live.last, high: live.high, low: live.low, volume: live.volume },
+        ];
         return {
           symbol,
           interval: 'D1' as const,
           source: PRICE_SOURCE,
           candles: withLive
             .filter((b) => (!q.from || b.date >= q.from) && (!q.to || b.date <= q.to))
-            .map((b) => ({ time: b.date, open: paisaToString(b.open), high: paisaToString(b.high), low: paisaToString(b.low), close: paisaToString(b.close), volume: String(b.volume) })),
+            .map((b) => ({
+              time: b.date,
+              open: paisaToString(b.open),
+              high: paisaToString(b.high),
+              low: paisaToString(b.low),
+              close: paisaToString(b.close),
+              volume: String(b.volume),
+            })),
         };
       }),
     movers: (type, limit = 10) =>
       this.run((s) => {
         const qs = [...s.quotes.keys()].map((x) => this.quote(s, x));
-        const sorted = type === 'active' ? qs.sort((a, b) => Dec.of(b.volume).mul(b.last).cmp(Dec.of(a.volume).mul(a.last))) : qs.sort((a, b) => (type === 'gainers' ? Dec.of(b.changePct).cmp(a.changePct) : Dec.of(a.changePct).cmp(b.changePct)));
+        const sorted =
+          type === 'active'
+            ? qs.sort((a, b) => Dec.of(b.volume).mul(b.last).cmp(Dec.of(a.volume).mul(a.last)))
+            : qs.sort((a, b) =>
+                type === 'gainers'
+                  ? Dec.of(b.changePct).cmp(a.changePct)
+                  : Dec.of(a.changePct).cmp(b.changePct),
+              );
         return sorted.slice(0, limit);
       }),
     providers: () => this.run((s) => s.providers),
@@ -1096,8 +1817,18 @@ export class DemoApiClient implements ApiClient {
       marketCap: shares.mul(this.last(s, symbol)).toFixed(0),
       sharesOutstanding: shares.toFixed(0),
       freeFloatPct: Dec.of(15 + (h % 60)).toFixed(0),
-      peRatio: h % 9 === 0 ? null : Dec.of(30 + (h % 90)).div(10).toFixed(1),
-      dividendYieldPct: h % 5 === 0 ? null : Dec.of(10 + (h % 120)).div(10).toFixed(1),
+      peRatio:
+        h % 9 === 0
+          ? null
+          : Dec.of(30 + (h % 90))
+              .div(10)
+              .toFixed(1),
+      dividendYieldPct:
+        h % 5 === 0
+          ? null
+          : Dec.of(10 + (h % 120))
+              .div(10)
+              .toFixed(1),
       source: 'SIMULATED',
     };
   }
@@ -1108,8 +1839,21 @@ export class DemoApiClient implements ApiClient {
     create: (input) =>
       this.run((s) => {
         if (!input.symbols.length) throw new ApiError('VALIDATION_FAILED', 422, 'Pick at least one symbol');
-        if (input.mode === 'LIVE' && input.autoExecute) throw new ApiError('CAPABILITY_UNAVAILABLE', 409, 'Auto-execution unavailable for live', 'Live strategies only prepare orders for manual approval.');
-        const st: Strategy = { ...input, id: this.id('st'), active: false, version: 1, createdAt: this.iso(), lastEvaluatedAt: null };
+        if (input.mode === 'LIVE' && input.autoExecute)
+          throw new ApiError(
+            'CAPABILITY_UNAVAILABLE',
+            409,
+            'Auto-execution unavailable for live',
+            'Live strategies only prepare orders for manual approval.',
+          );
+        const st: Strategy = {
+          ...input,
+          id: this.id('st'),
+          active: false,
+          version: 1,
+          createdAt: this.iso(),
+          lastEvaluatedAt: null,
+        };
         s.strategies.push(st);
         return st;
       }),
@@ -1120,11 +1864,15 @@ export class DemoApiClient implements ApiClient {
         st.active = active;
         if (active) {
           st.lastEvaluatedAt = this.iso();
-          s.signals = [...this.buildSignals([st]).filter((n) => !s.signals.some((o) => o.id === n.id)), ...s.signals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          s.signals = [
+            ...this.buildSignals([st]).filter((n) => !s.signals.some((o) => o.id === n.id)),
+            ...s.signals,
+          ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         }
         return st;
       }),
-    signals: (q = {}) => this.run((s) => s.signals.filter((x) => !q.strategyId || x.strategyId === q.strategyId)),
+    signals: (q = {}) =>
+      this.run((s) => s.signals.filter((x) => !q.strategyId || x.strategyId === q.strategyId)),
     dismissSignal: (id) =>
       this.run((s) => {
         const sig = s.signals.find((x) => x.id === id);
@@ -1138,7 +1886,8 @@ export class DemoApiClient implements ApiClient {
     run: (req) =>
       this.run((s) => {
         if (!findSeed(req.symbol)) throw new ApiError('NOT_FOUND', 404, 'Unknown symbol', req.symbol);
-        if (req.from >= req.to) throw new ApiError('VALIDATION_FAILED', 422, 'Invalid period', '“From” must be before “to”.');
+        if (req.from >= req.to)
+          throw new ApiError('VALIDATION_FAILED', 422, 'Invalid period', '“From” must be before “to”.');
         const bt = runBacktest(this.id('bt'), this.iso(), req, barsFor(req.symbol));
         s.backtests.unshift(bt);
         return bt;
@@ -1153,7 +1902,12 @@ export class DemoApiClient implements ApiClient {
   };
 
   dividends: ApiClient['dividends'] = {
-    list: (pfId) => this.run((s) => [...(s.dividends.get(this.portfolio(s, pfId).id) ?? [])].sort((a, b) => b.exDate.localeCompare(a.exDate))),
+    list: (pfId) =>
+      this.run((s) =>
+        [...(s.dividends.get(this.portfolio(s, pfId).id) ?? [])].sort((a, b) =>
+          b.exDate.localeCompare(a.exDate),
+        ),
+      ),
   };
 
   analytics: ApiClient['analytics'] = {
@@ -1182,7 +1936,15 @@ export class DemoApiClient implements ApiClient {
           const flows = Dec.sum(g.map((p) => p.flow));
           const pnl = end.sub(start).sub(flows);
           const base = start.add(flows);
-          rows.push({ period: k, startValue: start.toFixed(2), endValue: end.toFixed(2), netFlows: flows.toFixed(2), pnl: pnl.toFixed(2), returnPct: base.isZero() ? '0.00' : pnl.div(base).mul(100).toFixed(2), source: PRICE_SOURCE });
+          rows.push({
+            period: k,
+            startValue: start.toFixed(2),
+            endValue: end.toFixed(2),
+            netFlows: flows.toFixed(2),
+            pnl: pnl.toFixed(2),
+            returnPct: base.isZero() ? '0.00' : pnl.div(base).mul(100).toFixed(2),
+            source: PRICE_SOURCE,
+          });
           prevEnd = end;
         }
         const limit = period === 'day' ? 20 : period === 'week' ? 12 : period === 'month' ? 12 : 5;
@@ -1191,11 +1953,23 @@ export class DemoApiClient implements ApiClient {
     realizedUnrealized: (pfId) =>
       this.run((s) => {
         const { list, state } = this.holdings(s, pfId);
-        const bySymbol = [...state.positions.values()].map((p) => ({ symbol: p.symbol, realized: p.realized.toFixed(2), unrealized: list.find((h) => h.symbol === p.symbol)?.unrealizedPnl ?? '0.00' }));
+        const bySymbol = [...state.positions.values()].map((p) => ({
+          symbol: p.symbol,
+          realized: p.realized.toFixed(2),
+          unrealized: list.find((h) => h.symbol === p.symbol)?.unrealizedPnl ?? '0.00',
+        }));
         return {
-          realized: { value: Dec.sum(bySymbol.map((b) => b.realized)).toFixed(2), source: 'SIMULATED' as const },
-          unrealized: { value: Dec.sum(bySymbol.map((b) => b.unrealized)).toFixed(2), source: 'SIMULATED' as const },
-          bySymbol: bySymbol.sort((a, b) => Dec.of(b.realized).add(b.unrealized).cmp(Dec.of(a.realized).add(a.unrealized))),
+          realized: {
+            value: Dec.sum(bySymbol.map((b) => b.realized)).toFixed(2),
+            source: 'SIMULATED' as const,
+          },
+          unrealized: {
+            value: Dec.sum(bySymbol.map((b) => b.unrealized)).toFixed(2),
+            source: 'SIMULATED' as const,
+          },
+          bySymbol: bySymbol.sort((a, b) =>
+            Dec.of(b.realized).add(b.unrealized).cmp(Dec.of(a.realized).add(a.unrealized)),
+          ),
         };
       }),
     feesTaxes: (pfId) =>
@@ -1215,15 +1989,31 @@ export class DemoApiClient implements ApiClient {
             add('DIVIDEND_WHT', Dec.of(e.cash.amount).neg(), e.cash.source === 'BROKER_CONFIRMED');
           }
         }
-        const rows = [...acc.entries()].map(([component, v]) => ({ component: component as never, estimated: v.est.toFixed(2), confirmed: v.conf.toFixed(2) }));
-        return { rows, totalEstimated: Dec.sum(rows.map((r) => r.estimated)).toFixed(2), totalConfirmed: Dec.sum(rows.map((r) => r.confirmed)).toFixed(2) };
+        const rows = [...acc.entries()].map(([component, v]) => ({
+          component: component as never,
+          estimated: v.est.toFixed(2),
+          confirmed: v.conf.toFixed(2),
+        }));
+        return {
+          rows,
+          totalEstimated: Dec.sum(rows.map((r) => r.estimated)).toFixed(2),
+          totalConfirmed: Dec.sum(rows.map((r) => r.confirmed)).toFixed(2),
+        };
       }),
   };
 
   reports: ApiClient['reports'] = {
     create: ({ type, format }) =>
       this.run((s) => {
-        const r: Report = { id: this.id('rep'), type, format, status: 'SUCCEEDED', createdAt: this.iso(), fileName: `${type.toLowerCase()}-${DEMO_TODAY}.${format.toLowerCase()}`, note: 'Demo: the report job is simulated and no file is generated. The live API returns a short-lived signed download link.' };
+        const r: Report = {
+          id: this.id('rep'),
+          type,
+          format,
+          status: 'SUCCEEDED',
+          createdAt: this.iso(),
+          fileName: `${type.toLowerCase()}-${DEMO_TODAY}.${format.toLowerCase()}`,
+          note: 'Demo: the report job is simulated and no file is generated. The live API returns a short-lived signed download link.',
+        };
         s.reports.unshift(r);
         return r;
       }),
@@ -1255,7 +2045,15 @@ export class DemoApiClient implements ApiClient {
     history: () => this.run((s) => s.assistant),
     send: (text) =>
       this.run((s) => {
-        const user: AssistantMessage = { id: this.id('msg'), role: 'USER', content: text, createdAt: this.iso(), toolCalls: [], citations: [], demo: false };
+        const user: AssistantMessage = {
+          id: this.id('msg'),
+          role: 'USER',
+          content: text,
+          createdAt: this.iso(),
+          toolCalls: [],
+          citations: [],
+          demo: false,
+        };
         const reply = this.cannedReply(s, text);
         s.assistant.push(user, reply);
         return [user, reply];
@@ -1275,27 +2073,95 @@ export class DemoApiClient implements ApiClient {
       const h = list.find((x) => x.symbol === sym);
       const impact = h ? Dec.of(h.marketValue).mul(pct).div(100).neg() : Dec.zero();
       const total = mv.add(state.cash);
-      return { ...base, content: `If ${sym} fell ${pct}% from the current simulated price, your position would lose about Rs ${fmt(impact.abs())} — ${total.isZero() ? '0.00' : impact.abs().div(total).mul(100).toFixed(2)}% of account value. This is a simple linear shock: it ignores correlation with other holdings and fees.`, toolCalls: [{ name: 'simulate_price_shock', args: { symbol: sym, pct: `-${pct}` }, digest: `position MV Rs ${h ? fmt(Dec.of(h.marketValue)) : '0'}` }], citations: [{ label: `${sym} holding`, href: '/holdings' }] };
+      return {
+        ...base,
+        content: `If ${sym} fell ${pct}% from the current simulated price, your position would lose about Rs ${fmt(impact.abs())} — ${total.isZero() ? '0.00' : impact.abs().div(total).mul(100).toFixed(2)}% of account value. This is a simple linear shock: it ignores correlation with other holdings and fees.`,
+        toolCalls: [
+          {
+            name: 'simulate_price_shock',
+            args: { symbol: sym, pct: `-${pct}` },
+            digest: `position MV Rs ${h ? fmt(Dec.of(h.marketValue)) : '0'}`,
+          },
+        ],
+        citations: [{ label: `${sym} holding`, href: '/holdings' }],
+      };
     }
     if (/dividend/.test(t)) {
       const divs = s.dividends.get(LIVE_PORTFOLIO_ID) ?? [];
       const upcoming = divs.filter((d) => d.status === 'ANNOUNCED' || d.status === 'ENTITLED');
-      return { ...base, content: `You have received Rs ${fmt(state.dividends)} in gross dividends (simulated ledger). Upcoming/entitled: ${upcoming.map((d) => `${d.symbol} Rs ${d.perShare}/share (${d.status.toLowerCase()})`).join(', ') || 'none'}. Withholding tax is shown at a placeholder 15% filer rate that has not been verified.`, toolCalls: [{ name: 'get_dividends', args: { portfolioId: LIVE_PORTFOLIO_ID }, digest: `${divs.length} records` }], citations: [{ label: 'Dividends', href: '/dividends' }, { label: 'Tax-rate settings', href: '/settings' }] };
+      return {
+        ...base,
+        content: `You have received Rs ${fmt(state.dividends)} in gross dividends (simulated ledger). Upcoming/entitled: ${upcoming.map((d) => `${d.symbol} Rs ${d.perShare}/share (${d.status.toLowerCase()})`).join(', ') || 'none'}. Withholding tax is shown at a placeholder 15% filer rate that has not been verified.`,
+        toolCalls: [
+          {
+            name: 'get_dividends',
+            args: { portfolioId: LIVE_PORTFOLIO_ID },
+            digest: `${divs.length} records`,
+          },
+        ],
+        citations: [
+          { label: 'Dividends', href: '/dividends' },
+          { label: 'Tax-rate settings', href: '/settings' },
+        ],
+      };
     }
     if (/signal|strategy|why/.test(t)) {
       const sig = s.signals[0];
-      if (sig) return { ...base, content: `Latest signal: ${sig.type} ${sig.symbol} from “${sig.strategyName}”. Why: ${sig.explanation}. Confidence ${sig.score}/100 (${sig.scoreComponents.map((c) => `${c.label} ${c.points}/${c.max}`).join('; ')}). I can explain signals but cannot create or approve orders.`, toolCalls: [{ name: 'explain_signal', args: { id: sig.id }, digest: `${sig.trace.length} conditions` }], citations: [{ label: 'Strategies & signals', href: '/strategies' }] };
+      if (sig)
+        return {
+          ...base,
+          content: `Latest signal: ${sig.type} ${sig.symbol} from “${sig.strategyName}”. Why: ${sig.explanation}. Confidence ${sig.score}/100 (${sig.scoreComponents.map((c) => `${c.label} ${c.points}/${c.max}`).join('; ')}). I can explain signals but cannot create or approve orders.`,
+          toolCalls: [
+            { name: 'explain_signal', args: { id: sig.id }, digest: `${sig.trace.length} conditions` },
+          ],
+          citations: [{ label: 'Strategies & signals', href: '/strategies' }],
+        };
     }
     if (/buy|sell|order|suggest/.test(t)) {
       const sym = list[list.length - 1]?.symbol ?? 'HUBC';
-      return { ...base, content: `Here is a draft you can open and review — I created nothing. It goes through the normal preview, 12 risk checks and your TOTP approval, then you place it yourself in KTrade. Draft: BUY 50 ${sym} (market).`, toolCalls: [{ name: 'draft_order_suggestion', args: { symbol: sym, side: 'BUY', quantity: '50' }, digest: 'prefilled preview link only' }], citations: [{ label: `Open draft ticket for ${sym}`, href: `/trade?symbol=${sym}&side=BUY&qty=50` }] };
+      return {
+        ...base,
+        content: `Here is a draft you can open and review — I created nothing. It goes through the normal preview, 12 risk checks and your TOTP approval, then you place it yourself in KTrade. Draft: BUY 50 ${sym} (market).`,
+        toolCalls: [
+          {
+            name: 'draft_order_suggestion',
+            args: { symbol: sym, side: 'BUY', quantity: '50' },
+            digest: 'prefilled preview link only',
+          },
+        ],
+        citations: [{ label: `Open draft ticket for ${sym}`, href: `/trade?symbol=${sym}&side=BUY&qty=50` }],
+      };
     }
     if (/portfolio|summary|summar|holding|how am i|performance/.test(t)) {
       const unreal = Dec.sum(list.map((h) => h.unrealizedPnl));
-      const top = list.slice(0, 3).map((h) => `${h.symbol} ${Dec.of(h.weight).mul(100).toFixed(1)}%`).join(', ');
-      return { ...base, content: `Account value is Rs ${fmt(mv.add(state.cash))} (Rs ${fmt(mv)} in ${list.length} holdings + Rs ${fmt(state.cash)} cash). Unrealized P&L is Rs ${fmt(unreal)}. Largest weights: ${top}. All prices are SIMULATED.`, toolCalls: [{ name: 'get_portfolio_summary', args: { portfolioId: LIVE_PORTFOLIO_ID }, digest: `${list.length} holdings` }, { name: 'get_holdings', args: { portfolioId: LIVE_PORTFOLIO_ID }, digest: 'weights, P&L' }], citations: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Holdings', href: '/holdings' }] };
+      const top = list
+        .slice(0, 3)
+        .map((h) => `${h.symbol} ${Dec.of(h.weight).mul(100).toFixed(1)}%`)
+        .join(', ');
+      return {
+        ...base,
+        content: `Account value is Rs ${fmt(mv.add(state.cash))} (Rs ${fmt(mv)} in ${list.length} holdings + Rs ${fmt(state.cash)} cash). Unrealized P&L is Rs ${fmt(unreal)}. Largest weights: ${top}. All prices are SIMULATED.`,
+        toolCalls: [
+          {
+            name: 'get_portfolio_summary',
+            args: { portfolioId: LIVE_PORTFOLIO_ID },
+            digest: `${list.length} holdings`,
+          },
+          { name: 'get_holdings', args: { portfolioId: LIVE_PORTFOLIO_ID }, digest: 'weights, P&L' },
+        ],
+        citations: [
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Holdings', href: '/holdings' },
+        ],
+      };
     }
-    return { ...base, content: 'Demo mode understands a few prompts: “summarise my portfolio”, “dividends”, “what if OGDC drops 10%”, “explain the latest signal”, “suggest an order”. With a configured LLM provider and opt-in, the assistant uses read-only tools over your data.', toolCalls: [], citations: [{ label: 'Assistant settings', href: '/settings' }] };
+    return {
+      ...base,
+      content:
+        'Demo mode understands a few prompts: “summarise my portfolio”, “dividends”, “what if OGDC drops 10%”, “explain the latest signal”, “suggest an order”. With a configured LLM provider and opt-in, the assistant uses read-only tools over your data.',
+      toolCalls: [],
+      citations: [{ label: 'Assistant settings', href: '/settings' }],
+    };
   }
 
   broker: ApiClient['broker'] = {
@@ -1308,57 +2174,136 @@ export class DemoApiClient implements ApiClient {
     upload: ({ portfolioId, fileName, content, kind }) =>
       this.run((s) => {
         const target = s.portfolios.find((p) => p.id === portfolioId);
-        if (!target || target.kind !== 'LIVE') throw new ApiError('IMPORT_REQUIRES_LIVE_PORTFOLIO', 422, 'Live portfolio required', 'Statements can only be imported into a LIVE broker portfolio');
-        if (new Blob([content]).size > 2 * 1024 * 1024) throw new ApiError('VALIDATION_FAILED', 422, 'File too large', 'Max 2 MB');
-        if (s.importContents.has(content)) throw new ApiError('DUPLICATE_IMPORT', 409, 'Duplicate import', `This exact file was already imported (${s.importContents.get(content)}).`);
-        if (!/\.csv$/i.test(fileName) && kind !== 'GENERIC_TRANSACTIONS_CSV') throw new ApiError('UNSUPPORTED_FILE', 422, 'Unsupported file', 'Upload a CSV with date, symbol, side, quantity, price columns.');
+        if (!target || target.kind !== 'LIVE')
+          throw new ApiError(
+            'IMPORT_REQUIRES_LIVE_PORTFOLIO',
+            422,
+            'Live portfolio required',
+            'Statements can only be imported into a LIVE broker portfolio',
+          );
+        if (new Blob([content]).size > 2 * 1024 * 1024)
+          throw new ApiError('VALIDATION_FAILED', 422, 'File too large', 'Max 2 MB');
+        if (s.importContents.has(content))
+          throw new ApiError(
+            'DUPLICATE_IMPORT',
+            409,
+            'Duplicate import',
+            `This exact file was already imported (${s.importContents.get(content)}).`,
+          );
+        if (!/\.csv$/i.test(fileName) && kind !== 'GENERIC_TRANSACTIONS_CSV')
+          throw new ApiError(
+            'UNSUPPORTED_FILE',
+            422,
+            'Unsupported file',
+            'Upload a CSV with date, symbol, side, quantity, price columns.',
+          );
         const parsed = parseDemoCsv(content);
         if (!parsed.ok) throw new ApiError('PARSE_FAILED', 422, 'Could not parse file', parsed.error);
-        if (parsed.rows.length === 0) throw new ApiError('EMPTY_FILE', 422, 'Empty file', 'The file contains no data rows.');
+        if (parsed.rows.length === 0)
+          throw new ApiError('EMPTY_FILE', 422, 'Empty file', 'The file contains no data rows.');
         const id = this.id('imp');
-        const committedKeys = new Set([...s.importRows.values()].flat().filter((r) => r.status === 'COMMITTED').map(demoRowKey));
+        const committedKeys = new Set(
+          [...s.importRows.values()]
+            .flat()
+            .filter((r) => r.status === 'COMMITTED')
+            .map(demoRowKey),
+        );
         const rows: ImportRow[] = parsed.rows.map((r, i) => {
           const errors = [...r.errors];
-          if (r.symbol && !DEMO_SYMBOLS.includes(r.symbol)) errors.push(`unknown symbol ${r.symbol} (not in the PSX stock list)`);
+          if (r.symbol && !DEMO_SYMBOLS.includes(r.symbol))
+            errors.push(`unknown symbol ${r.symbol} (not in the PSX stock list)`);
           const warnings: string[] = [];
           let status: ImportRow['status'] = errors.length ? 'INVALID' : 'VALID';
           let duplicateOf: ImportRow['duplicateOf'] = null;
-          const row: ImportRow = { id: `${id}-r${i + 1}`, rowNo: r.rowNo, status, tradeDate: r.tradeDate, symbol: r.symbol, side: r.side, quantity: r.quantity, price: r.price, contractRef: r.contractRef, fees: r.fees, feeSource: r.fees.length ? 'FILE' : 'ESTIMATED_ON_COMMIT', duplicateOf, errors, warnings, message: null };
+          const row: ImportRow = {
+            id: `${id}-r${i + 1}`,
+            rowNo: r.rowNo,
+            status,
+            tradeDate: r.tradeDate,
+            symbol: r.symbol,
+            side: r.side,
+            quantity: r.quantity,
+            price: r.price,
+            contractRef: r.contractRef,
+            fees: r.fees,
+            feeSource: r.fees.length ? 'FILE' : 'ESTIMATED_ON_COMMIT',
+            duplicateOf,
+            errors,
+            warnings,
+            message: null,
+          };
           if (status === 'VALID' && committedKeys.has(demoRowKey(row))) {
             status = 'DUPLICATE';
             duplicateOf = { kind: 'IMPORT_ROW', id: '', detail: 'already imported in an earlier file' };
             warnings.push(`${duplicateOf.detail} — skipped unless you include it`);
           }
-          if (status !== 'INVALID' && !r.fees.length) warnings.push('no charges in file — fees will be ESTIMATED from the fee schedule');
+          if (status !== 'INVALID' && !r.fees.length)
+            warnings.push('no charges in file — fees will be ESTIMATED from the fee schedule');
           return { ...row, status, duplicateOf, message: [...errors, ...warnings].join('; ') || null };
         });
         s.importRows.set(id, rows);
         s.importContents.set(content, fileName);
         const dates = rows.flatMap((r) => (r.tradeDate ? [r.tradeDate] : [])).sort();
-        const b: ImportBatch = { id, portfolioId, kind: 'GENERIC_TRANSACTIONS_CSV', channel: 'UPLOAD', fileName, sizeBytes: new Blob([content]).size, parserKey: 'generic.transactions.csv', source: 'USER_REPORTED', status: 'AWAITING_REVIEW', uploadedAt: this.iso(), committedAt: null, periodFrom: dates[0] ?? null, periodTo: dates.at(-1) ?? null, rowCounts: countRows(rows) };
+        const b: ImportBatch = {
+          id,
+          portfolioId,
+          kind: 'GENERIC_TRANSACTIONS_CSV',
+          channel: 'UPLOAD',
+          fileName,
+          sizeBytes: new Blob([content]).size,
+          parserKey: 'generic.transactions.csv',
+          source: 'USER_REPORTED',
+          status: 'AWAITING_REVIEW',
+          uploadedAt: this.iso(),
+          committedAt: null,
+          periodFrom: dates[0] ?? null,
+          periodTo: dates.at(-1) ?? null,
+          rowCounts: countRows(rows),
+        };
         s.imports.unshift(b);
         return b;
       }),
     updateImportRow: (importId, rowId, action) =>
       this.run((s) => {
         const b = s.imports.find((x) => x.id === importId);
-        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
+        if (!b || b.status !== 'AWAITING_REVIEW')
+          throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
         const row = (s.importRows.get(importId) ?? []).find((r) => r.id === rowId);
         if (!row) throw new ApiError('NOT_FOUND', 404, 'Row not found');
         if (action === 'skip') row.status = 'SKIPPED';
-        else if (row.status === 'DUPLICATE' || (row.status === 'SKIPPED' && row.errors.length === 0)) row.status = 'VALID';
-        else throw new ApiError('ROW_NOT_INCLUDABLE', 409, 'Row cannot be included', `A ${row.status} row cannot be included — fix the file and re-upload.`);
+        else if (row.status === 'DUPLICATE' || (row.status === 'SKIPPED' && row.errors.length === 0))
+          row.status = 'VALID';
+        else
+          throw new ApiError(
+            'ROW_NOT_INCLUDABLE',
+            409,
+            'Row cannot be included',
+            `A ${row.status} row cannot be included — fix the file and re-upload.`,
+          );
         b.rowCounts = countRows(s.importRows.get(importId) ?? []);
         return row;
       }),
     commitImport: (id) =>
       this.run((s) => {
         const b = s.imports.find((x) => x.id === id);
-        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
+        if (!b || b.status !== 'AWAITING_REVIEW')
+          throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
         const rows = s.importRows.get(id) ?? [];
         const invalid = rows.filter((r) => r.status === 'INVALID');
-        if (invalid.length) throw new ApiError('IMPORT_HAS_INVALID_ROWS', 409, 'Invalid rows remain', `Skip or fix ${invalid.length} invalid row(s) first (rows ${invalid.map((r) => r.rowNo).join(', ')}) — nothing is dropped silently.`);
-        if (!rows.some((r) => r.status === 'VALID')) throw new ApiError('NOTHING_TO_COMMIT', 409, 'Nothing to commit', 'No rows to commit — reject the import instead.');
+        if (invalid.length)
+          throw new ApiError(
+            'IMPORT_HAS_INVALID_ROWS',
+            409,
+            'Invalid rows remain',
+            `Skip or fix ${invalid.length} invalid row(s) first (rows ${invalid.map((r) => r.rowNo).join(', ')}) — nothing is dropped silently.`,
+          );
+        if (!rows.some((r) => r.status === 'VALID'))
+          throw new ApiError(
+            'NOTHING_TO_COMMIT',
+            409,
+            'Nothing to commit',
+            'No rows to commit — reject the import instead.',
+          );
         rows.forEach((r) => {
           if (r.status === 'VALID') r.status = 'COMMITTED';
         });
@@ -1370,7 +2315,8 @@ export class DemoApiClient implements ApiClient {
     rejectImport: (id) =>
       this.run((s) => {
         const b = s.imports.find((x) => x.id === id);
-        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
+        if (!b || b.status !== 'AWAITING_REVIEW')
+          throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
         b.status = 'REJECTED';
         return b;
       }),
@@ -1384,10 +2330,34 @@ export class DemoApiClient implements ApiClient {
         twoFactorEnabled: true,
         passwordUpdatedAt: `${daysAgo(60)}T05:00:00Z`,
         recentEvents: [
-          { id: 'ae-1', at: `${daysAgo(0)}T04:42:00Z`, action: 'order.approve', actor: 'USER' as const, detail: 'Step-up verified; LUCK BUY approved' },
-          { id: 'ae-2', at: `${daysAgo(3)}T04:00:00Z`, action: 'auth.login', actor: 'USER' as const, detail: 'Login with TOTP from Chrome on Windows' },
-          { id: 'ae-3', at: `${daysAgo(9)}T03:00:00Z`, action: 'sync.import.commit', actor: 'WORKER' as const, detail: 'Contract note auto-committed (1 trade)' },
-          { id: 'ae-4', at: `${daysAgo(30)}T04:00:00Z`, action: 'killswitch.update', actor: 'USER' as const, detail: 'Live order preparation enabled' },
+          {
+            id: 'ae-1',
+            at: `${daysAgo(0)}T04:42:00Z`,
+            action: 'order.approve',
+            actor: 'USER' as const,
+            detail: 'Step-up verified; LUCK BUY approved',
+          },
+          {
+            id: 'ae-2',
+            at: `${daysAgo(3)}T04:00:00Z`,
+            action: 'auth.login',
+            actor: 'USER' as const,
+            detail: 'Login with TOTP from Chrome on Windows',
+          },
+          {
+            id: 'ae-3',
+            at: `${daysAgo(9)}T03:00:00Z`,
+            action: 'sync.import.commit',
+            actor: 'WORKER' as const,
+            detail: 'Contract note auto-committed (1 trade)',
+          },
+          {
+            id: 'ae-4',
+            at: `${daysAgo(30)}T04:00:00Z`,
+            action: 'killswitch.update',
+            actor: 'USER' as const,
+            detail: 'Live order preparation enabled',
+          },
         ],
       })),
     sessions: () => this.run((s) => s.sessions),
@@ -1424,7 +2394,12 @@ export class DemoApiClient implements ApiClient {
     testChannel: (channel) =>
       this.run((s) => {
         const c = s.channels.find((x) => x.channel === channel);
-        return c?.configured ? { ok: true, message: `Demo: a test ${channel.toLowerCase()} message would be sent to ${c.target}. Nothing was sent.` } : { ok: false, message: 'Channel is not configured' };
+        return c?.configured
+          ? {
+              ok: true,
+              message: `Demo: a test ${channel.toLowerCase()} message would be sent to ${c.target}. Nothing was sent.`,
+            }
+          : { ok: false, message: 'Channel is not configured' };
       }),
     user: () => this.run((s) => s.userSettings),
     updateUser: (u) =>

@@ -113,11 +113,15 @@ export function xirr(cashflows: readonly XirrCashFlow[], options: XirrOptions = 
   }
   let first = parsed[0]?.date as string;
   for (const c of parsed) if (c.date < first) first = c.date;
-  const flows: Flow[] = parsed.map((c) => ({ t: fromInt(daysBetween(first, c.date)).div(DAYS_PER_YEAR), a: c.a }));
+  const flows: Flow[] = parsed.map((c) => ({
+    t: fromInt(daysBetween(first, c.date)).div(DAYS_PER_YEAR),
+    a: c.a,
+  }));
 
   const tol = d(options.tolerance ?? '1e-12');
   const maxIter = options.maxIterations ?? 100;
-  if (!Number.isSafeInteger(maxIter) || maxIter < 1) throw new RangeError('maxIterations must be a positive integer');
+  if (!Number.isSafeInteger(maxIter) || maxIter < 1)
+    throw new RangeError('maxIterations must be a positive integer');
   const g = newton(flows, ONE.plus(d(options.guess ?? '0.1')), tol, maxIter) ?? bisection(flows, tol);
   if (g === null) throw new XirrError('NO_CONVERGENCE', 'XIRR did not converge (no bracketed root)');
   // NB: for annualised losses within ~1e-34 of −100%, g − 1 rounds to exactly −1 at precision 34.

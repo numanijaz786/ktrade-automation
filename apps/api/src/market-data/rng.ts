@@ -29,7 +29,8 @@ export class SeededRng {
 
   /** Integer in [0, n). Modulo bias is < 2^-20 for the small n used here. */
   intBelow(n: number): number {
-    if (!Number.isSafeInteger(n) || n <= 0) throw new RangeError(`intBelow expects a positive integer, got ${n}`);
+    if (!Number.isSafeInteger(n) || n <= 0)
+      throw new RangeError(`intBelow expects a positive integer, got ${n}`);
     return this.nextU32() % n;
   }
 

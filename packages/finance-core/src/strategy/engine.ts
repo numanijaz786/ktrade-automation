@@ -9,7 +9,12 @@
 import { type Decimal, fromInt, pct, round, sum, ZERO } from '../decimal.js';
 import { at, maxInt } from '../indicators/internal.js';
 import { AtrIndicator, BollingerIndicator, type BollingerValue } from '../indicators/volatility.js';
-import { EmaIndicator, SmaIndicator, VolumeSmaIndicator, WmaIndicator } from '../indicators/moving-averages.js';
+import {
+  EmaIndicator,
+  SmaIndicator,
+  VolumeSmaIndicator,
+  WmaIndicator,
+} from '../indicators/moving-averages.js';
 import { MacdIndicator, type MacdValue, RocIndicator, RsiIndicator } from '../indicators/oscillators.js';
 import { HighestIndicator, LowestIndicator } from '../indicators/rolling.js';
 import { type OhlcvBar, type StreamingIndicator } from '../indicators/types.js';
@@ -81,7 +86,8 @@ interface SeriesNode {
   compute(ctx: StepContext): Decimal | null;
 }
 
-type AnyIndicator = StreamingIndicator<Decimal> | StreamingIndicator<MacdValue> | StreamingIndicator<BollingerValue>;
+type AnyIndicator =
+  StreamingIndicator<Decimal> | StreamingIndicator<MacdValue> | StreamingIndicator<BollingerValue>;
 
 const ARITH_SYMBOL = { add: '+', sub: '-', mul: '*', div: '/' } as const;
 
@@ -173,7 +179,12 @@ class GraphPlan {
   operand(o: OperandAst): NodePlan {
     switch (o.k) {
       case 'const':
-        return this.add({ key: `const:${o.value.toString()}`, label: o.value.toString(), warmup: 1, build: () => () => o.value });
+        return this.add({
+          key: `const:${o.value.toString()}`,
+          label: o.value.toString(),
+          warmup: 1,
+          build: () => () => o.value,
+        });
       case 'pos': {
         const f = o.field;
         return this.add({
@@ -190,7 +201,11 @@ class GraphPlan {
           label: f,
           warmup: f === 'changePct' ? 2 : 1,
           build: () => (ctx) =>
-            f === 'changePct' ? (ctx.prevClose === null ? null : pct(ctx.bar.close.minus(ctx.prevClose), ctx.prevClose)) : ctx.bar[f],
+            f === 'changePct'
+              ? ctx.prevClose === null
+                ? null
+                : pct(ctx.bar.close.minus(ctx.prevClose), ctx.prevClose)
+              : ctx.bar[f],
         });
         return o.offset === 0 ? base : this.offset(base, o.offset);
       }
@@ -285,7 +300,14 @@ class SeriesGraph {
   constructor(plan: GraphPlan) {
     for (const [k, spec] of plan.indicatorSpecs) this.indicators.set(k, makeIndicator(spec));
     for (const p of plan.nodes) {
-      const n: SeriesNode = { key: p.key, label: p.label, warmup: p.warmup, keep: p.keep, hist: [], compute: () => null };
+      const n: SeriesNode = {
+        key: p.key,
+        label: p.label,
+        warmup: p.warmup,
+        keep: p.keep,
+        hist: [],
+        compute: () => null,
+      };
       this.nodes.push(n);
       this.nodeByKey.set(p.key, n);
     }
@@ -387,7 +409,13 @@ function planCondition(plan: GraphPlan, r: RuleAst): CondPlan {
             const idx = trace.length;
             trace.push(null as unknown as RuleTraceEntry);
             const ok = !f(trace);
-            trace[idx] = { path: r.path, kind: 'not', result: ok, operands: [], text: `NOT -> ${String(ok)}` };
+            trace[idx] = {
+              path: r.path,
+              kind: 'not',
+              result: ok,
+              operands: [],
+              text: `NOT -> ${String(ok)}`,
+            };
             return ok;
           };
         },
@@ -539,13 +567,17 @@ export interface RulesEvaluator<K extends string = string> {
   readonly barsSeen: number;
 }
 
-export type CompileRulesResult<K extends string> = { ok: true; compiled: CompiledRules<K> } | { ok: false; errors: DslError[] };
+export type CompileRulesResult<K extends string> =
+  { ok: true; compiled: CompiledRules<K> } | { ok: false; errors: DslError[] };
 
 /**
  * Validate and compile several named rules over one shared operand graph (indicators are computed once).
  * Error paths are prefixed with `$.<name>`.
  */
-export function tryCompileRules<K extends string>(rules: Readonly<Record<K, unknown>>, params: StrategyParams = {}): CompileRulesResult<K> {
+export function tryCompileRules<K extends string>(
+  rules: Readonly<Record<K, unknown>>,
+  params: StrategyParams = {},
+): CompileRulesResult<K> {
   const names = Object.keys(rules) as K[];
   const errors: DslError[] = [];
   const asts = new Map<K, RuleAst>();
@@ -591,7 +623,10 @@ export function tryCompileRules<K extends string>(rules: Readonly<Record<K, unkn
 }
 
 /** Like `tryCompileRules` but throws `RuleValidationError`. */
-export function compileRules<K extends string>(rules: Readonly<Record<K, unknown>>, params: StrategyParams = {}): CompiledRules<K> {
+export function compileRules<K extends string>(
+  rules: Readonly<Record<K, unknown>>,
+  params: StrategyParams = {},
+): CompiledRules<K> {
   const r = tryCompileRules(rules, params);
   if (!r.ok) throw new RuleValidationError(r.errors);
   return r.compiled;

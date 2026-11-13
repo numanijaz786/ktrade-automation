@@ -8,15 +8,33 @@ import tseslint from 'typescript-eslint';
 const noFloatMoney = {
   'no-restricted-syntax': [
     'error',
-    { selector: "CallExpression[callee.name='parseFloat']", message: 'No floats for money: use d() from finance-core.' },
-    { selector: "CallExpression[callee.name='Number']", message: 'No Number() for money: use d() / fromInt().' },
+    {
+      selector: "CallExpression[callee.name='parseFloat']",
+      message: 'No floats for money: use d() from finance-core.',
+    },
+    {
+      selector: "CallExpression[callee.name='Number']",
+      message: 'No Number() for money: use d() / fromInt().',
+    },
     { selector: "MemberExpression[object.name='Math']", message: 'No Math.* on money: use Decimal methods.' },
-    { selector: "CallExpression[callee.property.name='toNumber']", message: 'No Decimal#toNumber() in domain code.' },
+    {
+      selector: "CallExpression[callee.property.name='toNumber']",
+      message: 'No Decimal#toNumber() in domain code.',
+    },
   ],
 };
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/.next/**', '**/coverage/**', '**/generated/**', '**/node_modules/**', '**/*.config.*'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/.next/**',
+      '**/coverage/**',
+      '**/generated/**',
+      '**/node_modules/**',
+      '**/*.config.*',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

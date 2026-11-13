@@ -31,7 +31,11 @@ function Items({ pathname }: { pathname: string | null }) {
         );
       })}
       <li>
-        <button type="button" onClick={() => setOpenMobile(true)} className="flex w-full flex-col items-center gap-0.5 py-2 text-[0.6875rem] font-medium text-muted-foreground outline-none focus-visible:bg-muted">
+        <button
+          type="button"
+          onClick={() => setOpenMobile(true)}
+          className="flex w-full flex-col items-center gap-0.5 py-2 text-[0.6875rem] font-medium text-muted-foreground outline-none focus-visible:bg-muted"
+        >
           <Menu className="size-5" aria-hidden="true" />
           More
         </button>
@@ -47,7 +51,10 @@ function ActiveItems() {
 /** Bottom navigation for phones (< md). */
 export function MobileNav() {
   return (
-    <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+    <nav
+      aria-label="Primary"
+      className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+    >
       <Suspense fallback={<Items pathname={null} />}>
         <ActiveItems />
       </Suspense>

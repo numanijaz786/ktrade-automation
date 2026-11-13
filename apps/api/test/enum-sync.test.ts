@@ -17,6 +17,7 @@ describe('Prisma enums ↔ @ktrade/shared enums', () => {
   });
 
   it('shared declares no enums that the database does not have', () => {
-    for (const name of Object.keys(ALL_ENUMS)) expect(prisma[name], `Prisma lacks enum ${name}`).toBeDefined();
+    for (const name of Object.keys(ALL_ENUMS))
+      expect(prisma[name], `Prisma lacks enum ${name}`).toBeDefined();
   });
 });

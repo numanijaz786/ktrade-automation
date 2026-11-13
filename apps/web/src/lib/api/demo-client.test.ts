@@ -86,7 +86,9 @@ describe('DemoApiClient data', () => {
     const c = client();
     await c.market.quotes();
     const seen: string[] = [];
-    const unsub = c.market.subscribeQuotes(['OGDC', 'PPL', 'HUBC', 'LUCK', 'MCB', 'UBL', 'SYS', 'TRG'], (t) => seen.push(t.symbol));
+    const unsub = c.market.subscribeQuotes(['OGDC', 'PPL', 'HUBC', 'LUCK', 'MCB', 'UBL', 'SYS', 'TRG'], (t) =>
+      seen.push(t.symbol),
+    );
     for (let i = 0; i < 5; i++) c.tickOnce();
     unsub();
     expect(seen.length).toBeGreaterThan(0);
@@ -103,7 +105,14 @@ describe('order preview → approval → manual ticket → fill', () => {
   it('rejects live previews while the kill switch is OFF (the default)', async () => {
     const c = client();
     expect((await c.system.killSwitch()).liveTradingEnabled).toBe(false);
-    const order = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'HUBC', side: 'BUY', type: 'MARKET', quantity: '10', origin: 'MANUAL' });
+    const order = await c.orders.preview({
+      portfolioId: LIVE_PORTFOLIO_ID,
+      symbol: 'HUBC',
+      side: 'BUY',
+      type: 'MARKET',
+      quantity: '10',
+      origin: 'MANUAL',
+    });
     expect(order.status).toBe('REJECTED_BY_RISK');
     expect(order.riskChecks.find((r) => r.rule === 'KILL_SWITCH')?.passed).toBe(false);
   });
@@ -111,7 +120,14 @@ describe('order preview → approval → manual ticket → fill', () => {
   it('previews with risk checks, approves with step-up and never fills without a recorded fill', async () => {
     const c = client();
     await enableLiveTrading(c);
-    const order = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'HUBC', side: 'BUY', type: 'MARKET', quantity: '10', origin: 'MANUAL' });
+    const order = await c.orders.preview({
+      portfolioId: LIVE_PORTFOLIO_ID,
+      symbol: 'HUBC',
+      side: 'BUY',
+      type: 'MARKET',
+      quantity: '10',
+      origin: 'MANUAL',
+    });
     expect(order.status).toBe('PREVIEWED');
     expect(order.executionPath).toBe('MANUAL_TICKET');
     expect(order.riskChecks).toHaveLength(12);
@@ -119,10 +135,14 @@ describe('order preview → approval → manual ticket → fill', () => {
     expect(order.warnings[0]).toMatch(/manual/i);
     expect(order.previewExpiresAt).toBe('2026-11-13T07:20:00.000Z');
 
-    await expect(c.orders.approve(order.id, { previewHash: order.previewHash, stepUpToken: 'nope' })).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    await expect(
+      c.orders.approve(order.id, { previewHash: order.previewHash, stepUpToken: 'nope' }),
+    ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' });
     await expect(c.auth.stepUp('000000')).rejects.toBeInstanceOf(ApiError);
     const { token } = await c.auth.stepUp('123456');
-    await expect(c.orders.approve(order.id, { previewHash: 'sha256:wrong', stepUpToken: token })).rejects.toMatchObject({ code: 'PREVIEW_MISMATCH' });
+    await expect(
+      c.orders.approve(order.id, { previewHash: 'sha256:wrong', stepUpToken: token }),
+    ).rejects.toMatchObject({ code: 'PREVIEW_MISMATCH' });
 
     const approved = await c.orders.approve(order.id, { previewHash: order.previewHash, stepUpToken: token });
     expect(approved.status).toBe('AWAITING_MANUAL_PLACEMENT');
@@ -133,10 +153,20 @@ describe('order preview → approval → manual ticket → fill', () => {
     expect(placed.status).toBe('PLACED_BY_USER');
     expect(placed.executions).toHaveLength(0);
 
-    await expect(c.orders.recordFill(order.id, { quantity: '11', price: '150.00', executedAt: '2026-11-13T07:30:00Z' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
-    const partial = await c.orders.recordFill(order.id, { quantity: '4', price: '150.00', executedAt: '2026-11-13T07:30:00Z' });
+    await expect(
+      c.orders.recordFill(order.id, { quantity: '11', price: '150.00', executedAt: '2026-11-13T07:30:00Z' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    const partial = await c.orders.recordFill(order.id, {
+      quantity: '4',
+      price: '150.00',
+      executedAt: '2026-11-13T07:30:00Z',
+    });
     expect(partial.status).toBe('PARTIALLY_FILLED');
-    const filled = await c.orders.recordFill(order.id, { quantity: '6', price: '151.00', executedAt: '2026-11-13T07:31:00Z' });
+    const filled = await c.orders.recordFill(order.id, {
+      quantity: '6',
+      price: '151.00',
+      executedAt: '2026-11-13T07:31:00Z',
+    });
     expect(filled.status).toBe('FILLED');
     expect(filled.avgFillPrice).toBe('150.6000');
     expect(filled.executions.every((e) => e.source === 'USER_REPORTED')).toBe(true);
@@ -144,7 +174,14 @@ describe('order preview → approval → manual ticket → fill', () => {
 
   it('rejects by risk when a limit is breached', async () => {
     const c = client();
-    const o = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'KEL', side: 'BUY', type: 'MARKET', quantity: '50000', origin: 'MANUAL' });
+    const o = await c.orders.preview({
+      portfolioId: LIVE_PORTFOLIO_ID,
+      symbol: 'KEL',
+      side: 'BUY',
+      type: 'MARKET',
+      quantity: '50000',
+      origin: 'MANUAL',
+    });
     expect(o.status).toBe('REJECTED_BY_RISK');
     expect(o.riskChecks.find((r) => r.rule === 'MAX_ORDER_QTY')?.passed).toBe(false);
   });
@@ -153,15 +190,31 @@ describe('order preview → approval → manual ticket → fill', () => {
     let now = NOW;
     const c = client(() => now);
     await enableLiveTrading(c);
-    const o = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'OGDC', side: 'BUY', type: 'MARKET', quantity: '5', origin: 'MANUAL' });
+    const o = await c.orders.preview({
+      portfolioId: LIVE_PORTFOLIO_ID,
+      symbol: 'OGDC',
+      side: 'BUY',
+      type: 'MARKET',
+      quantity: '5',
+      origin: 'MANUAL',
+    });
     now += 6 * 60 * 1000;
     const { token } = await c.auth.stepUp('123456');
-    await expect(c.orders.approve(o.id, { previewHash: o.previewHash, stepUpToken: token })).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
+    await expect(
+      c.orders.approve(o.id, { previewHash: o.previewHash, stepUpToken: token }),
+    ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
   });
 
   it('auto-fills paper orders with a SIMULATED execution', async () => {
     const c = client();
-    const o = await c.orders.preview({ portfolioId: PAPER_PORTFOLIO_ID, symbol: 'UBL', side: 'BUY', type: 'MARKET', quantity: '10', origin: 'MANUAL' });
+    const o = await c.orders.preview({
+      portfolioId: PAPER_PORTFOLIO_ID,
+      symbol: 'UBL',
+      side: 'BUY',
+      type: 'MARKET',
+      quantity: '10',
+      origin: 'MANUAL',
+    });
     const { token } = await c.auth.stepUp('654321');
     const done = await c.orders.approve(o.id, { previewHash: o.previewHash, stepUpToken: token });
     expect(done.status).toBe('FILLED');
@@ -172,7 +225,16 @@ describe('order preview → approval → manual ticket → fill', () => {
 describe('backtests', () => {
   it('returns metrics, curve and the mandatory disclaimer', async () => {
     const c = client();
-    const bt = await c.backtests.run({ strategyType: 'MA_CROSSOVER', parameters: { fastPeriod: 9, slowPeriod: 21, maType: 'EMA' }, symbol: 'OGDC', interval: 'D1', from: '2025-01-01', to: '2026-11-13', initialCapital: '1000000.00', slippageBps: 10 });
+    const bt = await c.backtests.run({
+      strategyType: 'MA_CROSSOVER',
+      parameters: { fastPeriod: 9, slowPeriod: 21, maType: 'EMA' },
+      symbol: 'OGDC',
+      interval: 'D1',
+      from: '2025-01-01',
+      to: '2026-11-13',
+      initialCapital: '1000000.00',
+      slippageBps: 10,
+    });
     expect(bt.status).toBe('SUCCEEDED');
     expect(bt.metrics?.totalReturnPct).toMatch(/^-?\d+\.\d{2}$/);
     expect(bt.equityCurve.length).toBeGreaterThan(100);
@@ -182,14 +244,29 @@ describe('backtests', () => {
 });
 
 describe('statement import (demo mirrors the real pipeline rules)', () => {
-  const CSV = ['date,symbol,side,quantity,price,commission', '2026-11-02,OGDC,BUY,"1,000",250.00,750.00', '2026-11-03,NOPE,BUY,5,10,', '2026-11-04,HUBC,SELL,10,150.25,'].join('\n');
+  const CSV = [
+    'date,symbol,side,quantity,price,commission',
+    '2026-11-02,OGDC,BUY,"1,000",250.00,750.00',
+    '2026-11-03,NOPE,BUY,5,10,',
+    '2026-11-04,HUBC,SELL,10,150.25,',
+  ].join('\n');
 
   it('stages rows, flags invalid ones, blocks commit until skipped, then commits; rejects the same file twice', async () => {
     const c = client();
-    await expect(c.broker.upload({ portfolioId: 'pf-paper', fileName: 'x.csv', content: CSV })).rejects.toMatchObject({ code: 'IMPORT_REQUIRES_LIVE_PORTFOLIO' });
+    await expect(
+      c.broker.upload({ portfolioId: 'pf-paper', fileName: 'x.csv', content: CSV }),
+    ).rejects.toMatchObject({ code: 'IMPORT_REQUIRES_LIVE_PORTFOLIO' });
 
-    const batch = await c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'trades.csv', content: CSV });
-    expect(batch).toMatchObject({ status: 'AWAITING_REVIEW', source: 'USER_REPORTED', rowCounts: { VALID: 2, INVALID: 1 } });
+    const batch = await c.broker.upload({
+      portfolioId: LIVE_PORTFOLIO_ID,
+      fileName: 'trades.csv',
+      content: CSV,
+    });
+    expect(batch).toMatchObject({
+      status: 'AWAITING_REVIEW',
+      source: 'USER_REPORTED',
+      rowCounts: { VALID: 2, INVALID: 1 },
+    });
     const rows = await c.broker.importRows(batch.id);
     expect(rows.map((r) => [r.status, r.feeSource])).toEqual([
       ['VALID', 'FILE'],
@@ -200,13 +277,21 @@ describe('statement import (demo mirrors the real pipeline rules)', () => {
     expect(rows[1]!.errors.join()).toMatch(/unknown symbol NOPE/);
 
     await expect(c.broker.commitImport(batch.id)).rejects.toMatchObject({ code: 'IMPORT_HAS_INVALID_ROWS' });
-    await expect(c.broker.updateImportRow(batch.id, rows[1]!.id, 'include')).rejects.toMatchObject({ code: 'ROW_NOT_INCLUDABLE' });
+    await expect(c.broker.updateImportRow(batch.id, rows[1]!.id, 'include')).rejects.toMatchObject({
+      code: 'ROW_NOT_INCLUDABLE',
+    });
     await c.broker.updateImportRow(batch.id, rows[1]!.id, 'skip');
     const done = await c.broker.commitImport(batch.id);
     expect(done).toMatchObject({ status: 'COMMITTED', rowCounts: { COMMITTED: 2, SKIPPED: 1 } });
 
-    await expect(c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'copy.csv', content: CSV })).rejects.toMatchObject({ code: 'DUPLICATE_IMPORT' });
-    const overlap = await c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'next.csv', content: CSV.split('\n').slice(0, 2).join('\n') + '\n' });
+    await expect(
+      c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'copy.csv', content: CSV }),
+    ).rejects.toMatchObject({ code: 'DUPLICATE_IMPORT' });
+    const overlap = await c.broker.upload({
+      portfolioId: LIVE_PORTFOLIO_ID,
+      fileName: 'next.csv',
+      content: CSV.split('\n').slice(0, 2).join('\n') + '\n',
+    });
     expect(overlap.rowCounts).toEqual({ DUPLICATE: 1 });
   });
 });

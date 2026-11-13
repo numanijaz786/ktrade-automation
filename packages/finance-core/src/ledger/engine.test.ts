@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { type Decimal, d, sum } from '../decimal.js';
 import { computeTradeFees, ktradeDefaultSchedule } from '../fees/engine.js';
 import { applyEvent, createLedgerState, orderLedgerEvents, replay } from './engine.js';
-import { type CostBasisMethod, type LedgerEvent, type LedgerState, LedgerError, LedgerOversellError } from './types.js';
+import {
+  type CostBasisMethod,
+  type LedgerEvent,
+  type LedgerState,
+  LedgerError,
+  LedgerOversellError,
+} from './types.js';
 
 const KT = ktradeDefaultSchedule('2025-01-01');
 const fees = (side: 'BUY' | 'SELL', quantity: string, price: string) =>
@@ -11,9 +17,30 @@ const fees = (side: 'BUY' | 'SELL', quantity: string, price: string) =>
 
 /** docs/06 §3 fixture `wac-basic`, fees computed by the real fee engine. */
 const wacBasic: LedgerEvent[] = [
-  { id: 't1', date: '2025-03-03', type: 'BUY', quantity: '100', price: '250.00', fees: fees('BUY', '100', '250') },
-  { id: 't2', date: '2025-03-04', type: 'BUY', quantity: '50', price: '270.00', fees: fees('BUY', '50', '270') },
-  { id: 't3', date: '2025-03-05', type: 'SELL', quantity: '60', price: '280.00', fees: fees('SELL', '60', '280') },
+  {
+    id: 't1',
+    date: '2025-03-03',
+    type: 'BUY',
+    quantity: '100',
+    price: '250.00',
+    fees: fees('BUY', '100', '250'),
+  },
+  {
+    id: 't2',
+    date: '2025-03-04',
+    type: 'BUY',
+    quantity: '50',
+    price: '270.00',
+    fees: fees('BUY', '50', '270'),
+  },
+  {
+    id: 't3',
+    date: '2025-03-05',
+    type: 'SELL',
+    quantity: '60',
+    price: '280.00',
+    fees: fees('SELL', '60', '280'),
+  },
   { id: 'ca1', date: '2025-03-06', type: 'BONUS', ratioNew: '1', ratioOld: '10' },
 ];
 
@@ -58,7 +85,15 @@ describe('fixture wac-basic (docs/06 §3)', () => {
   it('final state: holding + lots (bonus lots at cost 0, dated on parent lot)', () => {
     expect(s4(state.realizedPnl)).toBe('1288.9080');
     expect(state.firstAcquiredDate).toBe('2025-03-03');
-    expect(state.lots.map((l) => [l.lotId, l.remainingQty.toString(), l.remainingCost.toFixed(4), l.holdingPeriodStart, l.origin])).toEqual([
+    expect(
+      state.lots.map((l) => [
+        l.lotId,
+        l.remainingQty.toString(),
+        l.remainingCost.toFixed(4),
+        l.holdingPeriodStart,
+        l.origin,
+      ]),
+    ).toEqual([
       ['t1', '40', '10034.5000', '2025-03-03', 'PURCHASE'],
       ['ca1#t1', '4', '0.0000', '2025-03-03', 'BONUS'],
       ['t2', '50', '13546.5800', '2025-03-04', 'PURCHASE'],
@@ -78,30 +113,54 @@ describe('fixture wac-basic (docs/06 §3)', () => {
 });
 
 describe('ledger edge cases', () => {
-  const buy = (id: string, date: string, quantity: string, price: string, f = '0'): LedgerEvent => ({ id, date, type: 'BUY', quantity, price, fees: f });
-  const sell = (id: string, date: string, quantity: string, price: string, f = '0'): LedgerEvent => ({ id, date, type: 'SELL', quantity, price, fees: f });
+  const buy = (id: string, date: string, quantity: string, price: string, f = '0'): LedgerEvent => ({
+    id,
+    date,
+    type: 'BUY',
+    quantity,
+    price,
+    fees: f,
+  });
+  const sell = (id: string, date: string, quantity: string, price: string, f = '0'): LedgerEvent => ({
+    id,
+    date,
+    type: 'SELL',
+    quantity,
+    price,
+    fees: f,
+  });
 
   it('rejects overselling with a typed error and never goes negative', () => {
     const { state } = replay([buy('b', '2025-01-01', '10', '100')]);
     expect(() => applyEvent(state, sell('s', '2025-01-02', '11', '100'))).toThrow(LedgerOversellError);
-    expect(() => applyEvent(createLedgerState(), sell('s', '2025-01-02', '1', '100'))).toThrow(LedgerOversellError);
-    expect(() => applyEvent(createLedgerState(), { id: 'x', date: '2025-01-02', type: 'TRANSFER_OUT', quantity: '1' })).toThrow(
-      expect.objectContaining({ code: 'OVERSELL' }),
+    expect(() => applyEvent(createLedgerState(), sell('s', '2025-01-02', '1', '100'))).toThrow(
+      LedgerOversellError,
     );
+    expect(() =>
+      applyEvent(createLedgerState(), { id: 'x', date: '2025-01-02', type: 'TRANSFER_OUT', quantity: '1' }),
+    ).toThrow(expect.objectContaining({ code: 'OVERSELL' }));
   });
 
   it('rejects zero / negative / over-precise quantities, negative prices and fees', () => {
     const s = createLedgerState();
-    expect(() => applyEvent(s, buy('b', '2025-01-01', '0', '1'))).toThrow(expect.objectContaining({ code: 'INVALID_QUANTITY' }));
+    expect(() => applyEvent(s, buy('b', '2025-01-01', '0', '1'))).toThrow(
+      expect.objectContaining({ code: 'INVALID_QUANTITY' }),
+    );
     expect(() => applyEvent(s, buy('b', '2025-01-01', '-5', '1'))).toThrow(LedgerError);
     expect(() => applyEvent(s, buy('b', '2025-01-01', '1.00001', '1'))).toThrow(LedgerError);
-    expect(() => applyEvent(s, buy('b', '2025-01-01', '1', '-1'))).toThrow(expect.objectContaining({ code: 'INVALID_PRICE' }));
-    expect(() => applyEvent(s, buy('b', '2025-01-01', '1', '1', '-0.01'))).toThrow(expect.objectContaining({ code: 'INVALID_FEES' }));
+    expect(() => applyEvent(s, buy('b', '2025-01-01', '1', '-1'))).toThrow(
+      expect.objectContaining({ code: 'INVALID_PRICE' }),
+    );
+    expect(() => applyEvent(s, buy('b', '2025-01-01', '1', '1', '-0.01'))).toThrow(
+      expect.objectContaining({ code: 'INVALID_FEES' }),
+    );
   });
 
   it('rejects out-of-order events and invalid dates', () => {
     const { state } = replay([buy('b', '2025-01-05', '10', '100')]);
-    expect(() => applyEvent(state, buy('c', '2025-01-04', '1', '1'))).toThrow(expect.objectContaining({ code: 'OUT_OF_ORDER' }));
+    expect(() => applyEvent(state, buy('c', '2025-01-04', '1', '1'))).toThrow(
+      expect.objectContaining({ code: 'OUT_OF_ORDER' }),
+    );
     expect(() => applyEvent(state, buy('c', '2025-13-01', '1', '1'))).toThrow(RangeError);
   });
 
@@ -150,7 +209,11 @@ describe('ledger edge cases', () => {
 
   it('bonus lot dating option BONUS_DATE appends lots dated on the bonus', () => {
     const { state } = replay(
-      [buy('b1', '2025-01-01', '10', '10'), buy('b2', '2025-01-02', '10', '10'), { id: 'bn', date: '2025-02-01', type: 'BONUS', ratioNew: '1', ratioOld: '2' }],
+      [
+        buy('b1', '2025-01-01', '10', '10'),
+        buy('b2', '2025-01-02', '10', '10'),
+        { id: 'bn', date: '2025-02-01', type: 'BONUS', ratioNew: '1', ratioOld: '2' },
+      ],
       'FIFO',
       { bonusLotDating: 'BONUS_DATE' },
     );
@@ -163,21 +226,43 @@ describe('ledger edge cases', () => {
   });
 
   it('bonus / split on a flat position is a no-op', () => {
-    const r = applyEvent(createLedgerState(), { id: 'bn', date: '2025-02-01', type: 'BONUS', ratioNew: '1', ratioOld: '5' });
+    const r = applyEvent(createLedgerState(), {
+      id: 'bn',
+      date: '2025-02-01',
+      type: 'BONUS',
+      ratioNew: '1',
+      ratioOld: '5',
+    });
     expect(r.state.quantity.isZero()).toBe(true);
-    const s = applyEvent(createLedgerState(), { id: 'sp', date: '2025-02-01', type: 'SPLIT', ratioNew: '2', ratioOld: '1' });
+    const s = applyEvent(createLedgerState(), {
+      id: 'sp',
+      date: '2025-02-01',
+      type: 'SPLIT',
+      ratioNew: '2',
+      ratioOld: '1',
+    });
     expect(s.state.quantity.isZero()).toBe(true);
   });
 
   it('split 2:1 doubles qty, halves avg, keeps cost; lots scale', () => {
     const { state, results } = replay(
-      [buy('b1', '2025-01-01', '10', '100', '5'), buy('b2', '2025-01-02', '5', '110'), { id: 'sp', date: '2025-02-01', type: 'SPLIT', ratioNew: '2', ratioOld: '1' }],
+      [
+        buy('b1', '2025-01-01', '10', '100', '5'),
+        buy('b2', '2025-01-02', '5', '110'),
+        { id: 'sp', date: '2025-02-01', type: 'SPLIT', ratioNew: '2', ratioOld: '1' },
+      ],
       'FIFO',
     );
     expect(state.quantity.toString()).toBe('30');
     expect(s4(state.totalCost)).toBe('1555.0000');
     expect(s6(results[2]!.avgCostAfter)).toBe('51.833333');
-    expect(state.lots.map((l) => [l.remainingQty.toString(), l.originalQty.toString(), l.remainingCost.toFixed(4)])).toEqual([
+    expect(
+      state.lots.map((l) => [
+        l.remainingQty.toString(),
+        l.originalQty.toString(),
+        l.remainingCost.toFixed(4),
+      ]),
+    ).toEqual([
       ['20', '20', '1005.0000'],
       ['10', '10', '550.0000'],
     ]);
@@ -185,7 +270,11 @@ describe('ledger edge cases', () => {
 
   it('reverse split 1:10 floors, keeps cost on surviving lots, reports the fraction', () => {
     const { state, results } = replay(
-      [buy('b1', '2025-01-01', '25', '10'), buy('b2', '2025-01-02', '3', '20'), { id: 'rs', date: '2025-02-01', type: 'REVERSE_SPLIT', ratioNew: '1', ratioOld: '10' }],
+      [
+        buy('b1', '2025-01-01', '25', '10'),
+        buy('b2', '2025-01-02', '3', '20'),
+        { id: 'rs', date: '2025-02-01', type: 'REVERSE_SPLIT', ratioNew: '1', ratioOld: '10' },
+      ],
       'FIFO',
     );
     // 28 / 10 = 2.8 → 2 shares, 0.8 fractional. Lots exact 2.5 and 0.3 → [2, 0]; b2's cost moves to b1.
@@ -198,7 +287,10 @@ describe('ledger edge cases', () => {
   });
 
   it('reverse split that leaves 0 shares writes the cost off to realized', () => {
-    const { state, results } = replay([buy('b1', '2025-01-01', '5', '10'), { id: 'rs', date: '2025-02-01', type: 'REVERSE_SPLIT', ratioNew: '1', ratioOld: '10' }]);
+    const { state, results } = replay([
+      buy('b1', '2025-01-01', '5', '10'),
+      { id: 'rs', date: '2025-02-01', type: 'REVERSE_SPLIT', ratioNew: '1', ratioOld: '10' },
+    ]);
     expect(state.quantity.isZero()).toBe(true);
     expect(state.totalCost.isZero()).toBe(true);
     expect(s4(results[1]!.realizedPnl!)).toBe('-50.0000');
@@ -207,17 +299,28 @@ describe('ledger edge cases', () => {
 
   it('validates split direction and ratio sign', () => {
     const { state } = replay([buy('b1', '2025-01-01', '5', '10')]);
-    expect(() => applyEvent(state, { id: 'x', date: '2025-02-01', type: 'SPLIT', ratioNew: '1', ratioOld: '2' })).toThrow(
-      expect.objectContaining({ code: 'INVALID_RATIO' }),
-    );
-    expect(() => applyEvent(state, { id: 'x', date: '2025-02-01', type: 'REVERSE_SPLIT', ratioNew: '2', ratioOld: '1' })).toThrow(LedgerError);
-    expect(() => applyEvent(state, { id: 'x', date: '2025-02-01', type: 'BONUS', ratioNew: '0', ratioOld: '1' })).toThrow(LedgerError);
+    expect(() =>
+      applyEvent(state, { id: 'x', date: '2025-02-01', type: 'SPLIT', ratioNew: '1', ratioOld: '2' }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RATIO' }));
+    expect(() =>
+      applyEvent(state, { id: 'x', date: '2025-02-01', type: 'REVERSE_SPLIT', ratioNew: '2', ratioOld: '1' }),
+    ).toThrow(LedgerError);
+    expect(() =>
+      applyEvent(state, { id: 'x', date: '2025-02-01', type: 'BONUS', ratioNew: '0', ratioOld: '1' }),
+    ).toThrow(LedgerError);
   });
 
   it('rights subscription is a buy at the subscription price', () => {
     const { state, results } = replay([
       buy('b1', '2025-01-01', '100', '50'),
-      { id: 'r1', date: '2025-03-01', type: 'RIGHTS_SUBSCRIPTION', quantity: '20', price: '10', fees: '1.50' },
+      {
+        id: 'r1',
+        date: '2025-03-01',
+        type: 'RIGHTS_SUBSCRIPTION',
+        quantity: '20',
+        price: '10',
+        fees: '1.50',
+      },
     ]);
     expect(s4(results[1]!.costAdded)).toBe('201.5000');
     expect(s4(state.totalCost)).toBe('5201.5000');
@@ -226,7 +329,14 @@ describe('ledger edge cases', () => {
 
   it('transfers carry cost in and out without realizing P&L', () => {
     const { state, results } = replay([
-      { id: 'ti', date: '2025-01-10', type: 'TRANSFER_IN', quantity: '100', totalCost: '9000', acquiredDate: '2023-05-01' },
+      {
+        id: 'ti',
+        date: '2025-01-10',
+        type: 'TRANSFER_IN',
+        quantity: '100',
+        totalCost: '9000',
+        acquiredDate: '2023-05-01',
+      },
       { id: 'to', date: '2025-01-20', type: 'TRANSFER_OUT', quantity: '40' },
     ]);
     expect(state.lots[0]!.holdingPeriodStart).toBe('2023-05-01');
@@ -257,10 +367,42 @@ type Op =
   | { k: 'SPLIT'; a: number; b: number };
 
 const opArb: fc.Arbitrary<Op> = fc.oneof(
-  { weight: 4, arbitrary: fc.record({ k: fc.constant('BUY' as const), q: fc.integer({ min: 1, max: 5000 }), paisa: fc.integer({ min: 1, max: 500_000 }), fee: fc.integer({ min: 0, max: 50_000 }) }) },
-  { weight: 3, arbitrary: fc.record({ k: fc.constant('SELL' as const), pct: fc.integer({ min: 1, max: 100 }), paisa: fc.integer({ min: 1, max: 500_000 }), fee: fc.integer({ min: 0, max: 50_000 }) }) },
-  { weight: 1, arbitrary: fc.record({ k: fc.constant('BONUS' as const), n: fc.integer({ min: 1, max: 5 }), m: fc.integer({ min: 1, max: 20 }) }) },
-  { weight: 1, arbitrary: fc.record({ k: fc.constant('SPLIT' as const), a: fc.integer({ min: 1, max: 5 }), b: fc.integer({ min: 1, max: 5 }) }).filter((r) => r.a !== r.b) },
+  {
+    weight: 4,
+    arbitrary: fc.record({
+      k: fc.constant('BUY' as const),
+      q: fc.integer({ min: 1, max: 5000 }),
+      paisa: fc.integer({ min: 1, max: 500_000 }),
+      fee: fc.integer({ min: 0, max: 50_000 }),
+    }),
+  },
+  {
+    weight: 3,
+    arbitrary: fc.record({
+      k: fc.constant('SELL' as const),
+      pct: fc.integer({ min: 1, max: 100 }),
+      paisa: fc.integer({ min: 1, max: 500_000 }),
+      fee: fc.integer({ min: 0, max: 50_000 }),
+    }),
+  },
+  {
+    weight: 1,
+    arbitrary: fc.record({
+      k: fc.constant('BONUS' as const),
+      n: fc.integer({ min: 1, max: 5 }),
+      m: fc.integer({ min: 1, max: 20 }),
+    }),
+  },
+  {
+    weight: 1,
+    arbitrary: fc
+      .record({
+        k: fc.constant('SPLIT' as const),
+        a: fc.integer({ min: 1, max: 5 }),
+        b: fc.integer({ min: 1, max: 5 }),
+      })
+      .filter((r) => r.a !== r.b),
+  },
 );
 
 const paisa = (n: number) => d(n.toString()).div(100);
@@ -270,7 +412,8 @@ function buildEvents(ops: Op[], closeOut: boolean): LedgerEvent[] {
   const events: LedgerEvent[] = [];
   let state: LedgerState = createLedgerState();
   let day = 0;
-  const date = () => `2025-${String(1 + Math.floor(day / 28)).padStart(2, '0')}-${String(1 + (day % 28)).padStart(2, '0')}`;
+  const date = () =>
+    `2025-${String(1 + Math.floor(day / 28)).padStart(2, '0')}-${String(1 + (day % 28)).padStart(2, '0')}`;
   const push = (e: LedgerEvent) => {
     state = applyEvent(state, e).state;
     events.push(e);
@@ -278,17 +421,40 @@ function buildEvents(ops: Op[], closeOut: boolean): LedgerEvent[] {
   ops.slice(0, 300).forEach((op, i) => {
     day = i;
     const id = `e${i}`;
-    if (op.k === 'BUY') push({ id, date: date(), type: 'BUY', quantity: op.q.toString(), price: paisa(op.paisa), fees: paisa(op.fee) });
+    if (op.k === 'BUY')
+      push({
+        id,
+        date: date(),
+        type: 'BUY',
+        quantity: op.q.toString(),
+        price: paisa(op.paisa),
+        fees: paisa(op.fee),
+      });
     else if (op.k === 'SELL') {
       if (state.quantity.isZero()) return;
       const q = state.quantity.times(op.pct).div(100).ceil();
       push({ id, date: date(), type: 'SELL', quantity: q, price: paisa(op.paisa), fees: paisa(op.fee) });
-    } else if (op.k === 'BONUS') push({ id, date: date(), type: 'BONUS', ratioNew: op.n.toString(), ratioOld: op.m.toString() });
-    else push({ id, date: date(), type: op.a > op.b ? 'SPLIT' : 'REVERSE_SPLIT', ratioNew: op.a.toString(), ratioOld: op.b.toString() });
+    } else if (op.k === 'BONUS')
+      push({ id, date: date(), type: 'BONUS', ratioNew: op.n.toString(), ratioOld: op.m.toString() });
+    else
+      push({
+        id,
+        date: date(),
+        type: op.a > op.b ? 'SPLIT' : 'REVERSE_SPLIT',
+        ratioNew: op.a.toString(),
+        ratioOld: op.b.toString(),
+      });
   });
   if (closeOut && state.quantity.gt(0)) {
     day = 300;
-    push({ id: 'close', date: '2025-12-31', type: 'SELL', quantity: state.quantity, price: '123.45', fees: '7.89' });
+    push({
+      id: 'close',
+      date: '2025-12-31',
+      type: 'SELL',
+      quantity: state.quantity,
+      price: '123.45',
+      fees: '7.89',
+    });
   }
   return events;
 }
@@ -298,35 +464,44 @@ const methods: CostBasisMethod[] = ['WEIGHTED_AVERAGE', 'FIFO'];
 describe('ledger properties', () => {
   it('replay(events) == fold(applyEvent) and replay(prefix) + incremental == replay(all)', () => {
     fc.assert(
-      fc.property(fc.array(opArb, { minLength: 1, maxLength: 40 }), fc.nat(), fc.constantFrom(...methods), (ops, cut, method) => {
-        const events = buildEvents(ops, false);
-        const full = replay(events, method);
-        const folded = events.reduce((s, e) => applyEvent(s, e, method).state, createLedgerState());
-        expect(JSON.stringify(folded)).toBe(JSON.stringify(full.state));
-        const k = events.length === 0 ? 0 : cut % (events.length + 1);
-        let inc = replay(events.slice(0, k), method).state;
-        for (const e of events.slice(k)) inc = applyEvent(inc, e, method).state;
-        expect(JSON.stringify(inc)).toBe(JSON.stringify(full.state));
-      }),
+      fc.property(
+        fc.array(opArb, { minLength: 1, maxLength: 40 }),
+        fc.nat(),
+        fc.constantFrom(...methods),
+        (ops, cut, method) => {
+          const events = buildEvents(ops, false);
+          const full = replay(events, method);
+          const folded = events.reduce((s, e) => applyEvent(s, e, method).state, createLedgerState());
+          expect(JSON.stringify(folded)).toBe(JSON.stringify(full.state));
+          const k = events.length === 0 ? 0 : cut % (events.length + 1);
+          let inc = replay(events.slice(0, k), method).state;
+          for (const e of events.slice(k)) inc = applyEvent(inc, e, method).state;
+          expect(JSON.stringify(inc)).toBe(JSON.stringify(full.state));
+        },
+      ),
       { numRuns: 200 },
     );
   });
 
   it('invariants hold after every event: qty ≥ 0, Σ lot qty = qty, FIFO Σ lot cost = totalCost, cost ≥ 0', () => {
     fc.assert(
-      fc.property(fc.array(opArb, { minLength: 1, maxLength: 40 }), fc.constantFrom(...methods), (ops, method) => {
-        const events = buildEvents(ops, false);
-        let s = createLedgerState();
-        for (const e of events) {
-          s = applyEvent(s, e, method).state;
-          expect(s.quantity.isNeg()).toBe(false);
-          expect(s.totalCost.isNeg()).toBe(false);
-          expect(sum(s.lots.map((l) => l.remainingQty)).eq(s.quantity)).toBe(true);
-          if (method === 'FIFO') expect(sum(s.lots.map((l) => l.remainingCost)).eq(s.totalCost)).toBe(true);
-          if (s.quantity.isZero()) expect(s.totalCost.isZero()).toBe(true);
-          expect(s.totalCost.decimalPlaces()).toBeLessThanOrEqual(4);
-        }
-      }),
+      fc.property(
+        fc.array(opArb, { minLength: 1, maxLength: 40 }),
+        fc.constantFrom(...methods),
+        (ops, method) => {
+          const events = buildEvents(ops, false);
+          let s = createLedgerState();
+          for (const e of events) {
+            s = applyEvent(s, e, method).state;
+            expect(s.quantity.isNeg()).toBe(false);
+            expect(s.totalCost.isNeg()).toBe(false);
+            expect(sum(s.lots.map((l) => l.remainingQty)).eq(s.quantity)).toBe(true);
+            if (method === 'FIFO') expect(sum(s.lots.map((l) => l.remainingCost)).eq(s.totalCost)).toBe(true);
+            if (s.quantity.isZero()) expect(s.totalCost.isZero()).toBe(true);
+            expect(s.totalCost.decimalPlaces()).toBeLessThanOrEqual(4);
+          }
+        },
+      ),
       { numRuns: 200 },
     );
   });
@@ -362,7 +537,13 @@ describe('ledger properties', () => {
           for (const method of methods) {
             const st = replay(events, method).state;
             const caType = a === b ? 'BONUS' : a > b ? 'SPLIT' : 'REVERSE_SPLIT';
-            const ca: LedgerEvent = { id: 'ca', date: '2026-01-01', type: caType, ratioNew: a.toString(), ratioOld: b.toString() };
+            const ca: LedgerEvent = {
+              id: 'ca',
+              date: '2026-01-01',
+              type: caType,
+              ratioNew: a.toString(),
+              ratioOld: b.toString(),
+            };
             const after = applyEvent(st, ca, method);
             if (after.state.quantity.gt(0)) {
               expect(after.state.totalCost.eq(st.totalCost)).toBe(true);

@@ -59,7 +59,11 @@ function matches(row: TaxRateRow, q: TaxRateQuery, filerStatus: TaxFilerStatus):
   return true;
 }
 
-function pick<R extends TaxRateRow>(rows: readonly R[], q: TaxRateQuery, filerStatus: TaxFilerStatus): R | undefined {
+function pick<R extends TaxRateRow>(
+  rows: readonly R[],
+  q: TaxRateQuery,
+  filerStatus: TaxFilerStatus,
+): R | undefined {
   const hits = rows.filter((r) => matches(r, q, filerStatus));
   if (hits.length === 0) return undefined;
   hits.sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : a.effectiveFrom > b.effectiveFrom ? -1 : 0));
@@ -80,7 +84,10 @@ function pick<R extends TaxRateRow>(rows: readonly R[], q: TaxRateQuery, filerSt
  */
 export function findTaxRate<R extends TaxRateRow>(rows: readonly R[], query: TaxRateQuery): R {
   assertIsoDate(query.date);
-  if (query.holdingDays !== undefined && (!Number.isSafeInteger(query.holdingDays) || query.holdingDays < 0)) {
+  if (
+    query.holdingDays !== undefined &&
+    (!Number.isSafeInteger(query.holdingDays) || query.holdingDays < 0)
+  ) {
     throw new RangeError(`holdingDays must be a non-negative integer, got ${query.holdingDays}`);
   }
   const direct = pick(rows, query, query.filerStatus);
@@ -118,5 +125,9 @@ export function estimateDividendTax(
   const gross = d(input.gross);
   if (gross.isNeg()) throw new RangeError('Dividend gross must be ≥ 0');
   const rate = d(row.rate);
-  return { rate, amount: roundPaisa(gross.times(rate), input.rounding ?? 'HALF_UP'), verified: row.verified === true };
+  return {
+    rate,
+    amount: roundPaisa(gross.times(rate), input.rounding ?? 'HALF_UP'),
+    verified: row.verified === true,
+  };
 }

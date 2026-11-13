@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Dec } from './decimal';
-import { formatNumber, formatPKR, formatPercent, formatQty, humanize, MINUS, toneClass, toneOf } from './format';
+import {
+  formatNumber,
+  formatPKR,
+  formatPercent,
+  formatQty,
+  humanize,
+  MINUS,
+  toneClass,
+  toneOf,
+} from './format';
 
 describe('Dec', () => {
   it('adds without float artifacts', () => {

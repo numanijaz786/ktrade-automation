@@ -15,7 +15,8 @@ export interface PreviewHashFields {
 }
 
 const PREVIEW_HASH_VERSION = 'ktrade-preview-v1';
-const dec = (x: DecimalInput | null | undefined): string | null => (x === null || x === undefined ? null : d(x).toFixed());
+const dec = (x: DecimalInput | null | undefined): string | null =>
+  x === null || x === undefined ? null : d(x).toFixed();
 
 /**
  * Canonical serialization: a JSON array in a FIXED field order (not object-key order), decimals normalized

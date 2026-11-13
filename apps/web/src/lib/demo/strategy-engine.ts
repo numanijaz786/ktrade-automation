@@ -7,7 +7,15 @@ import type { SignalReason, StrategyType } from '@ktrade/shared';
 import { Dec } from '../decimal';
 import { estimateFees } from '../fees';
 import { crossesAbove, crossesBelow, ema, macd, rsi, sma, type Series } from '../indicators';
-import type { Backtest, BacktestMetrics, BacktestRequest, BacktestTrade, StrategyParams, StrategyTemplate, TraceCondition } from '../api/types';
+import type {
+  Backtest,
+  BacktestMetrics,
+  BacktestRequest,
+  BacktestTrade,
+  StrategyParams,
+  StrategyTemplate,
+  TraceCondition,
+} from '../api/types';
 import type { RawBar } from './prices';
 
 export const BACKTEST_DISCLAIMER =
@@ -24,8 +32,22 @@ export const STRATEGY_TEMPLATES: StrategyTemplate[] = [
       type: 'object',
       required: ['fastPeriod', 'slowPeriod', 'maType'],
       properties: {
-        fastPeriod: { type: 'integer', title: 'Fast period', minimum: 2, maximum: 100, default: 9, description: 'Bars in the fast average' },
-        slowPeriod: { type: 'integer', title: 'Slow period', minimum: 5, maximum: 250, default: 21, description: 'Bars in the slow average; must exceed the fast period' },
+        fastPeriod: {
+          type: 'integer',
+          title: 'Fast period',
+          minimum: 2,
+          maximum: 100,
+          default: 9,
+          description: 'Bars in the fast average',
+        },
+        slowPeriod: {
+          type: 'integer',
+          title: 'Slow period',
+          minimum: 5,
+          maximum: 250,
+          default: 21,
+          description: 'Bars in the slow average; must exceed the fast period',
+        },
         maType: { type: 'string', title: 'Average type', enum: ['EMA', 'SMA'], default: 'EMA' },
       },
     },
@@ -72,7 +94,16 @@ export const STRATEGY_TEMPLATES: StrategyTemplate[] = [
     parameterSchema: {
       type: 'object',
       required: ['stopLossPct'],
-      properties: { stopLossPct: { type: 'string', format: 'percent', title: 'Stop-loss %', minimum: 0.5, maximum: 50, default: '5' } },
+      properties: {
+        stopLossPct: {
+          type: 'string',
+          format: 'percent',
+          title: 'Stop-loss %',
+          minimum: 0.5,
+          maximum: 50,
+          default: '5',
+        },
+      },
     },
   },
   {
@@ -84,7 +115,16 @@ export const STRATEGY_TEMPLATES: StrategyTemplate[] = [
     parameterSchema: {
       type: 'object',
       required: ['takeProfitPct'],
-      properties: { takeProfitPct: { type: 'string', format: 'percent', title: 'Take-profit %', minimum: 0.5, maximum: 200, default: '10' } },
+      properties: {
+        takeProfitPct: {
+          type: 'string',
+          format: 'percent',
+          title: 'Take-profit %',
+          minimum: 0.5,
+          maximum: 200,
+          default: '10',
+        },
+      },
     },
   },
   {
@@ -96,7 +136,16 @@ export const STRATEGY_TEMPLATES: StrategyTemplate[] = [
     parameterSchema: {
       type: 'object',
       required: ['trailingStopPct'],
-      properties: { trailingStopPct: { type: 'string', format: 'percent', title: 'Trailing stop %', minimum: 0.5, maximum: 50, default: '7' } },
+      properties: {
+        trailingStopPct: {
+          type: 'string',
+          format: 'percent',
+          title: 'Trailing stop %',
+          minimum: 0.5,
+          maximum: 50,
+          default: '7',
+        },
+      },
     },
   },
   {
@@ -109,9 +158,26 @@ export const STRATEGY_TEMPLATES: StrategyTemplate[] = [
       type: 'object',
       required: ['target', 'direction'],
       properties: {
-        target: { type: 'string', format: 'decimal', title: 'Target price (Rs)', minimum: 0.01, default: '150.00' },
-        direction: { type: 'string', title: 'Trigger when price is', enum: ['ABOVE', 'BELOW'], default: 'ABOVE' },
-        exitTarget: { type: 'string', format: 'decimal', title: 'Exit target (Rs)', minimum: 0.01, default: '170.00' },
+        target: {
+          type: 'string',
+          format: 'decimal',
+          title: 'Target price (Rs)',
+          minimum: 0.01,
+          default: '150.00',
+        },
+        direction: {
+          type: 'string',
+          title: 'Trigger when price is',
+          enum: ['ABOVE', 'BELOW'],
+          default: 'ABOVE',
+        },
+        exitTarget: {
+          type: 'string',
+          format: 'decimal',
+          title: 'Exit target (Rs)',
+          minimum: 0.01,
+          default: '170.00',
+        },
       },
     },
   },
@@ -138,7 +204,11 @@ const num = (v: StrategyParams[string] | undefined, d: number) => {
 };
 
 /** Run a template across bars, returning ENTRY/EXIT events with explanation traces. */
-export function runStrategy(type: StrategyType, params: StrategyParams, bars: readonly RawBar[]): StrategyEvent[] {
+export function runStrategy(
+  type: StrategyType,
+  params: StrategyParams,
+  bars: readonly RawBar[],
+): StrategyEvent[] {
   const closes = bars.map((b) => b.close / 100);
   const events: StrategyEvent[] = [];
   let inPos = false;
@@ -162,11 +232,27 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
     ];
     entryRule = (i) =>
       crossesAbove(fast, slow, i)
-        ? { i, type: 'ENTRY', reason: 'RULE_ENTRY', trace: [{ condition: `${kind}(${fp}) crosses above ${kind}(${sp})`, operands: ops(i), result: true }], explanation: `${kind}(${fp})=${f2(fast[i])} crossed above ${kind}(${sp})=${f2(slow[i])}` }
+        ? {
+            i,
+            type: 'ENTRY',
+            reason: 'RULE_ENTRY',
+            trace: [
+              { condition: `${kind}(${fp}) crosses above ${kind}(${sp})`, operands: ops(i), result: true },
+            ],
+            explanation: `${kind}(${fp})=${f2(fast[i])} crossed above ${kind}(${sp})=${f2(slow[i])}`,
+          }
         : null;
     exitRule = (i) =>
       crossesBelow(fast, slow, i)
-        ? { i, type: 'EXIT', reason: 'RULE_EXIT', trace: [{ condition: `${kind}(${fp}) crosses below ${kind}(${sp})`, operands: ops(i), result: true }], explanation: `${kind}(${fp})=${f2(fast[i])} crossed below ${kind}(${sp})=${f2(slow[i])}` }
+        ? {
+            i,
+            type: 'EXIT',
+            reason: 'RULE_EXIT',
+            trace: [
+              { condition: `${kind}(${fp}) crosses below ${kind}(${sp})`, operands: ops(i), result: true },
+            ],
+            explanation: `${kind}(${fp})=${f2(fast[i])} crossed below ${kind}(${sp})=${f2(slow[i])}`,
+          }
         : null;
   } else if (type === 'RSI') {
     const period = num(params.period, 14);
@@ -177,11 +263,41 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
     const hiS: Series = closes.map(() => hi);
     entryRule = (i) =>
       crossesAbove(r, loS, i)
-        ? { i, type: 'ENTRY', reason: 'RULE_ENTRY', trace: [{ condition: `RSI(${period}) crosses above ${lo}`, operands: [{ label: `RSI(${period})`, value: f2(r[i]) }, { label: 'Oversold', value: String(lo) }], result: true }], explanation: `RSI(${period})=${f2(r[i])} recovered above oversold ${lo}` }
+        ? {
+            i,
+            type: 'ENTRY',
+            reason: 'RULE_ENTRY',
+            trace: [
+              {
+                condition: `RSI(${period}) crosses above ${lo}`,
+                operands: [
+                  { label: `RSI(${period})`, value: f2(r[i]) },
+                  { label: 'Oversold', value: String(lo) },
+                ],
+                result: true,
+              },
+            ],
+            explanation: `RSI(${period})=${f2(r[i])} recovered above oversold ${lo}`,
+          }
         : null;
     exitRule = (i) =>
       crossesBelow(r, hiS, i)
-        ? { i, type: 'EXIT', reason: 'RULE_EXIT', trace: [{ condition: `RSI(${period}) crosses below ${hi}`, operands: [{ label: `RSI(${period})`, value: f2(r[i]) }, { label: 'Overbought', value: String(hi) }], result: true }], explanation: `RSI(${period})=${f2(r[i])} fell back below overbought ${hi}` }
+        ? {
+            i,
+            type: 'EXIT',
+            reason: 'RULE_EXIT',
+            trace: [
+              {
+                condition: `RSI(${period}) crosses below ${hi}`,
+                operands: [
+                  { label: `RSI(${period})`, value: f2(r[i]) },
+                  { label: 'Overbought', value: String(hi) },
+                ],
+                result: true,
+              },
+            ],
+            explanation: `RSI(${period})=${f2(r[i])} fell back below overbought ${hi}`,
+          }
         : null;
   } else if (type === 'MACD') {
     const m = macd(closes, num(params.fast, 12), num(params.slow, 26), num(params.signal, 9));
@@ -194,13 +310,34 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
     entryRule = (i) => {
       if (!crossesAbove(m.macd, m.signal, i)) return null;
       const histOk = !needHist || (m.histogram[i] ?? 0) > 0;
-      const trace: TraceCondition[] = [{ condition: 'MACD crosses above signal', operands: ops(i), result: true }];
-      if (needHist) trace.push({ condition: 'Histogram > 0', operands: [{ label: 'Histogram', value: f2(m.histogram[i]) }], result: histOk });
-      return histOk ? { i, type: 'ENTRY', reason: 'RULE_ENTRY', trace, explanation: `MACD=${f2(m.macd[i])} crossed above signal=${f2(m.signal[i])}` } : null;
+      const trace: TraceCondition[] = [
+        { condition: 'MACD crosses above signal', operands: ops(i), result: true },
+      ];
+      if (needHist)
+        trace.push({
+          condition: 'Histogram > 0',
+          operands: [{ label: 'Histogram', value: f2(m.histogram[i]) }],
+          result: histOk,
+        });
+      return histOk
+        ? {
+            i,
+            type: 'ENTRY',
+            reason: 'RULE_ENTRY',
+            trace,
+            explanation: `MACD=${f2(m.macd[i])} crossed above signal=${f2(m.signal[i])}`,
+          }
+        : null;
     };
     exitRule = (i) =>
       crossesBelow(m.macd, m.signal, i)
-        ? { i, type: 'EXIT', reason: 'RULE_EXIT', trace: [{ condition: 'MACD crosses below signal', operands: ops(i), result: true }], explanation: `MACD=${f2(m.macd[i])} crossed below signal=${f2(m.signal[i])}` }
+        ? {
+            i,
+            type: 'EXIT',
+            reason: 'RULE_EXIT',
+            trace: [{ condition: 'MACD crosses below signal', operands: ops(i), result: true }],
+            explanation: `MACD=${f2(m.macd[i])} crossed below signal=${f2(m.signal[i])}`,
+          }
         : null;
   } else if (type === 'PRICE_ALERT') {
     const target = num(params.target, 0);
@@ -210,11 +347,35 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
     const x: Series = closes.map(() => exitT);
     entryRule = (i) =>
       (above ? crossesAbove(closes, t, i) : crossesBelow(closes, t, i))
-        ? { i, type: 'ENTRY', reason: 'PRICE_TARGET', trace: [{ condition: `close ${above ? '≥' : '≤'} ${target.toFixed(2)}`, operands: [{ label: 'Close', value: f2(closes[i]) }], result: true }], explanation: `Close ${f2(closes[i])} reached target ${target.toFixed(2)}` }
+        ? {
+            i,
+            type: 'ENTRY',
+            reason: 'PRICE_TARGET',
+            trace: [
+              {
+                condition: `close ${above ? '≥' : '≤'} ${target.toFixed(2)}`,
+                operands: [{ label: 'Close', value: f2(closes[i]) }],
+                result: true,
+              },
+            ],
+            explanation: `Close ${f2(closes[i])} reached target ${target.toFixed(2)}`,
+          }
         : null;
     exitRule = (i) =>
       Number.isFinite(exitT) && (above ? crossesAbove(closes, x, i) : crossesBelow(closes, x, i))
-        ? { i, type: 'EXIT', reason: 'PRICE_TARGET', trace: [{ condition: `close ${above ? '≥' : '≤'} ${exitT.toFixed(2)}`, operands: [{ label: 'Close', value: f2(closes[i]) }], result: true }], explanation: `Close ${f2(closes[i])} reached exit target ${exitT.toFixed(2)}` }
+        ? {
+            i,
+            type: 'EXIT',
+            reason: 'PRICE_TARGET',
+            trace: [
+              {
+                condition: `close ${above ? '≥' : '≤'} ${exitT.toFixed(2)}`,
+                operands: [{ label: 'Close', value: f2(closes[i]) }],
+                result: true,
+              },
+            ],
+            explanation: `Close ${f2(closes[i])} reached exit target ${exitT.toFixed(2)}`,
+          }
         : null;
   } else {
     // Exit-only overlays: assume a held position (demo enters at the first bar / after cooldown).
@@ -222,7 +383,13 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
       i,
       type: 'ENTRY',
       reason: 'MANUAL',
-      trace: [{ condition: 'Position held (exit-only template)', operands: [{ label: 'Close', value: f2(closes[i]) }], result: true }],
+      trace: [
+        {
+          condition: 'Position held (exit-only template)',
+          operands: [{ label: 'Close', value: f2(closes[i]) }],
+          result: true,
+        },
+      ],
       explanation: 'Exit-only template: the backtest assumes a position is opened, then applies the overlay',
     });
   }
@@ -248,11 +415,56 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
     // Exit priority: stop-loss → trailing → take-profit → rule exit.
     let ev: StrategyEvent | null = null;
     if (slPct !== null && c <= entryPrice * (1 - slPct / 100)) {
-      ev = { i, type: 'EXIT', reason: 'STOP_LOSS', trace: [{ condition: `close ≤ avgCost × (1 − ${slPct}%)`, operands: [{ label: 'Close', value: f2(c) }, { label: 'Stop', value: f2(entryPrice * (1 - slPct / 100)) }], result: true }], explanation: `Close ${f2(c)} hit the ${slPct}% stop at ${f2(entryPrice * (1 - slPct / 100))}` };
+      ev = {
+        i,
+        type: 'EXIT',
+        reason: 'STOP_LOSS',
+        trace: [
+          {
+            condition: `close ≤ avgCost × (1 − ${slPct}%)`,
+            operands: [
+              { label: 'Close', value: f2(c) },
+              { label: 'Stop', value: f2(entryPrice * (1 - slPct / 100)) },
+            ],
+            result: true,
+          },
+        ],
+        explanation: `Close ${f2(c)} hit the ${slPct}% stop at ${f2(entryPrice * (1 - slPct / 100))}`,
+      };
     } else if (tsPct !== null && c <= high * (1 - tsPct / 100)) {
-      ev = { i, type: 'EXIT', reason: 'TRAILING_STOP', trace: [{ condition: `close ≤ highSinceEntry × (1 − ${tsPct}%)`, operands: [{ label: 'Close', value: f2(c) }, { label: 'High since entry', value: f2(high) }], result: true }], explanation: `Close ${f2(c)} fell ${tsPct}% from the high of ${f2(high)}` };
+      ev = {
+        i,
+        type: 'EXIT',
+        reason: 'TRAILING_STOP',
+        trace: [
+          {
+            condition: `close ≤ highSinceEntry × (1 − ${tsPct}%)`,
+            operands: [
+              { label: 'Close', value: f2(c) },
+              { label: 'High since entry', value: f2(high) },
+            ],
+            result: true,
+          },
+        ],
+        explanation: `Close ${f2(c)} fell ${tsPct}% from the high of ${f2(high)}`,
+      };
     } else if (tpPct !== null && c >= entryPrice * (1 + tpPct / 100)) {
-      ev = { i, type: 'EXIT', reason: 'TAKE_PROFIT', trace: [{ condition: `close ≥ avgCost × (1 + ${tpPct}%)`, operands: [{ label: 'Close', value: f2(c) }, { label: 'Target', value: f2(entryPrice * (1 + tpPct / 100)) }], result: true }], explanation: `Close ${f2(c)} reached the ${tpPct}% take-profit` };
+      ev = {
+        i,
+        type: 'EXIT',
+        reason: 'TAKE_PROFIT',
+        trace: [
+          {
+            condition: `close ≥ avgCost × (1 + ${tpPct}%)`,
+            operands: [
+              { label: 'Close', value: f2(c) },
+              { label: 'Target', value: f2(entryPrice * (1 + tpPct / 100)) },
+            ],
+            result: true,
+          },
+        ],
+        explanation: `Close ${f2(c)} reached the ${tpPct}% take-profit`,
+      };
     } else {
       ev = exitRule(i);
     }
@@ -266,7 +478,10 @@ export function runStrategy(type: StrategyType, params: StrategyParams, bars: re
 }
 
 /** Simple, explainable 0–100 score (docs/08 §9): trend, momentum, volume, volatility. */
-export function scoreAt(bars: readonly RawBar[], i: number): { score: number; components: { label: string; points: number; max: number }[] } {
+export function scoreAt(
+  bars: readonly RawBar[],
+  i: number,
+): { score: number; components: { label: string; points: number; max: number }[] } {
   const closes = bars.map((b) => b.close / 100);
   const vols = bars.map((b) => b.volume);
   const e50 = ema(closes, 50)[i];
@@ -290,9 +505,24 @@ export function scoreAt(bars: readonly RawBar[], i: number): { score: number; co
 
 // ─── Backtest ──────────────────────────────────────────────────────────────
 
-export function runBacktest(id: string, createdAt: string, req: BacktestRequest, allBars: readonly RawBar[]): Backtest {
+export function runBacktest(
+  id: string,
+  createdAt: string,
+  req: BacktestRequest,
+  allBars: readonly RawBar[],
+): Backtest {
   const bars = allBars.filter((b) => b.date >= req.from && b.date <= req.to);
-  const base: Backtest = { id, status: 'SUCCEEDED', request: req, createdAt, metrics: null, equityCurve: [], trades: [], source: 'SIMULATED', disclaimer: BACKTEST_DISCLAIMER };
+  const base: Backtest = {
+    id,
+    status: 'SUCCEEDED',
+    request: req,
+    createdAt,
+    metrics: null,
+    equityCurve: [],
+    trades: [],
+    source: 'SIMULATED',
+    disclaimer: BACKTEST_DISCLAIMER,
+  };
   if (bars.length < 30) return { ...base, status: 'FAILED' };
 
   const events = runStrategy(req.strategyType, req.parameters, bars);
@@ -313,7 +543,9 @@ export function runBacktest(id: string, createdAt: string, req: BacktestRequest,
 
   const firstOpen = Dec.fromMinor(bars[0].open, 2);
   const benchQty = initial.div(firstOpen.mul('1.0035')).floor(0);
-  const benchCash = initial.sub(benchQty.mul(firstOpen)).sub(estimateFees('BUY', benchQty, firstOpen).totalFees);
+  const benchCash = initial
+    .sub(benchQty.mul(firstOpen))
+    .sub(estimateFees('BUY', benchQty, firstOpen).totalFees);
 
   for (let i = 0; i < bars.length; i++) {
     const bar = bars[i];
@@ -327,7 +559,19 @@ export function runBacktest(id: string, createdAt: string, req: BacktestRequest,
           cash = cash.sub(est.total);
           feesPaid = feesPaid.add(est.totalFees);
           qty = q;
-          open = { id: `${id}-t${trades.length + 1}`, entryDate: bar.date, exitDate: null, side: 'BUY', quantity: q.toString(), entryPrice: px.toFixed(2), exitPrice: null, pnl: '0', returnPct: '0', fees: est.totalFees, exitReason: null };
+          open = {
+            id: `${id}-t${trades.length + 1}`,
+            entryDate: bar.date,
+            exitDate: null,
+            side: 'BUY',
+            quantity: q.toString(),
+            entryPrice: px.toFixed(2),
+            exitPrice: null,
+            pnl: '0',
+            returnPct: '0',
+            fees: est.totalFees,
+            exitReason: null,
+          };
         }
       } else if (pending.type === 'EXIT' && qty.gt(0) && open) {
         const px = openPx.mul(Dec.of(1).sub(slip)).round(2);
@@ -337,7 +581,15 @@ export function runBacktest(id: string, createdAt: string, req: BacktestRequest,
         const cost = Dec.of(open.entryPrice).mul(qty);
         const fees = Dec.of(open.fees).add(est.totalFees);
         const pnl = px.mul(qty).sub(cost).sub(fees);
-        trades.push({ ...open, exitDate: bar.date, exitPrice: px.toFixed(2), pnl: pnl.toFixed(2), returnPct: pnl.div(cost).mul(100).toFixed(2), fees: fees.toFixed(2), exitReason: pending.reason });
+        trades.push({
+          ...open,
+          exitDate: bar.date,
+          exitPrice: px.toFixed(2),
+          pnl: pnl.toFixed(2),
+          returnPct: pnl.div(cost).mul(100).toFixed(2),
+          fees: fees.toFixed(2),
+          exitReason: pending.reason,
+        });
         qty = Dec.zero();
         open = null;
       }
@@ -349,7 +601,12 @@ export function runBacktest(id: string, createdAt: string, req: BacktestRequest,
     if (equity.gt(peak)) peak = equity;
     const dd = equity.div(peak).sub(1).mul(100);
     if (dd.lt(maxDd)) maxDd = dd;
-    curve.push({ date: bar.date, equity: equity.toFixed(2), benchmark: benchCash.add(benchQty.mul(close)).toFixed(2), drawdownPct: dd.toFixed(2) });
+    curve.push({
+      date: bar.date,
+      equity: equity.toFixed(2),
+      benchmark: benchCash.add(benchQty.mul(close)).toFixed(2),
+      drawdownPct: dd.toFixed(2),
+    });
     const ev = byBar.get(i);
     if (ev && i < bars.length - 1) pending = ev;
   }
@@ -358,7 +615,13 @@ export function runBacktest(id: string, createdAt: string, req: BacktestRequest,
     const last = Dec.fromMinor(bars[bars.length - 1].close, 2);
     const cost = Dec.of(open.entryPrice).mul(qty);
     const pnl = last.mul(qty).sub(cost).sub(open.fees);
-    trades.push({ ...open, exitPrice: last.toFixed(2), pnl: pnl.toFixed(2), returnPct: pnl.div(cost).mul(100).toFixed(2), exitReason: 'END_OF_TEST' });
+    trades.push({
+      ...open,
+      exitPrice: last.toFixed(2),
+      pnl: pnl.toFixed(2),
+      returnPct: pnl.div(cost).mul(100).toFixed(2),
+      exitReason: 'END_OF_TEST',
+    });
   }
 
   const finalEq = Dec.of(curve[curve.length - 1].equity);
@@ -393,4 +656,3 @@ export function runBacktest(id: string, createdAt: string, req: BacktestRequest,
   };
   return { ...base, metrics, equityCurve: curve, trades };
 }
-

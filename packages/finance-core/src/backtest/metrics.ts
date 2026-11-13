@@ -63,7 +63,8 @@ const MS_PER_DAY = fromInt(86_400_000);
 export function calendarDaysBetween(fromTs: string, toTs: string): Decimal {
   const a = Date.parse(fromTs);
   const b = Date.parse(toTs);
-  if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) throw new RangeError(`invalid ISO timestamp: ${fromTs} / ${toTs}`);
+  if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b))
+    throw new RangeError(`invalid ISO timestamp: ${fromTs} / ${toTs}`);
   return fromInt(b - a).div(MS_PER_DAY);
 }
 
@@ -83,13 +84,16 @@ export function computeBacktestMetrics(
   const totalReturnPct = ratio.minus(ONE).times(HUNDRED);
 
   const calendarDays = first && last ? calendarDaysBetween(first.ts, last.ts) : ZERO;
-  const cagrPct = calendarDays.lt(1) ? null : ratio.pow(fromInt(365).div(calendarDays)).minus(ONE).times(HUNDRED);
+  const cagrPct = calendarDays.lt(1)
+    ? null
+    : ratio.pow(fromInt(365).div(calendarDays)).minus(ONE).times(HUNDRED);
 
   const maxDrawdownPct = curve.reduce((m, p) => (p.drawdownPct.gt(m) ? p.drawdownPct : m), ZERO);
 
   // Sharpe on per-bar returns
   const A = options.annualizationFactor ?? 252;
-  if (!Number.isSafeInteger(A) || A <= 0) throw new RangeError('annualizationFactor must be a positive integer');
+  if (!Number.isSafeInteger(A) || A <= 0)
+    throw new RangeError('annualizationFactor must be a positive integer');
   const returns: Decimal[] = [];
   for (let i = 1; i < curve.length; i++) {
     const prevEq = (curve[i - 1] as BacktestEquityPoint).equity;

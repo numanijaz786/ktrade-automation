@@ -91,7 +91,8 @@ export function useSetKillSwitch() {
   const api = useApiClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { liveTradingEnabled: boolean; reason: string; stepUpToken: string }) => api.system.setKillSwitch(v),
+    mutationFn: (v: { liveTradingEnabled: boolean; reason: string; stepUpToken: string }) =>
+      api.system.setKillSwitch(v),
     onSuccess: (data) => qc.setQueryData(qk.killSwitch, data),
   });
 }
@@ -104,13 +105,19 @@ export function useMe() {
 export function useLogin() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: api.auth.login, onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }) });
+  return useMutation({
+    mutationFn: api.auth.login,
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }),
+  });
 }
 
 export function useRegister() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: api.auth.register, onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }) });
+  return useMutation({
+    mutationFn: api.auth.register,
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.me }),
+  });
 }
 
 export function useLogout() {
@@ -133,45 +140,78 @@ export function usePortfolios() {
 
 export function useDashboardSummary(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.summary(pf ?? ''), queryFn: () => api.dashboard.summary(pf!), enabled: !!pf, refetchInterval: LIVE_REFRESH_MS });
+  return useQuery({
+    queryKey: qk.summary(pf ?? ''),
+    queryFn: () => api.dashboard.summary(pf!),
+    enabled: !!pf,
+    refetchInterval: LIVE_REFRESH_MS,
+  });
 }
 
 export function useDashboardCharts(pf: string | undefined, range: ChartRange) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.charts(pf ?? '', range), queryFn: () => api.dashboard.charts(pf!, range), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.charts(pf ?? '', range),
+    queryFn: () => api.dashboard.charts(pf!, range),
+    enabled: !!pf,
+  });
 }
 
 export function useHoldings(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.holdings(pf ?? ''), queryFn: () => api.portfolios.holdings(pf!), enabled: !!pf, refetchInterval: LIVE_REFRESH_MS });
+  return useQuery({
+    queryKey: qk.holdings(pf ?? ''),
+    queryFn: () => api.portfolios.holdings(pf!),
+    enabled: !!pf,
+    refetchInterval: LIVE_REFRESH_MS,
+  });
 }
 
 export function useHoldingDetail(pf: string | undefined, symbol: string | null) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.holding(pf ?? '', symbol ?? ''), queryFn: () => api.portfolios.holding(pf!, symbol!), enabled: !!pf && !!symbol });
+  return useQuery({
+    queryKey: qk.holding(pf ?? '', symbol ?? ''),
+    queryFn: () => api.portfolios.holding(pf!, symbol!),
+    enabled: !!pf && !!symbol,
+  });
 }
 
 export function useTransactions(pf: string | undefined, filters: TransactionFilters = {}) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.transactions(pf ?? '', filters), queryFn: () => api.portfolios.transactions(pf!, filters), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.transactions(pf ?? '', filters),
+    queryFn: () => api.portfolios.transactions(pf!, filters),
+    enabled: !!pf,
+  });
 }
 
 export function useCashMovements(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.cash(pf ?? ''), queryFn: () => api.portfolios.cashMovements(pf!), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.cash(pf ?? ''),
+    queryFn: () => api.portfolios.cashMovements(pf!),
+    enabled: !!pf,
+  });
 }
 
 export function useResetPaper() {
   const api = useApiClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { portfolioId: string; stepUpToken: string }) => api.portfolios.resetPaper(v.portfolioId, v.stepUpToken),
+    mutationFn: (v: { portfolioId: string; stepUpToken: string }) =>
+      api.portfolios.resetPaper(v.portfolioId, v.stepUpToken),
     onSuccess: () => invalidatePortfolio(qc),
   });
 }
 
 function invalidatePortfolio(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of [['portfolio'], ['dashboard'], ['orders'], ['analytics'], ['notifications']] as QueryKey[]) {
+  for (const key of [
+    ['portfolio'],
+    ['dashboard'],
+    ['orders'],
+    ['analytics'],
+    ['notifications'],
+  ] as QueryKey[]) {
     void qc.invalidateQueries({ queryKey: key });
   }
 }
@@ -206,12 +246,16 @@ export function usePreviewOrder() {
 
 export function useApproveOrder() {
   const api = useApiClient();
-  return useOrderMutation((v: { orderId: string; previewHash: string; stepUpToken: string }) => api.orders.approve(v.orderId, v));
+  return useOrderMutation((v: { orderId: string; previewHash: string; stepUpToken: string }) =>
+    api.orders.approve(v.orderId, v),
+  );
 }
 
 export function useMarkPlaced() {
   const api = useApiClient();
-  return useOrderMutation((v: { orderId: string; brokerOrderRef?: string }) => api.orders.markPlaced(v.orderId, v));
+  return useOrderMutation((v: { orderId: string; brokerOrderRef?: string }) =>
+    api.orders.markPlaced(v.orderId, v),
+  );
 }
 
 export function useRecordFill() {
@@ -226,14 +270,19 @@ export function useCancelOrder() {
 
 export function useRiskLimits(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.riskLimits(pf ?? ''), queryFn: () => api.orders.riskLimits(pf!), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.riskLimits(pf ?? ''),
+    queryFn: () => api.orders.riskLimits(pf!),
+    enabled: !!pf,
+  });
 }
 
 export function useUpdateRiskLimits() {
   const api = useApiClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { limits: RiskLimits; stepUpToken: string }) => api.orders.updateRiskLimits(v.limits, v.stepUpToken),
+    mutationFn: (v: { limits: RiskLimits; stepUpToken: string }) =>
+      api.orders.updateRiskLimits(v.limits, v.stepUpToken),
     onSuccess: (d) => qc.setQueryData(qk.riskLimits(d.portfolioId), d),
   });
 }
@@ -252,7 +301,10 @@ export function useStock(symbol: string) {
 
 export function useQuotes(symbols?: readonly string[]) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.quotes(symbols ?? 'all'), queryFn: () => api.market.quotes(symbols ? [...symbols] : undefined) });
+  return useQuery({
+    queryKey: qk.quotes(symbols ?? 'all'),
+    queryFn: () => api.market.quotes(symbols ? [...symbols] : undefined),
+  });
 }
 
 export function useCandles(symbol: string) {
@@ -262,7 +314,11 @@ export function useCandles(symbol: string) {
 
 export function useMovers(type: MoverType) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.movers(type), queryFn: () => api.market.movers(type, 8), refetchInterval: 5_000 });
+  return useQuery({
+    queryKey: qk.movers(type),
+    queryFn: () => api.market.movers(type, 8),
+    refetchInterval: 5_000,
+  });
 }
 
 export function useProviders() {
@@ -281,13 +337,30 @@ export function useWatchlistMutations() {
   const done = () => qc.invalidateQueries({ queryKey: qk.watchlists });
   return {
     create: useMutation({ mutationFn: (name: string) => api.market.createWatchlist(name), onSuccess: done }),
-    add: useMutation({ mutationFn: (v: { id: string; symbol: string }) => api.market.addToWatchlist(v.id, v.symbol), onSuccess: done }),
-    remove: useMutation({ mutationFn: (v: { id: string; symbol: string }) => api.market.removeFromWatchlist(v.id, v.symbol), onSuccess: done }),
+    add: useMutation({
+      mutationFn: (v: { id: string; symbol: string }) => api.market.addToWatchlist(v.id, v.symbol),
+      onSuccess: done,
+    }),
+    remove: useMutation({
+      mutationFn: (v: { id: string; symbol: string }) => api.market.removeFromWatchlist(v.id, v.symbol),
+      onSuccess: done,
+    }),
   };
 }
 
 function applyTick(q: Quote, t: QuoteTick): Quote {
-  return { ...q, last: t.last, change: t.change, changePct: t.changePct, volume: t.volume, high: t.high ?? q.high, low: t.low ?? q.low, asOf: t.asOf, source: t.source, delayMinutes: t.delayMinutes };
+  return {
+    ...q,
+    last: t.last,
+    change: t.change,
+    changePct: t.changePct,
+    volume: t.volume,
+    high: t.high ?? q.high,
+    low: t.low ?? q.low,
+    asOf: t.asOf,
+    source: t.source,
+    delayMinutes: t.delayMinutes,
+  };
 }
 
 /**
@@ -306,7 +379,9 @@ export function useLiveQuotes(symbols: readonly string[]) {
       scheduled = false;
       const ticks = pending;
       pending = new Map();
-      qc.setQueriesData<Quote[]>({ queryKey: ['market', 'quotes'] }, (old) => old?.map((q) => (ticks.has(q.symbol) ? applyTick(q, ticks.get(q.symbol)!) : q)));
+      qc.setQueriesData<Quote[]>({ queryKey: ['market', 'quotes'] }, (old) =>
+        old?.map((q) => (ticks.has(q.symbol) ? applyTick(q, ticks.get(q.symbol)!) : q)),
+      );
     };
     return api.market.subscribeQuotes(key.split(','), (t) => {
       pending.set(t.symbol, t);
@@ -332,7 +407,10 @@ export function useStrategies() {
 
 export function useSignals(strategyId?: string) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.signals(strategyId), queryFn: () => api.strategies.signals({ strategyId }) });
+  return useQuery({
+    queryKey: qk.signals(strategyId),
+    queryFn: () => api.strategies.signals({ strategyId }),
+  });
 }
 
 export function useStrategyMutations() {
@@ -341,7 +419,10 @@ export function useStrategyMutations() {
   const done = () => qc.invalidateQueries({ queryKey: ['strategies'] });
   return {
     create: useMutation({ mutationFn: (v: StrategyInput) => api.strategies.create(v), onSuccess: done }),
-    setActive: useMutation({ mutationFn: (v: { id: string; active: boolean }) => api.strategies.setActive(v.id, v.active), onSuccess: done }),
+    setActive: useMutation({
+      mutationFn: (v: { id: string; active: boolean }) => api.strategies.setActive(v.id, v.active),
+      onSuccess: done,
+    }),
     dismiss: useMutation({ mutationFn: (id: string) => api.strategies.dismissSignal(id), onSuccess: done }),
   };
 }
@@ -354,29 +435,48 @@ export function useBacktests() {
 export function useRunBacktest() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (req: BacktestRequest) => api.backtests.run(req), onSuccess: () => qc.invalidateQueries({ queryKey: qk.backtests }) });
+  return useMutation({
+    mutationFn: (req: BacktestRequest) => api.backtests.run(req),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.backtests }),
+  });
 }
 
 // ─── dividends, analytics, reports ─────────────────────────────────────────
 
 export function useDividends(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.dividends(pf ?? ''), queryFn: () => api.dividends.list(pf!), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.dividends(pf ?? ''),
+    queryFn: () => api.dividends.list(pf!),
+    enabled: !!pf,
+  });
 }
 
 export function usePerformance(pf: string | undefined, period: PerformancePeriod) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.performance(pf ?? '', period), queryFn: () => api.analytics.performance(pf!, period), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.performance(pf ?? '', period),
+    queryFn: () => api.analytics.performance(pf!, period),
+    enabled: !!pf,
+  });
 }
 
 export function useRealizedUnrealized(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.realized(pf ?? ''), queryFn: () => api.analytics.realizedUnrealized(pf!), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.realized(pf ?? ''),
+    queryFn: () => api.analytics.realizedUnrealized(pf!),
+    enabled: !!pf,
+  });
 }
 
 export function useFeesTaxes(pf: string | undefined) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.feesTaxes(pf ?? ''), queryFn: () => api.analytics.feesTaxes(pf!), enabled: !!pf });
+  return useQuery({
+    queryKey: qk.feesTaxes(pf ?? ''),
+    queryFn: () => api.analytics.feesTaxes(pf!),
+    enabled: !!pf,
+  });
 }
 
 export function useReports() {
@@ -387,7 +487,10 @@ export function useReports() {
 export function useCreateReport() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: api.reports.create, onSuccess: () => qc.invalidateQueries({ queryKey: qk.reports }) });
+  return useMutation({
+    mutationFn: api.reports.create,
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.reports }),
+  });
 }
 
 // ─── notifications & assistant ─────────────────────────────────────────────
@@ -415,7 +518,10 @@ export function useAlerts() {
 export function useSetAlertActive() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { id: string; active: boolean }) => api.notifications.setAlertActive(v.id, v.active), onSuccess: () => qc.invalidateQueries({ queryKey: qk.alerts }) });
+  return useMutation({
+    mutationFn: (v: { id: string; active: boolean }) => api.notifications.setAlertActive(v.id, v.active),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.alerts }),
+  });
 }
 
 export function useAssistantHistory() {
@@ -426,7 +532,10 @@ export function useAssistantHistory() {
 export function useSendAssistant() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (text: string) => api.assistant.send(text), onSuccess: () => qc.invalidateQueries({ queryKey: qk.assistant }) });
+  return useMutation({
+    mutationFn: (text: string) => api.assistant.send(text),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.assistant }),
+  });
 }
 
 // ─── broker & sync ─────────────────────────────────────────────────────────
@@ -443,7 +552,11 @@ export function useImports() {
 
 export function useImportRows(id: string | null) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.importRows(id ?? ''), queryFn: () => api.broker.importRows(id!), enabled: !!id });
+  return useQuery({
+    queryKey: qk.importRows(id ?? ''),
+    queryFn: () => api.broker.importRows(id!),
+    enabled: !!id,
+  });
 }
 
 export function useImportMutations() {
@@ -451,8 +564,16 @@ export function useImportMutations() {
   const qc = useQueryClient();
   const done = () => qc.invalidateQueries({ queryKey: ['broker'] });
   return {
-    upload: useMutation({ mutationFn: (v: { portfolioId: string; fileName: string; content: string; kind?: ImportKind }) => api.broker.upload(v), onSuccess: done }),
-    updateRow: useMutation({ mutationFn: (v: { importId: string; rowId: string; action: ImportRowAction }) => api.broker.updateImportRow(v.importId, v.rowId, v.action), onSuccess: done }),
+    upload: useMutation({
+      mutationFn: (v: { portfolioId: string; fileName: string; content: string; kind?: ImportKind }) =>
+        api.broker.upload(v),
+      onSuccess: done,
+    }),
+    updateRow: useMutation({
+      mutationFn: (v: { importId: string; rowId: string; action: ImportRowAction }) =>
+        api.broker.updateImportRow(v.importId, v.rowId, v.action),
+      onSuccess: done,
+    }),
     commit: useMutation({ mutationFn: (id: string) => api.broker.commitImport(id), onSuccess: done }),
     reject: useMutation({ mutationFn: (id: string) => api.broker.rejectImport(id), onSuccess: done }),
   };
@@ -517,7 +638,10 @@ export function useChannelMutations() {
   const api = useApiClient();
   const qc = useQueryClient();
   return {
-    update: useMutation({ mutationFn: (c: ChannelConfig) => api.settings.updateChannel(c), onSuccess: () => qc.invalidateQueries({ queryKey: qk.channels }) }),
+    update: useMutation({
+      mutationFn: (c: ChannelConfig) => api.settings.updateChannel(c),
+      onSuccess: () => qc.invalidateQueries({ queryKey: qk.channels }),
+    }),
     test: useMutation({ mutationFn: (c: ChannelConfig['channel']) => api.settings.testChannel(c) }),
   };
 }
@@ -530,5 +654,8 @@ export function useUserSettings() {
 export function useUpdateUserSettings() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (u: UserSettings) => api.settings.updateUser(u), onSuccess: (d) => qc.setQueryData(qk.userSettings, d) });
+  return useMutation({
+    mutationFn: (u: UserSettings) => api.settings.updateUser(u),
+    onSuccess: (d) => qc.setQueryData(qk.userSettings, d),
+  });
 }

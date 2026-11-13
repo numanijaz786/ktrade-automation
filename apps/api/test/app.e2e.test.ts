@@ -16,7 +16,11 @@ describe('API pipeline (e2e, stubbed infra)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
-      .useValue({ ping: async () => deps.db, $disconnect: async () => undefined, onModuleDestroy: async () => undefined })
+      .useValue({
+        ping: async () => deps.db,
+        $disconnect: async () => undefined,
+        onModuleDestroy: async () => undefined,
+      })
       .overrideProvider(RedisHealth)
       .useValue({ ping: async () => deps.redis, onModuleDestroy: async () => undefined })
       .compile();

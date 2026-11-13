@@ -95,7 +95,13 @@ export function ProvenanceBadge({ source, asOf, note, compact = false, className
 }
 
 /** "82% confirmed / 18% estimated" for aggregates. */
-export function SourceBreakdownText({ breakdown, className }: { breakdown?: SourceBreakdown; className?: string }) {
+export function SourceBreakdownText({
+  breakdown,
+  className,
+}: {
+  breakdown?: SourceBreakdown;
+  className?: string;
+}) {
   if (!breakdown) return null;
   const parts = DATA_SOURCES.filter((s) => breakdown[s] && breakdown[s] !== '0').map(
     (s) => `${formatPercent(breakdown[s], { fraction: true, dp: 0 })} ${PROVENANCE[s].label.toLowerCase()}`,

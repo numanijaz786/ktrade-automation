@@ -10,7 +10,14 @@ import { type Decimal, d, fromInt, max, min, ONE, round, ZERO } from '@ktrade/fi
 import type { DataSource, PriceInterval } from '@ktrade/shared';
 import type { Clock } from '../../common/clock.js';
 import { addDays, pktDateOf, type PsxCalendar } from '../calendar.js';
-import { formatChangePct, formatPrice, INTERVAL_MINUTES, MIN_TICK, SYMBOL_RE, toTick } from '../decimal-format.js';
+import {
+  formatChangePct,
+  formatPrice,
+  INTERVAL_MINUTES,
+  MIN_TICK,
+  SYMBOL_RE,
+  toTick,
+} from '../decimal-format.js';
 import { SeededRng } from '../rng.js';
 
 /** First simulated trading day. Bars before it do not exist (keeps the deterministic walk bounded). */
@@ -96,11 +103,22 @@ export class SimulatedMarketDataProvider implements MarketDataProvider {
   }
 
   capabilities(): MarketDataCapabilities {
-    return { quotes: true, intradayBars: true, eodBars: true, corporateActions: false, streaming: true, delayMinutes: 0 };
+    return {
+      quotes: true,
+      intradayBars: true,
+      eodBars: true,
+      corporateActions: false,
+      streaming: true,
+      delayMinutes: 0,
+    };
   }
 
   async healthCheck(): Promise<ProviderHealth> {
-    return { ok: true, checkedAt: this.clock.now().toISOString(), message: 'Synthetic data — every value is SIMULATED' };
+    return {
+      ok: true,
+      checkedAt: this.clock.now().toISOString(),
+      message: 'Synthetic data — every value is SIMULATED',
+    };
   }
 
   async getQuotes(symbols: readonly string[]): Promise<QuoteDto[]> {
@@ -177,7 +195,8 @@ export class SimulatedMarketDataProvider implements MarketDataProvider {
     const date = inOrAfterSession ? today : cal.previousTradingDay(today);
     if (date < SIM_EPOCH) throw new RangeError(`No simulated data before ${SIM_EPOCH}`);
     const prevDate = cal.previousTradingDay(date);
-    const prevClose = prevDate < SIM_EPOCH ? toTick(this.profile(symbol).base) : this.day(symbol, prevDate).close;
+    const prevClose =
+      prevDate < SIM_EPOCH ? toTick(this.profile(symbol).base) : this.day(symbol, prevDate).close;
     const bar = this.day(symbol, date);
 
     let last = bar.close;
@@ -261,10 +280,17 @@ export class SimulatedMarketDataProvider implements MarketDataProvider {
         s.state = s.state.times(ONE.plus(sigma.times(zClose)).plus(drift));
         const close = toTick(s.state);
         const high = round(max(open, close).times(ONE.plus(zHigh.times(sigma).times(WICK_SCALE))), 2, 'UP');
-        const low = max(MIN_TICK, round(min(open, close).times(ONE.minus(zLow.times(sigma).times(WICK_SCALE))), 2, 'DOWN'));
+        const low = max(
+          MIN_TICK,
+          round(min(open, close).times(ONE.minus(zLow.times(sigma).times(WICK_SCALE))), 2, 'DOWN'),
+        );
         const move = close.div(prevClose).minus(ONE).abs();
         const volume = BigInt(
-          baseVolume.times(HALF.plus(u)).times(ONE.plus(VOLUME_MOVE_SCALE.times(move))).floor().toFixed(0),
+          baseVolume
+            .times(HALF.plus(u))
+            .times(ONE.plus(VOLUME_MOVE_SCALE.times(move)))
+            .floor()
+            .toFixed(0),
         );
         s.days.set(cursor, { date: cursor, open, high, low, close, volume });
         s.lastDate = cursor;

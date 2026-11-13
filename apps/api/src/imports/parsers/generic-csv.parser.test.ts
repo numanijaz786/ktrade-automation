@@ -31,7 +31,14 @@ describe('GenericTransactionsCsvParser', () => {
       ],
       externalRef: 'CN-1',
     });
-    expect(rows[1]!.trade).toMatchObject({ tradeDate: '2026-11-03', symbol: 'HUBC', side: 'SELL', quantity: '200', price: '150.25', fees: [] });
+    expect(rows[1]!.trade).toMatchObject({
+      tradeDate: '2026-11-03',
+      symbol: 'HUBC',
+      side: 'SELL',
+      quantity: '200',
+      price: '150.25',
+      fees: [],
+    });
     expect(rows[1]!.rowIndex).toBe(3);
   });
 

@@ -37,9 +37,14 @@ const norm = (v: string | { toString(): string }) => d(v.toString()).toFixed();
 const dateOf = (dt: Date) => dt.toISOString().slice(0, 10);
 
 /** Trade identity used for duplicate detection across files and against the ledger. */
-export function tradeFingerprint(portfolioId: string, t: Pick<Trade, 'tradeDate' | 'symbol' | 'side' | 'quantity' | 'price'>): string {
+export function tradeFingerprint(
+  portfolioId: string,
+  t: Pick<Trade, 'tradeDate' | 'symbol' | 'side' | 'quantity' | 'price'>,
+): string {
   return createHash('sha256')
-    .update([portfolioId, t.tradeDate, t.symbol.toUpperCase(), t.side, norm(t.quantity), norm(t.price)].join('|'))
+    .update(
+      [portfolioId, t.tradeDate, t.symbol.toUpperCase(), t.side, norm(t.quantity), norm(t.price)].join('|'),
+    )
     .digest('hex');
 }
 
@@ -62,15 +67,22 @@ export class ImportsService {
   // ── Upload & stage ─────────────────────────────────────────────────────────
 
   async upload(userId: string, input: UploadImportInput, meta: RequestMeta) {
-    const portfolio = await this.prisma.portfolio.findFirst({ where: { id: input.portfolioId, userId, archivedAt: null } });
+    const portfolio = await this.prisma.portfolio.findFirst({
+      where: { id: input.portfolioId, userId, archivedAt: null },
+    });
     if (!portfolio) throw new NotFoundException({ message: 'Portfolio not found', code: 'NOT_FOUND' });
     if (portfolio.kind !== 'LIVE' || !portfolio.brokerAccountId) {
-      throw new UnprocessableEntityException({ message: 'Statements can only be imported into a LIVE broker portfolio', code: 'IMPORT_REQUIRES_LIVE_PORTFOLIO' });
+      throw new UnprocessableEntityException({
+        message: 'Statements can only be imported into a LIVE broker portfolio',
+        code: 'IMPORT_REQUIRES_LIVE_PORTFOLIO',
+      });
     }
     const brokerAccountId = portfolio.brokerAccountId;
     const fileSha256 = createHash('sha256').update(input.content, 'utf8').digest('hex');
 
-    const existing = await this.prisma.importedStatement.findUnique({ where: { brokerAccountId_fileSha256: { brokerAccountId, fileSha256 } } });
+    const existing = await this.prisma.importedStatement.findUnique({
+      where: { brokerAccountId_fileSha256: { brokerAccountId, fileSha256 } },
+    });
     if (existing) throw this.duplicateFile(existing.id, existing.fileName);
 
     const parser = this.parsers.resolve(input.fileName, input.content, input.kind);
@@ -84,9 +96,16 @@ export class ImportsService {
     try {
       parsed = parser.parse(input.content);
     } catch (err) {
-      throw new UnprocessableEntityException({ message: `Could not parse file: ${(err as Error).message}`, code: 'PARSE_FAILED' });
+      throw new UnprocessableEntityException({
+        message: `Could not parse file: ${(err as Error).message}`,
+        code: 'PARSE_FAILED',
+      });
     }
-    if (parsed.length === 0) throw new UnprocessableEntityException({ message: 'The file contains no data rows', code: 'EMPTY_FILE' });
+    if (parsed.length === 0)
+      throw new UnprocessableEntityException({
+        message: 'The file contains no data rows',
+        code: 'EMPTY_FILE',
+      });
 
     const staged = await this.validateRows(portfolio.id, brokerAccountId, parsed);
     const dates = staged.flatMap((r) => (r.payload.trade ? [r.payload.trade.tradeDate] : [])).sort();
@@ -145,7 +164,9 @@ export class ImportsService {
     } catch (err) {
       // Lost the race against a concurrent upload of the same file: the unique constraint is the final arbiter.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const dup = await this.prisma.importedStatement.findUnique({ where: { brokerAccountId_fileSha256: { brokerAccountId, fileSha256 } } });
+        const dup = await this.prisma.importedStatement.findUnique({
+          where: { brokerAccountId_fileSha256: { brokerAccountId, fileSha256 } },
+        });
         throw this.duplicateFile(dup?.id ?? null, dup?.fileName ?? input.fileName);
       }
       throw err;
@@ -155,7 +176,10 @@ export class ImportsService {
   private async validateRows(portfolioId: string, brokerAccountId: string, rows: ParsedTradeRow[]) {
     const valid = rows.filter((r) => r.trade);
     const symbols = [...new Set(valid.map((r) => r.trade!.symbol))];
-    const stocks = await this.prisma.stock.findMany({ where: { symbol: { in: symbols } }, select: { id: true, symbol: true } });
+    const stocks = await this.prisma.stock.findMany({
+      where: { symbol: { in: symbols } },
+      select: { id: true, symbol: true },
+    });
     const stockBySymbol = new Map(stocks.map((s) => [s.symbol, s.id]));
 
     const fingerprints = valid.map((r) => tradeFingerprint(portfolioId, r.trade!));
@@ -176,16 +200,28 @@ export class ImportsService {
             stockId: { in: [...stockBySymbol.values()] },
             tradeDate: { gte: new Date(`${dates[0]}T00:00:00Z`), lte: new Date(`${dates.at(-1)}T00:00:00Z`) },
           },
-          select: { id: true, stockId: true, type: true, tradeDate: true, quantity: true, price: true, source: true, externalRef: true },
+          select: {
+            id: true,
+            stockId: true,
+            type: true,
+            tradeDate: true,
+            quantity: true,
+            price: true,
+            source: true,
+            externalRef: true,
+          },
         })
       : [];
-    const ledgerKey = (stockId: string, side: string, date: string, qty: string, price: string) => `${stockId}|${side}|${date}|${norm(qty)}|${norm(price)}`;
+    const ledgerKey = (stockId: string, side: string, date: string, qty: string, price: string) =>
+      `${stockId}|${side}|${date}|${norm(qty)}|${norm(price)}`;
     const ledgerByKey = new Map<string, (typeof ledgerTxs)[number][]>();
     for (const t of ledgerTxs) {
       const k = ledgerKey(t.stockId, t.type, dateOf(t.tradeDate), t.quantity.toString(), t.price.toString());
       ledgerByKey.set(k, [...(ledgerByKey.get(k) ?? []), t]);
     }
-    const ledgerRefs = new Set(ledgerTxs.filter((t) => t.externalRef).map((t) => `${t.externalRef}|${t.stockId}|${t.type}`));
+    const ledgerRefs = new Set(
+      ledgerTxs.filter((t) => t.externalRef).map((t) => `${t.externalRef}|${t.stockId}|${t.type}`),
+    );
 
     const seenRef = new Map<string, number>();
     const seenFp = new Map<string, number>();
@@ -194,9 +230,14 @@ export class ImportsService {
     return rows.map((r) => {
       const issues: RowIssue[] = r.errors.map((message) => ({ level: 'error' as const, message }));
       const t = r.trade ?? null;
-      const payload: ParsedPayload = { trade: t, feeSource: t && t.fees.length > 0 ? 'FILE' : 'ESTIMATED_ON_COMMIT' };
+      const payload: ParsedPayload = {
+        trade: t,
+        feeSource: t && t.fees.length > 0 ? 'FILE' : 'ESTIMATED_ON_COMMIT',
+      };
       let status: ImportRowStatus = issues.length ? 'INVALID' : 'VALID';
-      const fingerprint = t ? tradeFingerprint(portfolioId, t) : createHash('sha256').update(JSON.stringify(r.raw)).digest('hex');
+      const fingerprint = t
+        ? tradeFingerprint(portfolioId, t)
+        : createHash('sha256').update(JSON.stringify(r.raw)).digest('hex');
 
       if (t) {
         const stockId = stockBySymbol.get(t.symbol);
@@ -208,35 +249,56 @@ export class ImportsService {
           const refKey = `${t.externalRef}|${t.symbol}|${t.side}`;
           const firstRow = seenRef.get(refKey);
           if (firstRow !== undefined) {
-            issues.push({ level: 'error', message: `reference ${t.externalRef} repeats row ${firstRow} for the same symbol and side` });
+            issues.push({
+              level: 'error',
+              message: `reference ${t.externalRef} repeats row ${firstRow} for the same symbol and side`,
+            });
             status = 'INVALID';
           } else seenRef.set(refKey, r.rowIndex);
         }
         if (status === 'VALID' && stockId) {
           const prior = priorByFp.get(fingerprint);
           const refHit = t.externalRef ? ledgerRefs.has(`${t.externalRef}|${stockId}|${t.side}`) : false;
-          const ledgerHit = (ledgerByKey.get(ledgerKey(stockId, t.side, t.tradeDate, t.quantity, t.price)) ?? []).find((x) => !claimedLedger.has(x.id));
+          const ledgerHit = (
+            ledgerByKey.get(ledgerKey(stockId, t.side, t.tradeDate, t.quantity, t.price)) ?? []
+          ).find((x) => !claimedLedger.has(x.id));
           if (prior) {
             status = 'DUPLICATE';
-            payload.duplicateOf = { kind: 'IMPORT_ROW', id: prior.id, detail: `already imported from ${prior.statement.fileName} (row ${prior.rowIndex})` };
+            payload.duplicateOf = {
+              kind: 'IMPORT_ROW',
+              id: prior.id,
+              detail: `already imported from ${prior.statement.fileName} (row ${prior.rowIndex})`,
+            };
           } else if (refHit || ledgerHit) {
             status = 'DUPLICATE';
             if (ledgerHit) claimedLedger.add(ledgerHit.id);
             payload.duplicateOf = {
               kind: 'TRANSACTION',
               id: ledgerHit?.id ?? '',
-              detail: refHit ? `reference ${t.externalRef} is already in the ledger` : `matches an existing ${ledgerHit!.source} transaction`,
+              detail: refHit
+                ? `reference ${t.externalRef} is already in the ledger`
+                : `matches an existing ${ledgerHit!.source} transaction`,
             };
           }
-          if (status === 'DUPLICATE') issues.push({ level: 'warning', message: `${payload.duplicateOf!.detail} — skipped unless you include it` });
+          if (status === 'DUPLICATE')
+            issues.push({
+              level: 'warning',
+              message: `${payload.duplicateOf!.detail} — skipped unless you include it`,
+            });
         }
         const sameRow = seenFp.get(fingerprint);
         if (sameRow !== undefined && status === 'VALID') {
-          issues.push({ level: 'warning', message: `identical to row ${sameRow} — confirm these are two separate fills` });
+          issues.push({
+            level: 'warning',
+            message: `identical to row ${sameRow} — confirm these are two separate fills`,
+          });
         }
         if (!seenFp.has(fingerprint)) seenFp.set(fingerprint, r.rowIndex);
         if (payload.feeSource === 'ESTIMATED_ON_COMMIT' && status !== 'INVALID') {
-          issues.push({ level: 'warning', message: 'no charges in file — fees will be ESTIMATED from the fee schedule' });
+          issues.push({
+            level: 'warning',
+            message: 'no charges in file — fees will be ESTIMATED from the fee schedule',
+          });
         }
       }
       return { rowIndex: r.rowIndex, raw: r.raw, payload, fingerprint, status, issues };
@@ -256,9 +318,15 @@ export class ImportsService {
   }
 
   async present(userId: string, importId: string) {
-    const s = await this.prisma.importedStatement.findFirst({ where: { id: importId, brokerAccount: { userId } } });
+    const s = await this.prisma.importedStatement.findFirst({
+      where: { id: importId, brokerAccount: { userId } },
+    });
     if (!s) throw new NotFoundException({ message: 'Import not found', code: 'NOT_FOUND' });
-    const grouped = await this.prisma.importedRow.groupBy({ by: ['status'], where: { statementId: s.id }, _count: { _all: true } });
+    const grouped = await this.prisma.importedRow.groupBy({
+      by: ['status'],
+      where: { statementId: s.id },
+      _count: { _all: true },
+    });
     const parser = this.parsers.byKey(s.parserKey);
     return {
       id: s.id,
@@ -274,7 +342,9 @@ export class ImportsService {
       committedAt: s.committedAt?.toISOString() ?? null,
       periodFrom: s.periodFrom ? dateOf(s.periodFrom) : null,
       periodTo: s.periodTo ? dateOf(s.periodTo) : null,
-      rowCounts: Object.fromEntries(grouped.map((g) => [g.status, g._count._all])) as Partial<Record<ImportRowStatus, number>>,
+      rowCounts: Object.fromEntries(grouped.map((g) => [g.status, g._count._all])) as Partial<
+        Record<ImportRowStatus, number>
+      >,
     };
   }
 
@@ -317,14 +387,34 @@ export class ImportsService {
     let next: ImportRowStatus;
     if (action === 'skip') {
       next = 'SKIPPED';
-    } else if (row.status === 'DUPLICATE' || (row.status === 'SKIPPED' && p?.trade && !(row.errors as unknown as RowIssue[]).some((i) => i.level === 'error'))) {
+    } else if (
+      row.status === 'DUPLICATE' ||
+      (row.status === 'SKIPPED' &&
+        p?.trade &&
+        !(row.errors as unknown as RowIssue[]).some((i) => i.level === 'error'))
+    ) {
       next = 'VALID';
     } else {
-      throw new ConflictException({ message: `A ${row.status} row cannot be included${row.status === 'INVALID' ? ' — fix the file and re-upload' : ''}`, code: 'ROW_NOT_INCLUDABLE' });
+      throw new ConflictException({
+        message: `A ${row.status} row cannot be included${row.status === 'INVALID' ? ' — fix the file and re-upload' : ''}`,
+        code: 'ROW_NOT_INCLUDABLE',
+      });
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.importedRow.update({ where: { id: row.id }, data: { status: next } });
-      await this.audit.record({ action: `import.row_${action}`, actorType: 'USER', actorUserId: userId, entityType: 'imported_row', entityId: row.id, before: { status: row.status }, after: { status: next }, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: `import.row_${action}`,
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'imported_row',
+          entityId: row.id,
+          before: { status: row.status },
+          after: { status: next },
+          ...meta,
+        },
+        tx,
+      );
     });
     return (await this.rows(userId, importId)).find((r) => r.id === rowId)!;
   }
@@ -333,7 +423,17 @@ export class ImportsService {
     const s = await this.reviewable(userId, importId);
     await this.prisma.$transaction(async (tx) => {
       await tx.importedStatement.update({ where: { id: s.id }, data: { status: 'REJECTED' } });
-      await this.audit.record({ action: 'import.rejected', actorType: 'USER', actorUserId: userId, entityType: 'imported_statement', entityId: s.id, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: 'import.rejected',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'imported_statement',
+          entityId: s.id,
+          ...meta,
+        },
+        tx,
+      );
     });
     return this.present(userId, importId);
   }
@@ -343,18 +443,31 @@ export class ImportsService {
   async commit(userId: string, importId: string, meta: RequestMeta) {
     const s = await this.reviewable(userId, importId);
     const parser = this.parsers.byKey(s.parserKey);
-    if (!parser) throw new ConflictException({ message: `Parser ${s.parserKey} is no longer available`, code: 'PARSER_UNAVAILABLE' });
-    if (!s.portfolioId) throw new ConflictException({ message: 'Import has no target portfolio', code: 'NO_TARGET_PORTFOLIO' });
+    if (!parser)
+      throw new ConflictException({
+        message: `Parser ${s.parserKey} is no longer available`,
+        code: 'PARSER_UNAVAILABLE',
+      });
+    if (!s.portfolioId)
+      throw new ConflictException({ message: 'Import has no target portfolio', code: 'NO_TARGET_PORTFOLIO' });
     const portfolioId = s.portfolioId;
 
     await this.prisma.$transaction(
       async (tx) => {
         // Row lock: a second concurrent commit waits here, then sees COMMITTED and stops.
-        const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM imported_statements WHERE id = ${s.id}::uuid FOR UPDATE`;
+        const locked = await tx.$queryRaw<
+          { status: string }[]
+        >`SELECT status FROM imported_statements WHERE id = ${s.id}::uuid FOR UPDATE`;
         if (locked[0]?.status !== 'AWAITING_REVIEW') {
-          throw new ConflictException({ message: `Import is ${locked[0]?.status ?? 'missing'}`, code: 'INVALID_IMPORT_STATE' });
+          throw new ConflictException({
+            message: `Import is ${locked[0]?.status ?? 'missing'}`,
+            code: 'INVALID_IMPORT_STATE',
+          });
         }
-        const rows = await tx.importedRow.findMany({ where: { statementId: s.id }, orderBy: { rowIndex: 'asc' } });
+        const rows = await tx.importedRow.findMany({
+          where: { statementId: s.id },
+          orderBy: { rowIndex: 'asc' },
+        });
         const invalid = rows.filter((r) => r.status === 'INVALID');
         if (invalid.length > 0) {
           throw new ConflictException({
@@ -365,17 +478,35 @@ export class ImportsService {
         const toPost = rows
           .filter((r) => r.status === 'VALID')
           .map((r) => ({ row: r, trade: (r.parsed as unknown as ParsedPayload).trade! }))
-          .sort((a, b) => (a.trade.tradeDate === b.trade.tradeDate ? a.row.rowIndex - b.row.rowIndex : a.trade.tradeDate < b.trade.tradeDate ? -1 : 1));
-        if (toPost.length === 0) throw new ConflictException({ message: 'No rows to commit — reject the import instead', code: 'NOTHING_TO_COMMIT' });
+          .sort((a, b) =>
+            a.trade.tradeDate === b.trade.tradeDate
+              ? a.row.rowIndex - b.row.rowIndex
+              : a.trade.tradeDate < b.trade.tradeDate
+                ? -1
+                : 1,
+          );
+        if (toPost.length === 0)
+          throw new ConflictException({
+            message: 'No rows to commit — reject the import instead',
+            code: 'NOTHING_TO_COMMIT',
+          });
 
-        const stocks = await tx.stock.findMany({ where: { symbol: { in: [...new Set(toPost.map((x) => x.trade.symbol))] } }, select: { id: true, symbol: true } });
+        const stocks = await tx.stock.findMany({
+          where: { symbol: { in: [...new Set(toPost.map((x) => x.trade.symbol))] } },
+          select: { id: true, symbol: true },
+        });
         const stockBySymbol = new Map(stocks.map((x) => [x.symbol, x.id]));
         const rowByTxId = new Map<string, number>();
         const touched = new Set<string>();
 
         for (const { row, trade } of toPost) {
           const stockId = stockBySymbol.get(trade.symbol);
-          if (!stockId) throw new ConflictException({ message: `Row ${row.rowIndex}: unknown symbol ${trade.symbol}`, code: 'IMPORT_ROW_REJECTED', rowNo: row.rowIndex });
+          if (!stockId)
+            throw new ConflictException({
+              message: `Row ${row.rowIndex}: unknown symbol ${trade.symbol}`,
+              code: 'IMPORT_ROW_REJECTED',
+              rowNo: row.rowIndex,
+            });
           const fees = await this.feesFor(trade, parser);
           try {
             const { transactionId } = await this.ledger.postTrade(
@@ -413,7 +544,10 @@ export class ImportsService {
           }
         }
 
-        await tx.importedRow.updateMany({ where: { id: { in: toPost.map((x) => x.row.id) } }, data: { status: 'COMMITTED' } });
+        await tx.importedRow.updateMany({
+          where: { id: { in: toPost.map((x) => x.row.id) } },
+          data: { status: 'COMMITTED' },
+        });
         await tx.importedStatement.update({
           where: { id: s.id },
           data: { status: 'COMMITTED', committedAt: new Date(), rowsCommitted: toPost.length },
@@ -439,21 +573,38 @@ export class ImportsService {
   // ── internals ──────────────────────────────────────────────────────────────
 
   /** File-stated charges keep the parser's provenance; missing charges are estimated and labelled ESTIMATED. */
-  private async feesFor(trade: Trade, parser: StatementParser): Promise<{ lines: FeeLineInput[]; scheduleId: string | null }> {
+  private async feesFor(
+    trade: Trade,
+    parser: StatementParser,
+  ): Promise<{ lines: FeeLineInput[]; scheduleId: string | null }> {
     if (trade.fees.length > 0) {
       return {
-        lines: trade.fees.map((f) => ({ component: f.component, amount: d(f.amount), capitalised: true, source: parser.source as DataSource })),
+        lines: trade.fees.map((f) => ({
+          component: f.component,
+          amount: d(f.amount),
+          capitalised: true,
+          source: parser.source as DataSource,
+        })),
         scheduleId: null,
       };
     }
-    const est = await this.fees.estimate(trade.side as OrderSide, d(trade.quantity), d(trade.price), trade.tradeDate);
+    const est = await this.fees.estimate(
+      trade.side as OrderSide,
+      d(trade.quantity),
+      d(trade.price),
+      trade.tradeDate,
+    );
     return { lines: feeLinesFromBreakdown(est.lines), scheduleId: est.scheduleId };
   }
 
   private rowError(err: unknown, rowNo: number | undefined): Error {
     const where = rowNo !== undefined ? `Row ${rowNo}: ` : '';
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return new ConflictException({ message: `${where}this trade reference already exists in the ledger`, code: 'IMPORT_ROW_REJECTED', rowNo });
+      return new ConflictException({
+        message: `${where}this trade reference already exists in the ledger`,
+        code: 'IMPORT_ROW_REJECTED',
+        rowNo,
+      });
     }
     if (err instanceof HttpException) {
       const body = err.getResponse() as { message?: string; code?: string };
@@ -467,14 +618,21 @@ export class ImportsService {
   }
 
   private async reviewable(userId: string, importId: string) {
-    const s = await this.prisma.importedStatement.findFirst({ where: { id: importId, brokerAccount: { userId } } });
+    const s = await this.prisma.importedStatement.findFirst({
+      where: { id: importId, brokerAccount: { userId } },
+    });
     if (!s) throw new NotFoundException({ message: 'Import not found', code: 'NOT_FOUND' });
-    if (s.status !== 'AWAITING_REVIEW') throw new ConflictException({ message: `Import is already ${s.status}`, code: 'INVALID_IMPORT_STATE' });
+    if (s.status !== 'AWAITING_REVIEW')
+      throw new ConflictException({ message: `Import is already ${s.status}`, code: 'INVALID_IMPORT_STATE' });
     return s;
   }
 
   private duplicateFile(existingId: string | null, fileName: string) {
-    return new ConflictException({ message: `This exact file was already imported (${fileName})`, code: 'DUPLICATE_IMPORT', existingImportId: existingId });
+    return new ConflictException({
+      message: `This exact file was already imported (${fileName})`,
+      code: 'DUPLICATE_IMPORT',
+      existingImportId: existingId,
+    });
   }
 
   private count(statuses: ImportRowStatus[]): Partial<Record<ImportRowStatus, number>> {

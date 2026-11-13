@@ -15,7 +15,10 @@ export const uploadImportSchema = z.object({
   content: z
     .string()
     .min(1, 'file is empty')
-    .refine((c) => Buffer.byteLength(c, 'utf8') <= MAX_IMPORT_BYTES, `file exceeds ${MAX_IMPORT_BYTES / 1024 / 1024} MB`),
+    .refine(
+      (c) => Buffer.byteLength(c, 'utf8') <= MAX_IMPORT_BYTES,
+      `file exceeds ${MAX_IMPORT_BYTES / 1024 / 1024} MB`,
+    ),
   kind: z.enum(IMPORT_KINDS).optional(),
 });
 export type UploadImportInput = z.infer<typeof uploadImportSchema>;

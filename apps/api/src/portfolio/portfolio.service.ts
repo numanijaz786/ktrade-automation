@@ -6,7 +6,8 @@ import type { RequestMeta } from '../auth/decorators.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
-const dec = (v: { toString(): string } | null | undefined): Decimal => (v === null || v === undefined ? ZERO : d(v.toString()));
+const dec = (v: { toString(): string } | null | undefined): Decimal =>
+  v === null || v === undefined ? ZERO : d(v.toString());
 const money = (x: Decimal) => roundMoney(x).toFixed(4);
 const pctStr = (x: Decimal | null) => (x === null ? null : x.toDecimalPlaces(4).toFixed(4));
 
@@ -31,8 +32,18 @@ export class PortfolioService {
   ) {}
 
   async list(userId: string) {
-    const rows = await this.prisma.portfolio.findMany({ where: { userId, archivedAt: null }, orderBy: { createdAt: 'asc' } });
-    return rows.map((p) => ({ id: p.id, name: p.name, kind: p.kind, costBasisMethod: p.costBasisMethod, baseCurrency: p.baseCurrency, initialCash: p.initialCash?.toString() ?? null }));
+    const rows = await this.prisma.portfolio.findMany({
+      where: { userId, archivedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((p) => ({
+      id: p.id,
+      name: p.name,
+      kind: p.kind,
+      costBasisMethod: p.costBasisMethod,
+      baseCurrency: p.baseCurrency,
+      initialCash: p.initialCash?.toString() ?? null,
+    }));
   }
 
   async createPaper(userId: string, name: string, initialCash: string, meta: RequestMeta) {
@@ -41,9 +52,27 @@ export class PortfolioService {
         data: { userId, name, kind: 'PAPER', initialCash, riskLimit: { create: DEFAULT_PAPER_LIMITS } },
       });
       await tx.cashMovement.create({
-        data: { portfolioId: created.id, type: 'DEPOSIT', amount: initialCash, valueDate: new Date(), description: 'Paper trading starting cash', source: 'SIMULATED' },
+        data: {
+          portfolioId: created.id,
+          type: 'DEPOSIT',
+          amount: initialCash,
+          valueDate: new Date(),
+          description: 'Paper trading starting cash',
+          source: 'SIMULATED',
+        },
       });
-      await this.audit.record({ action: 'portfolio.created', actorType: 'USER', actorUserId: userId, entityType: 'portfolio', entityId: created.id, after: { name, kind: 'PAPER', initialCash }, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: 'portfolio.created',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'portfolio',
+          entityId: created.id,
+          after: { name, kind: 'PAPER', initialCash },
+          ...meta,
+        },
+        tx,
+      );
       return created;
     });
     return { id: p.id, name: p.name, kind: p.kind };
@@ -79,9 +108,17 @@ export class PortfolioService {
         quantity: qty.toFixed(),
         avgCost: dec(h.avgCost).toFixed(6),
         totalCost: money(totalCost),
-        lastPrice: last ? { value: last.toFixed(), source: h.stock.quote!.source, asOf: h.stock.quote!.asOf.toISOString() } : null,
+        lastPrice: last
+          ? { value: last.toFixed(), source: h.stock.quote!.source, asOf: h.stock.quote!.asOf.toISOString() }
+          : null,
         marketValue: mv ? { value: money(mv), source: h.stock.quote!.source } : null,
-        unrealizedPnl: unrealized ? { value: money(unrealized), pct: pctStr(pct(unrealized, totalCost)), source: 'ESTIMATED' as DataSource } : null,
+        unrealizedPnl: unrealized
+          ? {
+              value: money(unrealized),
+              pct: pctStr(pct(unrealized, totalCost)),
+              source: 'ESTIMATED' as DataSource,
+            }
+          : null,
         realizedPnl: money(dec(h.realizedPnl)),
         weightPct: mv ? pctStr(pct(mv, totalMv)) : null,
         lastConfirmed: h.lastConfirmed?.toISOString() ?? null,
@@ -120,15 +157,41 @@ export class PortfolioService {
     };
   }
 
-  async addCash(userId: string, portfolioId: string, type: 'DEPOSIT' | 'WITHDRAWAL', amount: string, valueDate: string, description: string | undefined, meta: RequestMeta) {
+  async addCash(
+    userId: string,
+    portfolioId: string,
+    type: 'DEPOSIT' | 'WITHDRAWAL',
+    amount: string,
+    valueDate: string,
+    description: string | undefined,
+    meta: RequestMeta,
+  ) {
     const p = await this.owned(userId, portfolioId);
     const source: DataSource = p.kind === 'PAPER' ? 'SIMULATED' : 'USER_REPORTED';
     const signed = type === 'DEPOSIT' ? d(amount) : d(amount).neg();
     const row = await this.prisma.$transaction(async (tx) => {
       const m = await tx.cashMovement.create({
-        data: { portfolioId, type, amount: signed.toFixed(4), valueDate: new Date(`${valueDate}T00:00:00Z`), description: description ?? null, source },
+        data: {
+          portfolioId,
+          type,
+          amount: signed.toFixed(4),
+          valueDate: new Date(`${valueDate}T00:00:00Z`),
+          description: description ?? null,
+          source,
+        },
       });
-      await this.audit.record({ action: 'cash.recorded', actorType: 'USER', actorUserId: userId, entityType: 'cash_movement', entityId: m.id, after: { type, amount }, ...meta }, tx);
+      await this.audit.record(
+        {
+          action: 'cash.recorded',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'cash_movement',
+          entityId: m.id,
+          after: { type, amount },
+          ...meta,
+        },
+        tx,
+      );
       return m;
     });
     return { id: row.id, type, amount: row.amount.toString(), source };
@@ -140,12 +203,33 @@ export class PortfolioService {
     return r ? this.serializeLimits(r) : null;
   }
 
-  async setRiskLimits(userId: string, portfolioId: string, input: typeof DEFAULT_PAPER_LIMITS, meta: RequestMeta) {
+  async setRiskLimits(
+    userId: string,
+    portfolioId: string,
+    input: typeof DEFAULT_PAPER_LIMITS,
+    meta: RequestMeta,
+  ) {
     await this.owned(userId, portfolioId);
     const before = await this.prisma.riskLimit.findUnique({ where: { portfolioId } });
     const after = await this.prisma.$transaction(async (tx) => {
-      const r = await tx.riskLimit.upsert({ where: { portfolioId }, create: { portfolioId, ...input }, update: input });
-      await this.audit.record({ action: 'settings.risk_limits_changed', actorType: 'USER', actorUserId: userId, entityType: 'portfolio', entityId: portfolioId, before: before ? this.serializeLimits(before) : null, after: this.serializeLimits(r), ...meta }, tx);
+      const r = await tx.riskLimit.upsert({
+        where: { portfolioId },
+        create: { portfolioId, ...input },
+        update: input,
+      });
+      await this.audit.record(
+        {
+          action: 'settings.risk_limits_changed',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'portfolio',
+          entityId: portfolioId,
+          before: before ? this.serializeLimits(before) : null,
+          after: this.serializeLimits(r),
+          ...meta,
+        },
+        tx,
+      );
       return r;
     });
     return this.serializeLimits(after);
@@ -158,11 +242,35 @@ export class PortfolioService {
       this.holdings(userId, portfolioId),
       this.ledger.cashBalance(this.prisma, portfolioId),
       this.prisma.holding.aggregate({ where: { portfolioId }, _sum: { realizedPnl: true } }),
-      this.prisma.transaction.aggregate({ where: { portfolioId, reversedById: null }, _sum: { feesTotal: true, taxesTotal: true } }),
-      this.prisma.dividendEntitlement.aggregate({ where: { portfolioId, status: { in: ['PAID', 'RECONCILED'] } }, _sum: { netAmount: true } }),
-      this.prisma.order.count({ where: { portfolioId, status: { in: ['PREVIEWED', 'APPROVED', 'AWAITING_MANUAL_PLACEMENT', 'PLACED_BY_USER', 'SUBMITTED', 'ACCEPTED', 'PARTIALLY_FILLED'] } } }),
+      this.prisma.transaction.aggregate({
+        where: { portfolioId, reversedById: null },
+        _sum: { feesTotal: true, taxesTotal: true },
+      }),
+      this.prisma.dividendEntitlement.aggregate({
+        where: { portfolioId, status: { in: ['PAID', 'RECONCILED'] } },
+        _sum: { netAmount: true },
+      }),
+      this.prisma.order.count({
+        where: {
+          portfolioId,
+          status: {
+            in: [
+              'PREVIEWED',
+              'APPROVED',
+              'AWAITING_MANUAL_PLACEMENT',
+              'PLACED_BY_USER',
+              'SUBMITTED',
+              'ACCEPTED',
+              'PARTIALLY_FILLED',
+            ],
+          },
+        },
+      }),
       p.brokerAccountId
-        ? this.prisma.brokerBalanceSnapshot.findFirst({ where: { brokerAccountId: p.brokerAccountId }, orderBy: { asOf: 'desc' } })
+        ? this.prisma.brokerBalanceSnapshot.findFirst({
+            where: { brokerAccountId: p.brokerAccountId },
+            orderBy: { asOf: 'desc' },
+          })
         : Promise.resolve(null),
     ]);
     const priced = holdings.filter((h) => h.marketValue);
@@ -172,26 +280,46 @@ export class PortfolioService {
     const priceSources = priced.map((h) => h.marketValue!.source as DataSource);
     const ledgerSource: DataSource = p.kind === 'PAPER' ? 'SIMULATED' : 'USER_REPORTED';
     const valueSource = weakestSource([...priceSources, ledgerSource]);
-    const netContrib = await this.prisma.cashMovement.aggregate({ where: { portfolioId, type: { in: ['DEPOSIT', 'WITHDRAWAL'] } }, _sum: { amount: true } });
+    const netContrib = await this.prisma.cashMovement.aggregate({
+      where: { portfolioId, type: { in: ['DEPOSIT', 'WITHDRAWAL'] } },
+      _sum: { amount: true },
+    });
     const contributions = dec(netContrib._sum.amount);
     const accountValue = cash.plus(mv);
 
     return {
       portfolio: { id: p.id, name: p.name, kind: p.kind },
       accountValue: { value: money(accountValue), source: valueSource },
-      portfolioValue: { value: money(mv), source: weakestSource(priceSources.length ? priceSources : [ledgerSource]) },
+      portfolioValue: {
+        value: money(mv),
+        source: weakestSource(priceSources.length ? priceSources : [ledgerSource]),
+      },
       investedAmount: { value: money(invested), source: ledgerSource },
       cash: {
         ledger: { value: money(cash), source: ledgerSource },
-        broker: brokerCash ? { value: brokerCash.cashBalance.toString(), asOf: brokerCash.asOf.toISOString(), source: brokerCash.source } : null,
+        broker: brokerCash
+          ? {
+              value: brokerCash.cashBalance.toString(),
+              asOf: brokerCash.asOf.toISOString(),
+              source: brokerCash.source,
+            }
+          : null,
       },
       realizedPnl: { value: money(dec(closed._sum.realizedPnl)), source: ledgerSource },
       unrealizedPnl: { value: money(unrealized), source: 'ESTIMATED' as DataSource },
-      totalReturnPct: { value: pctStr(contributions.gt(0) ? pct(accountValue.minus(contributions), contributions) : null), method: 'SIMPLE', source: valueSource },
+      totalReturnPct: {
+        value: pctStr(contributions.gt(0) ? pct(accountValue.minus(contributions), contributions) : null),
+        method: 'SIMPLE',
+        source: valueSource,
+      },
       todayPnl: { value: null, note: 'Available once daily snapshots run (Phase 10)' },
       monthPnl: { value: null, note: 'Available once daily snapshots run (Phase 10)' },
       dividendsReceived: { value: money(dec(divAgg._sum.netAmount)), source: ledgerSource },
-      feesAndTaxes: { fees: money(dec(feesAgg._sum.feesTotal)), taxes: money(dec(feesAgg._sum.taxesTotal)), source: 'ESTIMATED' as DataSource },
+      feesAndTaxes: {
+        fees: money(dec(feesAgg._sum.feesTotal)),
+        taxes: money(dec(feesAgg._sum.taxesTotal)),
+        source: 'ESTIMATED' as DataSource,
+      },
       activeHoldings: holdings.length,
       pendingOrders,
       unpricedHoldings: holdings.length - priced.length,

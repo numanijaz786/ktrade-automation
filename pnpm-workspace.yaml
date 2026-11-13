@@ -1,16 +1,16 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 
 # Supply-chain guard: never resolve a package version published less than 7 days ago (minutes).
 minimumReleaseAge: 10080
 # Only these packages may run install scripts (native builds / engines).
 onlyBuiltDependencies:
-  - "@prisma/client"
-  - "@prisma/engines"
+  - '@prisma/client'
+  - '@prisma/engines'
   - prisma
   - argon2
-  - "@swc/core"
+  - '@swc/core'
   - esbuild
   - sharp
   - msgpackr-extract

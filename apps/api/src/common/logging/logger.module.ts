@@ -38,7 +38,11 @@ const REQUEST_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
           },
           autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' },
           serializers: {
-            req: (req: { id: string; method: string; url: string }) => ({ id: req.id, method: req.method, url: req.url }),
+            req: (req: { id: string; method: string; url: string }) => ({
+              id: req.id,
+              method: req.method,
+              url: req.url,
+            }),
           },
         },
       }),

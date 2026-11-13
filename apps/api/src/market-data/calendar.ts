@@ -28,7 +28,8 @@ function utcMidnight(date: string): number {
 }
 
 /** The PKT calendar date an instant falls on. */
-export const pktDateOf = (instant: Date): string => new Date(instant.getTime() + PKT_OFFSET_MS).toISOString().slice(0, 10);
+export const pktDateOf = (instant: Date): string =>
+  new Date(instant.getTime() + PKT_OFFSET_MS).toISOString().slice(0, 10);
 
 /** Instant of `HH:MM` PKT on a PKT date. */
 export const pktInstant = (date: string, minuteOfDay: number): Date =>

@@ -29,7 +29,9 @@ export function isStale(
  * Guard for anything that acts on real money (live order previews/approval): refuses SIMULATED
  * prices outright and stale prices of any source. Paper trading and backtests do not call this.
  */
-export function assertUsableForLive(quote: Pick<QuoteDto, 'symbol' | 'asOf' | 'source'> & { stale: boolean }): void {
+export function assertUsableForLive(
+  quote: Pick<QuoteDto, 'symbol' | 'asOf' | 'source'> & { stale: boolean },
+): void {
   if (quote.source === 'SIMULATED') throw new SimulatedPriceRefusedError(quote.symbol);
   if (quote.stale) throw new StalePriceError(quote.symbol, quote.asOf);
 }

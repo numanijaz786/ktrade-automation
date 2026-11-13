@@ -3,7 +3,14 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { KeyRound, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useStepUp } from '@/lib/api/hooks';
@@ -21,7 +28,15 @@ export interface StepUpDialogProps {
 }
 
 /** 🔐 Step-up: confirm a sensitive action with a TOTP code (docs/07 §1). */
-export function StepUpDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirm', onVerified, children }: StepUpDialogProps) {
+export function StepUpDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  onVerified,
+  children,
+}: StepUpDialogProps) {
   const id = useId();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);

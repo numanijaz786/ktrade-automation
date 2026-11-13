@@ -34,7 +34,10 @@ export class BrokerAccountsService {
   async list(userId: string) {
     const rows = await this.prisma.brokerAccount.findMany({
       where: { userId, isActive: true },
-      include: { portfolios: { where: { kind: 'LIVE', archivedAt: null }, select: { id: true, name: true } }, connections: true },
+      include: {
+        portfolios: { where: { kind: 'LIVE', archivedAt: null }, select: { id: true, name: true } },
+        connections: true,
+      },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map((a) => ({
@@ -43,11 +46,20 @@ export class BrokerAccountsService {
       displayName: a.displayName,
       clientCodeMasked: a.clientCodeMasked,
       portfolios: a.portfolios,
-      connections: a.connections.map((c) => ({ adapter: c.adapter, status: c.status, capabilities: c.capabilities, authorizationRef: c.authorizationRef })),
+      connections: a.connections.map((c) => ({
+        adapter: c.adapter,
+        status: c.status,
+        capabilities: c.capabilities,
+        authorizationRef: c.authorizationRef,
+      })),
     }));
   }
 
-  async create(userId: string, input: { displayName: string; clientCodeLast4?: string; portfolioName: string }, meta: RequestMeta) {
+  async create(
+    userId: string,
+    input: { displayName: string; clientCodeLast4?: string; portfolioName: string },
+    meta: RequestMeta,
+  ) {
     try {
       const account = await this.prisma.$transaction(async (tx) => {
         const a = await tx.brokerAccount.create({
@@ -57,25 +69,48 @@ export class BrokerAccountsService {
             displayName: input.displayName,
             clientCodeMasked: input.clientCodeLast4 ? `****${input.clientCodeLast4}` : null,
             portfolios: {
-              create: { userId, name: input.portfolioName, kind: 'LIVE', riskLimit: { create: DEFAULT_LIVE_LIMITS } },
+              create: {
+                userId,
+                name: input.portfolioName,
+                kind: 'LIVE',
+                riskLimit: { create: DEFAULT_LIVE_LIMITS },
+              },
             },
             connections: {
               create: [
                 // Statement/CSV import is always available; it reads files the owner supplies, not the broker.
                 { adapter: 'MANUAL_IMPORT', status: 'CONNECTED', capabilities: manifestJson(allOff()) },
                 { adapter: 'KTRADE_OFFICIAL_API', status: 'DISABLED', capabilities: manifestJson(allOff()) },
-                { adapter: 'KTRADE_BROWSER', status: 'PENDING_AUTHORIZATION', capabilities: manifestJson(allOff()) },
+                {
+                  adapter: 'KTRADE_BROWSER',
+                  status: 'PENDING_AUTHORIZATION',
+                  capabilities: manifestJson(allOff()),
+                },
               ],
             },
           },
         });
-        await this.audit.record({ action: 'integration.account_registered', actorType: 'USER', actorUserId: userId, entityType: 'broker_account', entityId: a.id, after: { displayName: input.displayName }, ...meta }, tx);
+        await this.audit.record(
+          {
+            action: 'integration.account_registered',
+            actorType: 'USER',
+            actorUserId: userId,
+            entityType: 'broker_account',
+            entityId: a.id,
+            after: { displayName: input.displayName },
+            ...meta,
+          },
+          tx,
+        );
         return a;
       });
       return (await this.list(userId)).find((a) => a.id === account.id)!;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException({ message: 'An account or portfolio with that name already exists', code: 'ALREADY_EXISTS' });
+        throw new ConflictException({
+          message: 'An account or portfolio with that name already exists',
+          code: 'ALREADY_EXISTS',
+        });
       }
       throw err;
     }

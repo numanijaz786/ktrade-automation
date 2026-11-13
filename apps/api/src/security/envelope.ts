@@ -34,7 +34,8 @@ function gcmDecrypt(key: Buffer, iv: Buffer, ct: Buffer, tag: Buffer, aad: Buffe
 }
 
 export function assertKek(kek: Buffer): void {
-  if (kek.length !== 32) throw new Error('Master key must be exactly 32 bytes (base64-encoded in APP_MASTER_KEY)');
+  if (kek.length !== 32)
+    throw new Error('Master key must be exactly 32 bytes (base64-encoded in APP_MASTER_KEY)');
 }
 
 export function seal(kek: Buffer, keyVersion: number, plaintext: Buffer, aad: string): Sealed {

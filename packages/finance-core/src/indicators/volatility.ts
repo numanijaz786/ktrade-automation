@@ -56,7 +56,10 @@ export class AtrIndicator implements StreamingIndicator {
       this.trSum = this.trSum.plus(tr);
       if (this.count - 1 === this.period) this.value = this.trSum.div(n);
     } else {
-      this.value = this.value.times(fromInt(this.period - 1)).plus(tr).div(n);
+      this.value = this.value
+        .times(fromInt(this.period - 1))
+        .plus(tr)
+        .div(n);
     }
     return this.value;
   }
@@ -90,7 +93,9 @@ export function bollingerSeries(
 ): IndicatorSeries<BollingerValue> {
   assertPeriod('Bollinger', period);
   const k = d(stdDevMultiplier);
-  return values.map((_, i) => (i + 1 < period ? null : bollingerOfWindow(values.slice(i + 1 - period, i + 1), k)));
+  return values.map((_, i) =>
+    i + 1 < period ? null : bollingerOfWindow(values.slice(i + 1 - period, i + 1), k),
+  );
 }
 
 export class BollingerIndicator implements StreamingIndicator<BollingerValue> {

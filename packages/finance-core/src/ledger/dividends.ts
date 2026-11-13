@@ -68,14 +68,19 @@ function checkDays(settlementDays: number): void {
  * Settlement date of a trade: the `settlementDays`-th trading day after `tradeDate` (T+0 → tradeDate).
  * `tradingCalendar` is the ascending list of PSX trading days and must extend far enough.
  */
-export function settlementDateFor(tradeDate: string, settlementDays: number, tradingCalendar: readonly string[]): string {
+export function settlementDateFor(
+  tradeDate: string,
+  settlementDays: number,
+  tradingCalendar: readonly string[],
+): string {
   assertIsoDate(tradeDate, 'tradeDate');
   checkDays(settlementDays);
   if (settlementDays === 0) return tradeDate;
   const cal = sortedCalendar(tradingCalendar);
   const after = cal.filter((day) => day > tradeDate);
   const s = after[settlementDays - 1];
-  if (s === undefined) throw new RangeError(`tradingCalendar does not extend to T+${settlementDays} of ${tradeDate}`);
+  if (s === undefined)
+    throw new RangeError(`tradingCalendar does not extend to T+${settlementDays} of ${tradeDate}`);
   return s;
 }
 
@@ -114,7 +119,10 @@ export interface SettledQuantityMovement {
 }
 
 /** Shares settled strictly before `bookClosureStart` — the eligible quantity for an entitlement. */
-export function settledQuantityBefore(movements: readonly SettledQuantityMovement[], bookClosureStart: string): Decimal {
+export function settledQuantityBefore(
+  movements: readonly SettledQuantityMovement[],
+  bookClosureStart: string,
+): Decimal {
   assertIsoDate(bookClosureStart, 'bookClosureStart');
   const qty = sum(
     movements

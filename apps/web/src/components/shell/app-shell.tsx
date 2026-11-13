@@ -39,9 +39,15 @@ function NotificationsButton() {
   const n = data?.length ?? 0;
   return (
     <Button variant="ghost" size="icon" asChild>
-      <Link href="/notifications" aria-label={n ? `Notifications, ${n} unread` : 'Notifications'} className="relative">
+      <Link
+        href="/notifications"
+        aria-label={n ? `Notifications, ${n} unread` : 'Notifications'}
+        className="relative"
+      >
         <Bell aria-hidden="true" />
-        {n > 0 && <span className="absolute top-1 right-1 size-2 rounded-full bg-destructive" aria-hidden="true" />}
+        {n > 0 && (
+          <span className="absolute top-1 right-1 size-2 rounded-full bg-destructive" aria-hidden="true" />
+        )}
       </Link>
     </Button>
   );
@@ -57,7 +63,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const open = userOpen ?? !isTablet;
   return (
     <SidebarProvider open={open} onOpenChange={setUserOpen}>
-      <a href="#main" className="sr-only z-50 rounded bg-background px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded bg-background px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
         Skip to content
       </a>
       <AppSidebar />
@@ -75,7 +84,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <GlobalBanners />
         </header>
-        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1400px] flex-1 px-4 pt-5 pb-24 outline-none md:pb-10 lg:px-6">
+        <main
+          id="main"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1400px] flex-1 px-4 pt-5 pb-24 outline-none md:pb-10 lg:px-6"
+        >
           {children}
         </main>
       </SidebarInset>

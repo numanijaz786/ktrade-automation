@@ -31,7 +31,13 @@ export interface StrategyTemplate {
   readonly params: readonly TemplateParamSchema[];
 }
 
-const INT = (name: string, dflt: number, min: number, max: number, description: string): TemplateParamSchema => ({
+const INT = (
+  name: string,
+  dflt: number,
+  min: number,
+  max: number,
+  description: string,
+): TemplateParamSchema => ({
   name,
   type: 'INT',
   default: dflt,
@@ -40,7 +46,13 @@ const INT = (name: string, dflt: number, min: number, max: number, description: 
   required: false,
   description,
 });
-const DEC = (name: string, dflt: string | null, min: string, max: string, description: string): TemplateParamSchema => ({
+const DEC = (
+  name: string,
+  dflt: string | null,
+  min: string,
+  max: string,
+  description: string,
+): TemplateParamSchema => ({
   name,
   type: 'DECIMAL',
   default: dflt,
@@ -58,13 +70,21 @@ export const STRATEGY_TEMPLATES: Readonly<Record<BuiltInTemplateType, StrategyTe
     params: [
       INT('fastPeriod', 9, 1, 500, 'Fast moving-average period (bars)'),
       INT('slowPeriod', 21, 2, 1000, 'Slow moving-average period (bars); must exceed fastPeriod'),
-      { name: 'maType', type: 'ENUM', default: 'EMA', options: ['EMA', 'SMA'], required: false, description: 'Moving-average type' },
+      {
+        name: 'maType',
+        type: 'ENUM',
+        default: 'EMA',
+        options: ['EMA', 'SMA'],
+        required: false,
+        description: 'Moving-average type',
+      },
     ],
   },
   RSI: {
     type: 'RSI',
     label: 'RSI reversal',
-    description: 'Enter when RSI crosses back above the oversold level; exit when it crosses below the overbought level.',
+    description:
+      'Enter when RSI crosses back above the oversold level; exit when it crosses below the overbought level.',
     params: [
       INT('rsiPeriod', 14, 2, 500, 'RSI period (Wilder)'),
       DEC('oversold', '30', '0', '100', 'Oversold level'),
@@ -98,7 +118,9 @@ export const STRATEGY_TEMPLATES: Readonly<Record<BuiltInTemplateType, StrategyTe
     type: 'TAKE_PROFIT',
     label: 'Take-profit %',
     description: 'Exit when close >= avgCost x (1 + takeProfitPct%).',
-    params: [DEC('takeProfitPct', '10', '0.01', '10000', 'Gain over average cost that triggers the exit (%)')],
+    params: [
+      DEC('takeProfitPct', '10', '0.01', '10000', 'Gain over average cost that triggers the exit (%)'),
+    ],
   },
   TRAILING_STOP: {
     type: 'TRAILING_STOP',
@@ -111,10 +133,32 @@ export const STRATEGY_TEMPLATES: Readonly<Record<BuiltInTemplateType, StrategyTe
     label: 'Price target',
     description: 'Signal when the close reaches a target level; optional exit target.',
     params: [
-      { name: 'direction', type: 'ENUM', default: 'ABOVE', options: ['ABOVE', 'BELOW'], required: false, description: 'Entry when close is at/above or at/below the target' },
+      {
+        name: 'direction',
+        type: 'ENUM',
+        default: 'ABOVE',
+        options: ['ABOVE', 'BELOW'],
+        required: false,
+        description: 'Entry when close is at/above or at/below the target',
+      },
       DEC('targetPrice', null, '0', '100000000', 'Entry target price'),
-      { name: 'exitDirection', type: 'ENUM', default: 'ABOVE', options: ['ABOVE', 'BELOW'], required: false, description: 'Exit when close is at/above or at/below the exit target' },
-      { name: 'exitTargetPrice', type: 'DECIMAL', default: null, min: '0', max: '100000000', required: false, description: 'Optional exit target price' },
+      {
+        name: 'exitDirection',
+        type: 'ENUM',
+        default: 'ABOVE',
+        options: ['ABOVE', 'BELOW'],
+        required: false,
+        description: 'Exit when close is at/above or at/below the exit target',
+      },
+      {
+        name: 'exitTargetPrice',
+        type: 'DECIMAL',
+        default: null,
+        min: '0',
+        max: '100000000',
+        required: false,
+        description: 'Optional exit target price',
+      },
     ],
   },
 };
@@ -122,10 +166,14 @@ export const STRATEGY_TEMPLATES: Readonly<Record<BuiltInTemplateType, StrategyTe
 const DEC_RE = /^\d+(\.\d+)?$/;
 
 export type ResolvedTemplateParams = Record<string, number | string | boolean>;
-export type TemplateParamsResult = { ok: true; params: ResolvedTemplateParams } | { ok: false; errors: DslError[] };
+export type TemplateParamsResult =
+  { ok: true; params: ResolvedTemplateParams } | { ok: false; errors: DslError[] };
 
 /** Apply defaults, type-check and range-check user overrides against a template's parameter schema. */
-export function resolveTemplateParams(type: BuiltInTemplateType, overrides: StrategyParams = {}): TemplateParamsResult {
+export function resolveTemplateParams(
+  type: BuiltInTemplateType,
+  overrides: StrategyParams = {},
+): TemplateParamsResult {
   const tpl = STRATEGY_TEMPLATES[type];
   const errors: DslError[] = [];
   const out: ResolvedTemplateParams = {};
@@ -143,20 +191,32 @@ export function resolveTemplateParams(type: BuiltInTemplateType, overrides: Stra
     }
     switch (p.type) {
       case 'INT': {
-        const n = typeof raw === 'number' ? raw : typeof raw === 'string' && /^-?\d+$/.test(raw) ? Number.parseInt(raw, 10) : null;
+        const n =
+          typeof raw === 'number'
+            ? raw
+            : typeof raw === 'string' && /^-?\d+$/.test(raw)
+              ? Number.parseInt(raw, 10)
+              : null;
         if (n === null || !Number.isSafeInteger(n)) err(p.name, 'INVALID_VALUE', 'must be an integer');
-        else if (n < (p.min as number) || n > (p.max as number)) err(p.name, 'OUT_OF_RANGE', `must be between ${String(p.min)} and ${String(p.max)}`);
+        else if (n < (p.min as number) || n > (p.max as number))
+          err(p.name, 'OUT_OF_RANGE', `must be between ${String(p.min)} and ${String(p.max)}`);
         else out[p.name] = n;
         break;
       }
       case 'DECIMAL': {
-        const s = typeof raw === 'number' && Number.isSafeInteger(raw) ? String(raw) : typeof raw === 'string' ? raw.trim() : null;
+        const s =
+          typeof raw === 'number' && Number.isSafeInteger(raw)
+            ? String(raw)
+            : typeof raw === 'string'
+              ? raw.trim()
+              : null;
         if (s === null || !DEC_RE.test(s)) {
           err(p.name, 'INVALID_VALUE', 'must be a non-negative decimal string');
           break;
         }
         const v = d(s);
-        if (v.lt(d(String(p.min))) || v.gt(d(String(p.max)))) err(p.name, 'OUT_OF_RANGE', `must be between ${String(p.min)} and ${String(p.max)}`);
+        if (v.lt(d(String(p.min))) || v.gt(d(String(p.max))))
+          err(p.name, 'OUT_OF_RANGE', `must be between ${String(p.min)} and ${String(p.max)}`);
         else out[p.name] = s;
         break;
       }
@@ -165,7 +225,8 @@ export function resolveTemplateParams(type: BuiltInTemplateType, overrides: Stra
         else out[p.name] = raw;
         break;
       case 'ENUM':
-        if (typeof raw !== 'string' || !(p.options ?? []).includes(raw)) err(p.name, 'INVALID_VALUE', `must be one of ${(p.options ?? []).join(', ')}`);
+        if (typeof raw !== 'string' || !(p.options ?? []).includes(raw))
+          err(p.name, 'INVALID_VALUE', `must be one of ${(p.options ?? []).join(', ')}`);
         else out[p.name] = raw;
         break;
     }
@@ -197,7 +258,10 @@ const fraction = (param: string): DslOperand => ({
 });
 
 /** Build a StrategyDefinition (DSL rules + parameters) from a built-in template. Throws TemplateParamsError. */
-export function buildTemplateStrategy(type: BuiltInTemplateType, overrides: StrategyParams = {}): StrategyDefinition {
+export function buildTemplateStrategy(
+  type: BuiltInTemplateType,
+  overrides: StrategyParams = {},
+): StrategyDefinition {
   const r = resolveTemplateParams(type, overrides);
   if (!r.ok) throw new TemplateParamsError(r.errors);
   const p = r.params;
@@ -221,39 +285,56 @@ export function buildTemplateStrategy(type: BuiltInTemplateType, overrides: Stra
       };
     }
     case 'MACD': {
-      const base = { ind: 'MACD', fast: '$fastPeriod', slow: '$slowPeriod', signal: '$signalPeriod' } as const;
+      const base = {
+        ind: 'MACD',
+        fast: '$fastPeriod',
+        slow: '$slowPeriod',
+        signal: '$signalPeriod',
+      } as const;
       const line = { ...base, output: 'line' };
       const signal = { ...base, output: 'signal' };
       const cross: DslRule = { crossesAbove: [line, signal] };
       return {
-        entryRules: p.requireMacdAboveZero === true ? ({ all: [cross, { gt: [line, { const: '0' }] }] } satisfies DslRule) : cross,
+        entryRules:
+          p.requireMacdAboveZero === true
+            ? ({ all: [cross, { gt: [line, { const: '0' }] }] } satisfies DslRule)
+            : cross,
         exitRules: { crossesBelow: [line, signal] } satisfies DslRule,
         parameters: p,
       };
     }
     case 'STOP_LOSS':
       return {
-        exitRules: { lte: [closeOp, { mul: [avgCost, { sub: [{ const: '1' }, fraction('stopLossPct')] }] }] } satisfies DslRule,
+        exitRules: {
+          lte: [closeOp, { mul: [avgCost, { sub: [{ const: '1' }, fraction('stopLossPct')] }] }],
+        } satisfies DslRule,
         exitReason: 'STOP_LOSS',
         parameters: p,
       };
     case 'TAKE_PROFIT':
       return {
-        exitRules: { gte: [closeOp, { mul: [avgCost, { add: [{ const: '1' }, fraction('takeProfitPct')] }] }] } satisfies DslRule,
+        exitRules: {
+          gte: [closeOp, { mul: [avgCost, { add: [{ const: '1' }, fraction('takeProfitPct')] }] }],
+        } satisfies DslRule,
         exitReason: 'TAKE_PROFIT',
         parameters: p,
       };
     case 'TRAILING_STOP':
       return {
         exitRules: {
-          lte: [closeOp, { mul: [{ position: 'highSinceEntry' }, { sub: [{ const: '1' }, fraction('trailingStopPct')] }] }],
+          lte: [
+            closeOp,
+            { mul: [{ position: 'highSinceEntry' }, { sub: [{ const: '1' }, fraction('trailingStopPct')] }] },
+          ],
         } satisfies DslRule,
         exitReason: 'TRAILING_STOP',
         parameters: p,
       };
     case 'PRICE_ALERT': {
       const level = (dir: unknown, param: string): DslRule =>
-        dir === 'BELOW' ? { lte: [closeOp, { const: `$${param}` }] } : { gte: [closeOp, { const: `$${param}` }] };
+        dir === 'BELOW'
+          ? { lte: [closeOp, { const: `$${param}` }] }
+          : { gte: [closeOp, { const: `$${param}` }] };
       return {
         entryRules: level(p.direction, 'targetPrice'),
         exitRules: p.exitTargetPrice === undefined ? null : level(p.exitDirection, 'exitTargetPrice'),

@@ -11,7 +11,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { ALLOW_VIEWER_WRITE, type AuthedRequest, IS_PUBLIC, REQUIRE_STEP_UP, ROLES } from './decorators.js';
 import { TokenService } from './token.service.js';
 
-const unauthorized = (code = 'UNAUTHENTICATED') => new UnauthorizedException({ message: 'Authentication required', code });
+const unauthorized = (code = 'UNAUTHENTICATED') =>
+  new UnauthorizedException({ message: 'Authentication required', code });
 
 /**
  * Global guard order: Throttler → JwtAuth → Roles → StepUp.
@@ -56,10 +57,17 @@ export class RolesGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
     const user = req.user;
     if (!user) throw unauthorized();
-    const roles = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES, [ctx.getHandler(), ctx.getClass()]);
-    if (roles && !roles.includes(user.role)) throw new ForbiddenException({ message: 'Insufficient role', code: 'FORBIDDEN' });
+    const roles = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (roles && !roles.includes(user.role))
+      throw new ForbiddenException({ message: 'Insufficient role', code: 'FORBIDDEN' });
     const isRead = req.method === 'GET' || req.method === 'HEAD';
-    const viewerWrite = this.reflector.getAllAndOverride<boolean>(ALLOW_VIEWER_WRITE, [ctx.getHandler(), ctx.getClass()]);
+    const viewerWrite = this.reflector.getAllAndOverride<boolean>(ALLOW_VIEWER_WRITE, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
     if (!isRead && user.role !== 'OWNER' && !viewerWrite) {
       throw new ForbiddenException({ message: 'Read-only role', code: 'FORBIDDEN' });
     }
@@ -75,11 +83,15 @@ export class StepUpGuard implements CanActivate {
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    if (!this.reflector.getAllAndOverride<boolean>(REQUIRE_STEP_UP, [ctx.getHandler(), ctx.getClass()])) return true;
+    if (!this.reflector.getAllAndOverride<boolean>(REQUIRE_STEP_UP, [ctx.getHandler(), ctx.getClass()]))
+      return true;
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
     const token = req.headers['x-step-up-token'];
     if (!req.user || typeof token !== 'string' || !(await this.tokens.verifyStepUp(token, req.user.id))) {
-      throw new ForbiddenException({ message: 'Fresh second-factor verification required', code: 'STEP_UP_REQUIRED' });
+      throw new ForbiddenException({
+        message: 'Fresh second-factor verification required',
+        code: 'STEP_UP_REQUIRED',
+      });
     }
     return true;
   }

@@ -19,9 +19,13 @@ export const DEFAULT_SCHEDULE_EFFECTIVE_FROM = '2025-01-01';
 export class FeeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async scheduleFor(date: string, brokerCode = 'KTRADE'): Promise<{ spec: FeeScheduleSpec; scheduleId: string | null }> {
+  async scheduleFor(
+    date: string,
+    brokerCode = 'KTRADE',
+  ): Promise<{ spec: FeeScheduleSpec; scheduleId: string | null }> {
     const rows = await this.prisma.feeSchedule.findMany({ where: { brokerCode }, include: { items: true } });
-    if (rows.length === 0) return { spec: ktradeDefaultSchedule(DEFAULT_SCHEDULE_EFFECTIVE_FROM), scheduleId: null };
+    if (rows.length === 0)
+      return { spec: ktradeDefaultSchedule(DEFAULT_SCHEDULE_EFFECTIVE_FROM), scheduleId: null };
     const specs = rows.map((r) => ({
       id: r.id,
       brokerCode: r.brokerCode,
@@ -46,7 +50,12 @@ export class FeeService {
     return { spec: chosen, scheduleId: chosen.id };
   }
 
-  async estimate(side: OrderSide, quantity: Decimal, price: Decimal, date: string): Promise<FeeBreakdown & { scheduleId: string | null }> {
+  async estimate(
+    side: OrderSide,
+    quantity: Decimal,
+    price: Decimal,
+    date: string,
+  ): Promise<FeeBreakdown & { scheduleId: string | null }> {
     const { spec, scheduleId } = await this.scheduleFor(date);
     return { ...computeTradeFees(spec, { side, quantity, price }), scheduleId };
   }
