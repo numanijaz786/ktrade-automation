@@ -28,6 +28,7 @@ import { feeLinesFromBreakdown, LedgerService } from '../ledger/ledger.service.j
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PerformanceService } from '../snapshots/performance.service.js';
+import { MarketDataService } from '../market-data/market-data.service.js';
 import type { PreviewOrderInput, RecordFillInput } from './trading.schemas.js';
 
 type Tx = Prisma.TransactionClient;
@@ -76,6 +77,7 @@ export class TradingService {
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly notifications: NotificationsService,
     private readonly performance: PerformanceService,
+    private readonly market: MarketDataService,
   ) {}
 
   /**
@@ -104,12 +106,19 @@ export class TradingService {
     if (replayed) return this.present(replayed.id, userId); // idempotent replay: same response, nothing new created
 
     const portfolio = await this.ownedPortfolio(userId, input.portfolioId);
-    const stock = await this.prisma.stock.findUnique({
-      where: { symbol: input.symbol.toUpperCase() },
-      include: { quote: true },
-    });
+    const findStock = () =>
+      this.prisma.stock.findUnique({
+        where: { symbol: input.symbol.toUpperCase() },
+        include: { quote: true },
+      });
+    let stock = await findStock();
     if (!stock)
       throw new NotFoundException({ message: `Unknown symbol ${input.symbol}`, code: 'UNKNOWN_SYMBOL' });
+    if (!stock.quote) {
+      // Quotes refresh lazily; pull them once rather than depending on the UI having read market data first.
+      await this.market.refreshQuotes(true);
+      stock = (await findStock())!;
+    }
     if (!stock.quote)
       throw new ConflictException({
         message: `No market price available for ${stock.symbol}`,

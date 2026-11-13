@@ -7,6 +7,7 @@
 import { useEffect } from 'react';
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -14,11 +15,13 @@ import {
 } from '@tanstack/react-query';
 import { useApiClient } from './client';
 import type {
+  BacktestCompareRequest,
   BacktestRequest,
   ChannelConfig,
   ChartRange,
   FillRequest,
   MoverType,
+  Order,
   OrderFilters,
   OrderPreviewRequest,
   PerformancePeriod,
@@ -26,8 +29,10 @@ import type {
   QuoteTick,
   RiskLimits,
   StockQuery,
+  StepUpProof,
   StrategyInput,
-  TransactionFilters,
+  StrategyUpdate,
+  StrategyValidateRequest,
   UserSettings,
 } from './types';
 import type { ImportKind } from '@ktrade/shared';
@@ -42,7 +47,7 @@ export const qk = {
   charts: (pf: string, r: ChartRange) => ['dashboard', 'charts', pf, r] as const,
   holdings: (pf: string) => ['portfolio', pf, 'holdings'] as const,
   holding: (pf: string, s: string) => ['portfolio', pf, 'holding', s] as const,
-  transactions: (pf: string, f: TransactionFilters) => ['portfolio', pf, 'transactions', f] as const,
+  transactions: (pf: string, limit: number) => ['portfolio', pf, 'transactions', limit] as const,
   cash: (pf: string) => ['portfolio', pf, 'cash'] as const,
   orders: (f: OrderFilters) => ['orders', 'list', f] as const,
   order: (id: string) => ['orders', 'one', id] as const,
@@ -139,7 +144,7 @@ export function useLogout() {
 
 export function useStepUp() {
   const api = useApiClient();
-  return useMutation({ mutationFn: (code: string) => api.auth.stepUp(code) });
+  return useMutation({ mutationFn: (proof: StepUpProof) => api.auth.stepUp(proof) });
 }
 
 // ─── dashboard & portfolio ─────────────────────────────────────────────────
@@ -187,12 +192,24 @@ export function useHoldingDetail(pf: string | undefined, symbol: string | null) 
   });
 }
 
-export function useTransactions(pf: string | undefined, filters: TransactionFilters = {}) {
+/** Cursor-paged, newest first; `fetchNextPage()` loads more. */
+export function useTransactions(pf: string | undefined, limit = 50) {
   const api = useApiClient();
-  return useQuery({
-    queryKey: qk.transactions(pf ?? '', filters),
-    queryFn: () => api.portfolios.transactions(pf!, filters),
+  return useInfiniteQuery({
+    queryKey: qk.transactions(pf ?? '', limit),
+    queryFn: ({ pageParam }) => api.portfolios.transactions(pf!, { cursor: pageParam, limit }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!pf,
+  });
+}
+
+export function useCreatePaperPortfolio() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; initialCash: string }) => api.portfolios.createPaper(v),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.portfolios }),
   });
 }
 
@@ -229,14 +246,34 @@ function invalidatePortfolio(qc: ReturnType<typeof useQueryClient>) {
 
 // ─── orders ────────────────────────────────────────────────────────────────
 
-export function useOrders(filters: OrderFilters = {}) {
+/** Cursor-paged, newest first; `fetchNextPage()` loads more. */
+export function useOrders(filters: Omit<OrderFilters, 'cursor'> = {}) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.orders(filters), queryFn: () => api.orders.list(filters) });
+  return useInfiniteQuery({
+    queryKey: qk.orders(filters),
+    queryFn: ({ pageParam }) => api.orders.list({ ...filters, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+}
+
+/**
+ * The fee breakdown is only returned by the preview; later reads of the same order omit it. Keep the
+ * previewed lines (still ESTIMATED) instead of dropping them.
+ */
+export function keepFeeLines(prev: Order | undefined, next: Order): Order {
+  if (!prev?.estimate?.fees.length || !next.estimate || next.estimate.fees.length) return next;
+  return { ...next, estimate: { ...next.estimate, fees: prev.estimate.fees } };
 }
 
 export function useOrder(id: string | null) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.order(id ?? ''), queryFn: () => api.orders.get(id!), enabled: !!id });
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.order(id ?? ''),
+    queryFn: async () => keepFeeLines(qc.getQueryData<Order>(qk.order(id!)), await api.orders.get(id!)),
+    enabled: !!id,
+  });
 }
 
 function useOrderMutation<V>(fn: (v: V) => ReturnType<ReturnType<typeof useApiClient>['orders']['get']>) {
@@ -244,7 +281,7 @@ function useOrderMutation<V>(fn: (v: V) => ReturnType<ReturnType<typeof useApiCl
   return useMutation({
     mutationFn: fn,
     onSuccess: (order) => {
-      qc.setQueryData(qk.order(order.id), order);
+      qc.setQueryData<Order>(qk.order(order.id), (prev) => keepFeeLines(prev, order));
       invalidatePortfolio(qc);
     },
   });
@@ -474,11 +511,24 @@ export function useStrategyMutations() {
   const done = () => qc.invalidateQueries({ queryKey: ['strategies'] });
   return {
     create: useMutation({ mutationFn: (v: StrategyInput) => api.strategies.create(v), onSuccess: done }),
-    setActive: useMutation({
-      mutationFn: (v: { id: string; active: boolean }) => api.strategies.setActive(v.id, v.active),
+    update: useMutation({
+      mutationFn: (v: { id: string; patch: StrategyUpdate }) => api.strategies.update(v.id, v.patch),
       onSuccess: done,
     }),
-    dismiss: useMutation({ mutationFn: (id: string) => api.strategies.dismissSignal(id), onSuccess: done }),
+    remove: useMutation({ mutationFn: (id: string) => api.strategies.remove(id), onSuccess: done }),
+    setActive: useMutation({
+      mutationFn: (v: { id: string; active: boolean; stepUpToken?: string }) =>
+        api.strategies.setActive(v.id, v.active, v.stepUpToken),
+      onSuccess: done,
+    }),
+    validate: useMutation({ mutationFn: (v: StrategyValidateRequest) => api.strategies.validate(v) }),
+    evaluate: useMutation({
+      mutationFn: (id: string) => api.strategies.evaluate(id),
+      onSuccess: () => {
+        void done();
+        invalidatePortfolio(qc);
+      },
+    }),
   };
 }
 
@@ -487,13 +537,39 @@ export function useBacktests() {
   return useQuery({ queryKey: qk.backtests, queryFn: () => api.backtests.list() });
 }
 
+export function useBacktest(id: string | null) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: [...qk.backtests, 'one', id ?? ''],
+    queryFn: () => api.backtests.get(id!),
+    enabled: !!id,
+  });
+}
+
+export function useBacktestTrades(id: string | null) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: [...qk.backtests, 'trades', id ?? ''],
+    queryFn: () => api.backtests.trades(id!),
+    enabled: !!id,
+  });
+}
+
 export function useRunBacktest() {
   const api = useApiClient();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (req: BacktestRequest) => api.backtests.run(req),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.backtests }),
+    onSuccess: (bt) => {
+      qc.setQueryData([...qk.backtests, 'one', bt.id], bt);
+      void qc.invalidateQueries({ queryKey: qk.backtests, exact: true });
+    },
   });
+}
+
+export function useCompareBacktests() {
+  const api = useApiClient();
+  return useMutation({ mutationFn: (req: BacktestCompareRequest) => api.backtests.compare(req) });
 }
 
 // ─── dividends, analytics, reports ─────────────────────────────────────────

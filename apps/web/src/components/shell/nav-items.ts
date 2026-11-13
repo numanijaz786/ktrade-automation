@@ -59,7 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Automation',
     items: [
       { href: '/strategies', label: 'Strategies', icon: Sparkles },
-      { href: '/backtesting', label: 'Backtesting', icon: FlaskConical },
+      { href: '/backtests', label: 'Backtesting', icon: FlaskConical },
       { href: '/assistant', label: 'AI assistant', icon: BotMessageSquare },
       { href: '/analytics', label: 'Analytics & reports', icon: FileBarChart },
     ],

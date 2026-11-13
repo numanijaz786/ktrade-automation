@@ -79,7 +79,7 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Backtests (real KTrade fees, provenance, disclaimer) + compare; Sortino, annualised return, risk/reward
 - [x] Integration tests (13)
 - [ ] Scheduled evaluation (BullMQ) at bar close; signals → `prepare-order` / `dismiss`
-- [ ] Frontend: strategies, backtesting, paper-trading pages on the real API
+- [x] Frontend: strategies, backtesting, paper trading on the real API
 - [ ] Open items from ADR-020/025: VWAP, walk-forward, regime / multi-timeframe filters, STOP orders in paperFill, mirror mode
 
 ## Phase 10: Alerts, notifications, dividends, analytics
@@ -103,8 +103,9 @@ Work top to bottom; the first unchecked item is the next task.
 - [ ] Replace `lib/decimal.ts`, `lib/fees.ts`, `lib/indicators.ts` with `@ktrade/finance-core` (remove duplication)
 - [x] BFF route handlers (httpOnly cookies, CSRF, refresh-once), HttpApiClient (NOT_AVAILABLE for unbuilt features, no demo fallback), login/register (ADR-026)
 - [x] Real-data pages: market overview, explorer, stock details (candles), watchlists, KTrade integration (account + imports)
-- [ ] Step-up dialog: password option when TOTP is not enabled
-- [ ] Dashboard, holdings, orders/buy-sell, transactions pages on the real API
+- [x] Step-up dialog: password option when TOTP is not enabled
+- [x] Dashboard, holdings, transactions, buy/sell (full approval + manual ticket), orders, strategies, backtests, settings kill switch (ADR-029)
+- [ ] **NEXT: wire dashboard performance chart + today/month P&L to `/portfolios/:id/performance` + summary; notifications inbox + alerts pages**
 
 ## Repo hygiene
 

@@ -96,6 +96,9 @@ export interface RegisterRequest {
 }
 export type LoginResult = { user: User; totpRequired: false } | { totpRequired: true };
 
+/** Step-up proof: a TOTP code when 2FA is enabled, otherwise the account password. */
+export type StepUpProof = { totpCode: string } | { password: string };
+
 export interface StepUpToken {
   token: string;
   expiresAt: Instant;
@@ -242,6 +245,10 @@ export interface Transaction {
   orderId: string | null;
   /** Reversed transactions stay visible but no longer count. */
   reversed?: boolean;
+  /** Per-component fees and taxes, each with its own provenance (ESTIMATED until a contract note confirms). */
+  feeLines?: FeeLine[];
+  /** Realised P&L of a SELL under the portfolio's cost-basis method (null for buys). */
+  realizedPnl?: Decimal | null;
 }
 
 export interface CashMovement {
@@ -277,11 +284,10 @@ export interface HoldingDetail {
   dividends: Dividend[];
 }
 
-export interface TransactionFilters {
-  symbol?: string;
-  type?: TransactionType;
-  from?: IsoDate;
-  to?: IsoDate;
+/** `GET /portfolios/:id/transactions` pages newest-first by cursor. */
+export interface TransactionPageQuery {
+  cursor?: string;
+  limit?: number;
 }
 
 // ─── Market data (mirrors apps/api/src/market-data, ADR-024) ──────────────
@@ -496,6 +502,8 @@ export interface OrderPreviewRequest {
   timeInForce?: TimeInForce;
   origin: OrderOrigin;
   signalId?: string;
+  /** One key per ticket submission (Idempotency-Key header); a replay returns the same order. */
+  idempotencyKey?: string;
 }
 
 export interface OrderEvent {
@@ -552,10 +560,12 @@ export interface Order {
   executions: Execution[];
 }
 
+/** `GET /orders` filters; pages newest-first by cursor. */
 export interface OrderFilters {
   status?: OrderStatus;
-  mode?: ExecutionMode;
-  symbol?: string;
+  portfolioId?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface FillRequest {
@@ -585,134 +595,289 @@ export interface FeeEstimateQuery {
   price: Decimal;
 }
 
-// ─── Strategies, signals, backtests ────────────────────────────────────────
+// ─── Strategies, signals, backtests (mirrors apps/api/src/strategies, ADR-025) ──
 
-/** A JSON-Schema subset sufficient to render strategy parameter forms. */
-export interface ParamSchemaProperty {
-  type: 'integer' | 'string' | 'boolean';
-  /** `decimal` = decimal string; `percent` = decimal string interpreted as percent. */
-  format?: 'decimal' | 'percent';
-  title: string;
-  description?: string;
-  minimum?: number;
-  maximum?: number;
-  default: number | string | boolean;
-  enum?: string[];
+/** `params[].type` of a template (finance-core TemplateParamSchema). */
+export type TemplateParamType = 'INT' | 'DECIMAL' | 'BOOL' | 'ENUM';
+
+export interface TemplateParam {
+  name: string;
+  type: TemplateParamType;
+  /** INT → number, DECIMAL → decimal string, BOOL → boolean, ENUM → option; null = no default. */
+  default: number | string | boolean | null;
+  /** Inclusive bounds as strings (INT and DECIMAL); null when unbounded. */
+  min: string | null;
+  max: string | null;
+  options: string[] | null;
+  required: boolean;
+  description: string;
 }
 
-export interface ParamSchema {
-  type: 'object';
-  properties: Record<string, ParamSchemaProperty>;
-  required: string[];
+/** `GET /strategies/templates`. CUSTOM_RULES has no `params` (it needs the rule DSL). */
+export interface StrategyTemplate {
+  type: StrategyType;
+  label: string;
+  description: string;
+  params: TemplateParam[];
+  /** Optional exit overlays every template accepts (`stopLossPct`, `takeProfitPct`, `trailingStopPct`). */
+  overlays: string[];
 }
 
 export type StrategyParams = Record<string, number | string | boolean>;
 
-export interface StrategyTemplate {
+/** The trading definition shared by strategies, inline backtests and dry runs. Percentages in percent units. */
+export interface StrategyDefinition {
   type: StrategyType;
-  name: string;
-  description: string;
-  entry: string;
-  exit: string;
-  parameterSchema: ParamSchema;
+  parameters: StrategyParams;
+  stopLossPct?: Decimal | null;
+  takeProfitPct?: Decimal | null;
+  trailingStopPct?: Decimal | null;
+  cooldownBars?: number;
 }
 
+/** `GET /strategies` row. Mode comes from the portfolio (PAPER or LIVE), never from the client. */
 export interface Strategy {
   id: string;
   name: string;
+  portfolioId: string;
+  symbol: string;
   type: StrategyType;
   mode: ExecutionMode;
-  symbols: string[];
-  parameters: StrategyParams;
   active: boolean;
   autoExecute: boolean;
   version: number;
-  createdAt: Instant;
-  lastEvaluatedAt: Instant | null;
-}
-
-export interface StrategyInput {
-  name: string;
-  type: StrategyType;
-  mode: ExecutionMode;
-  symbols: string[];
   parameters: StrategyParams;
+  stopLossPct: Decimal | null;
+  takeProfitPct: Decimal | null;
+  trailingStopPct: Decimal | null;
+  cooldownBars: number;
+  maxInvestment: Decimal;
+  maxPositionQty: Decimal | null;
+  riskPerTradePct: Decimal | null;
+  lastEvaluatedAt: Instant | null;
+  createdAt: Instant;
+}
+
+/** `POST /strategies`. `autoExecute` is refused for LIVE portfolios (422 LIVE_AUTO_EXECUTION_FORBIDDEN). */
+export interface StrategyInput extends StrategyDefinition {
+  name: string;
+  portfolioId: string;
+  symbol: string;
   autoExecute: boolean;
+  maxInvestment: Decimal;
+  maxPositionQty?: Decimal | null;
+  riskPerTradePct?: Decimal | null;
 }
 
-export interface TraceCondition {
-  condition: string;
-  operands: { label: string; value: Decimal }[];
+/** `PATCH /strategies/:id` (portfolio and symbol are fixed once created). */
+export type StrategyUpdate = Partial<Omit<StrategyInput, 'portfolioId' | 'symbol'>>;
+
+/** One evaluated condition of a rule (finance-core RuleTraceEntry). */
+export interface RuleTraceEntry {
+  path: string;
+  kind: string;
   result: boolean;
+  operands: { label: string; value: Decimal | null }[];
+  /** e.g. "EMA(9)=251.2 crossed above EMA(21)=250.85 -> true". */
+  text: string;
 }
 
+export interface OverlayTraceEntry {
+  kind: 'STOP_LOSS' | 'TRAILING_STOP' | 'TAKE_PROFIT';
+  pct: Decimal;
+  threshold: Decimal;
+  close: Decimal;
+  triggered: boolean;
+  text: string;
+}
+
+export interface SignalTrace {
+  rule: { result: boolean; warm: boolean; trace: RuleTraceEntry[] } | null;
+  overlays: OverlayTraceEntry[];
+  summary: string;
+}
+
+/** `GET /signals` row. */
 export interface Signal {
   id: string;
   strategyId: string;
   strategyName: string;
   symbol: string;
+  mode: ExecutionMode;
   type: SignalType;
   reason: SignalReason;
+  side: OrderSide;
+  barTs: Instant;
   price: SourcedValue;
-  /** 0–100 confidence. */
-  score: number;
-  scoreComponents: { label: string; points: number; max: number }[];
+  suggestedQty: Decimal | null;
   status: SignalStatus;
+  orderId: string | null;
   createdAt: Instant;
-  trace: TraceCondition[];
-  explanation: string;
 }
 
-export interface BacktestRequest {
-  strategyType: StrategyType;
-  parameters: StrategyParams;
+/** A hypothetical signal from a dry run (`POST /strategies/validate`). */
+export interface DryRunSignal {
+  type: SignalType;
+  reason: SignalReason;
+  side: OrderSide;
+  ts: Instant;
+  price: Decimal;
+  summary: string;
+  score: {
+    total: Decimal;
+    direction: string;
+    components: { name: string; weight: number; available: boolean; score: Decimal | null; detail: string }[];
+  };
+  trace: SignalTrace;
+  wouldFill: boolean;
+  note: string | null;
+}
+
+export interface StrategyValidateRequest extends StrategyDefinition {
+  /** Without a symbol only the definition is validated (no dry run). */
+  symbol?: string;
+  bars?: number;
+}
+
+export interface StrategyDryRun {
   symbol: string;
-  interval: PriceInterval;
+  bars: number;
+  from: Instant | null;
+  to: Instant | null;
+  /** Weakest source of the bars replayed (null when there are none). */
+  dataSource: DataSource | null;
+  warmupComplete: boolean | null;
+  note: string | null;
+  signals: DryRunSignal[];
+  disclaimer: string;
+}
+
+export interface StrategyValidation {
+  valid: true;
+  warmupBars: number;
+  parameters: Record<string, string>;
+  dryRun: StrategyDryRun | null;
+}
+
+/** `POST /strategies/:id/evaluate`. LIVE only ever records a signal; it never approves an order. */
+export interface StrategyEvaluation {
+  execution: {
+    id: string;
+    status: RunStatus;
+    startedAt: Instant;
+    finishedAt: Instant | null;
+    barTs: Instant | null;
+    signalsGenerated: number;
+    error: string | null;
+  };
+  signal: Signal | null;
+  duplicate: boolean;
+  order: { id: string; status: OrderStatus } | null;
+  note: string | null;
+}
+
+/** `POST /backtests`: exactly one of `strategyId` or `definition` (+ `symbol`). */
+export interface BacktestRequest {
+  strategyId?: string;
+  definition?: StrategyDefinition;
+  symbol?: string;
   from: IsoDate;
   to: IsoDate;
   initialCapital: Decimal;
-  slippageBps: number;
+  /** Basis points of adverse slippage, decimal string 0–1000. */
+  slippageBps: Decimal;
 }
 
+/** Metrics as decimal strings, percentages in percent units. Null when the engine could not compute one. */
 export interface BacktestMetrics {
-  totalReturnPct: Decimal;
-  cagrPct: Decimal;
-  maxDrawdownPct: Decimal;
-  sharpe: Decimal;
-  winRatePct: Decimal;
-  profitFactor: Decimal | null;
-  avgWin: Decimal;
-  avgLoss: Decimal;
-  exposurePct: Decimal;
-  feesPaid: Decimal;
+  initialCapital: Decimal | null;
+  finalEquity: Decimal | null;
+  totalReturnPct: Decimal | null;
+  cagrPct: Decimal | null;
+  annualizedReturnPct: Decimal | null;
+  maxDrawdownPct: Decimal | null;
+  sharpe: Decimal | null;
+  sortino: Decimal | null;
   tradeCount: number;
-  benchmarkReturnPct: Decimal;
-  finalEquity: Decimal;
+  winRatePct: Decimal | null;
+  profitFactor: Decimal | null;
+  avgWin: Decimal | null;
+  avgLoss: Decimal | null;
+  riskReward: Decimal | null;
+  exposurePct: Decimal | null;
+  feesTotal: Decimal | null;
+  buyAndHoldReturnPct: Decimal | null;
 }
 
-export interface BacktestTrade {
-  id: string;
-  entryDate: IsoDate;
-  exitDate: IsoDate | null;
-  side: OrderSide;
-  quantity: Decimal;
-  entryPrice: Decimal;
-  exitPrice: Decimal | null;
-  pnl: Decimal;
-  returnPct: Decimal;
-  fees: Decimal;
-  exitReason: SignalReason | 'END_OF_TEST' | null;
+export interface EquityPoint {
+  t: Instant;
+  equity: Decimal;
+  /** Positive percent below the running peak. */
+  drawdownPct: Decimal;
 }
 
 export interface Backtest {
   id: string;
   status: RunStatus;
-  request: BacktestRequest;
-  createdAt: Instant;
+  strategyId: string | null;
+  strategyType: StrategyType;
+  symbol: string;
+  from: IsoDate;
+  to: IsoDate;
+  initialCapital: Decimal;
+  slippageBps: Decimal | null;
   metrics: BacktestMetrics | null;
-  equityCurve: { date: IsoDate; equity: Decimal; benchmark: Decimal; drawdownPct: Decimal }[];
-  trades: BacktestTrade[];
+  benchmark: { label: string; totalReturnPct: Decimal | null };
+  /** Weakest bar source; SIMULATED results must be flagged prominently. */
+  dataSource: DataSource;
+  error: string | null;
+  createdAt: Instant;
+  finishedAt: Instant | null;
+  /** Empty in list responses. */
+  equityCurve: EquityPoint[];
+  disclaimer: string;
+}
+
+export interface BacktestTrade {
+  id: string;
+  entryTs: Instant;
+  exitTs: Instant | null;
+  quantity: Decimal;
+  entryPrice: Decimal;
+  exitPrice: Decimal | null;
+  fees: Decimal;
+  /** Null while the position is still open at the end of the test. */
+  pnl: Decimal | null;
+  exitReason: SignalReason | null;
+  open: boolean;
+}
+
+export interface BacktestTrades {
+  data: BacktestTrade[];
   source: DataSource;
+  disclaimer: string;
+}
+
+export interface BacktestCompareRequest {
+  strategyIds: string[];
+  definitions: (StrategyDefinition & { label?: string })[];
+  symbol?: string;
+  from: IsoDate;
+  to: IsoDate;
+  initialCapital: Decimal;
+  slippageBps: Decimal;
+}
+
+export interface BacktestComparison {
+  symbol: string;
+  from: IsoDate;
+  to: IsoDate;
+  initialCapital: Decimal;
+  slippageBps: Decimal;
+  bars: number;
+  dataSource: DataSource;
+  rows: { label: string; strategyId: string | null; strategyType: StrategyType; metrics: BacktestMetrics }[];
+  benchmark: { label: string; totalReturnPct: Decimal | null };
   disclaimer: string;
 }
 

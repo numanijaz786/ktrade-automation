@@ -176,6 +176,7 @@ export function makeTrade(input: {
     source: input.source ?? 'SIMULATED',
     reference: input.reference ?? null,
     orderId: input.orderId ?? null,
+    feeLines: est.fees,
   };
 }
 

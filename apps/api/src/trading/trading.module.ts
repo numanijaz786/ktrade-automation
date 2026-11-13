@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MarketDataModule } from '../market-data/market-data.module.js';
 import { FeeService } from '../ledger/fee.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { PortfolioController } from '../portfolio/portfolio.controller.js';
@@ -8,6 +9,7 @@ import { TradingService } from './trading.service.js';
 
 /** Ledger + portfolio + order pipeline. LedgerService is the only writer of trades. */
 @Module({
+  imports: [MarketDataModule],
   controllers: [PortfolioController, TradingController],
   providers: [LedgerService, FeeService, PortfolioService, TradingService],
   exports: [LedgerService, FeeService, PortfolioService, TradingService],

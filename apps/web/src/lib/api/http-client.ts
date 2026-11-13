@@ -6,6 +6,14 @@
 import type { ApiClient } from './client';
 import { ApiError, notAvailable } from './errors';
 import {
+  type ApiBacktest,
+  type ApiBacktestTrades,
+  type ApiComparison,
+  type ApiEvaluation,
+  type ApiSignal,
+  type ApiStrategy,
+  type ApiTemplate,
+  type ApiValidation,
   type ApiBrokerAccount,
   type ApiCandles,
   type ApiHolding,
@@ -22,6 +30,17 @@ import {
   type ApiUser,
   type ApiWatchlist,
   ledgerSourceOf,
+  mapBacktest,
+  mapBacktestTrades,
+  mapComparison,
+  mapEvaluation,
+  mapSignal,
+  mapStrategy,
+  mapTemplate,
+  mapValidation,
+  toApiDefinition,
+  toApiStrategyInput,
+  toApiStrategyUpdate,
   mapCandles,
   mapConnections,
   mapHolding,
@@ -42,7 +61,7 @@ import {
   problemToApiError,
   toApiRiskLimits,
 } from './http/mappers';
-import type { DataMode, ImportBatch, ImportRow, MarketProvider, Order, QuoteTick } from './types';
+import type { DataMode, ImportBatch, ImportRow, MarketProvider, QuoteTick } from './types';
 
 export const CSRF_COOKIE = 'ktrade_csrf';
 export const CSRF_HEADER = 'x-csrf-token';
@@ -199,9 +218,9 @@ export class HttpApiClient implements ApiClient {
         throw e;
       }
     },
-    // The API accepts a TOTP code, or the password when TOTP is not enabled.
+    // The API accepts a TOTP code, or the password when TOTP is not enabled. The token stays in memory.
     stepUp: async (proof) => {
-      const body = /^\d{6}$/.test(proof) ? { totpCode: proof } : { password: proof };
+      const body = 'totpCode' in proof ? { totpCode: proof.totpCode } : { password: proof.password };
       const r = await this.request<{ stepUpToken: string; expiresIn: number }>('POST', 'auth/step-up', {
         body,
       });
@@ -243,20 +262,19 @@ export class HttpApiClient implements ApiClient {
       return rows.map((h) => mapHolding(h, source));
     },
     holding: () => rejectNA(),
-    // The API pages by cursor and has no filters yet: fetch the newest 200 and filter here.
-    transactions: async (pf, f = {}) => {
-      const page = await this.get<{ data: ApiTransaction[] }>(`portfolios/${seg(pf)}/transactions`, {
-        limit: 200,
-      });
-      return page.data
-        .map((t) => mapTransaction(t, pf))
-        .filter(
-          (t) =>
-            (!f.symbol || t.symbol === f.symbol) &&
-            (!f.type || t.type === f.type) &&
-            (!f.from || t.tradeDate >= f.from) &&
-            (!f.to || t.tradeDate <= f.to),
-        );
+    createPaper: async ({ name, initialCash }) => {
+      const r = await this.request<{ id: string }>('POST', 'portfolios', { body: { name, initialCash } });
+      // The create response is minimal; read the full row back rather than guessing its defaults.
+      const created = (await this.get<ApiPortfolio[]>('portfolios')).find((p) => p.id === r.id);
+      if (!created) throw new ApiError('BAD_RESPONSE', 502, 'Created portfolio not found');
+      return mapPortfolio(created);
+    },
+    transactions: async (pf, q = {}) => {
+      const page = await this.get<{ data: ApiTransaction[]; nextCursor: string | null }>(
+        `portfolios/${seg(pf)}/transactions`,
+        { limit: q.limit ?? 50, cursor: q.cursor },
+      );
+      return { data: page.data.map((t) => mapTransaction(t, pf)), nextCursor: page.nextCursor };
     },
     cashMovements: () => rejectNA(),
     resetPaper: () => rejectNA(),
@@ -266,7 +284,7 @@ export class HttpApiClient implements ApiClient {
     preview: async (req) =>
       mapOrder(
         await this.request<ApiOrder>('POST', 'orders/preview', {
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: req.idempotencyKey ?? crypto.randomUUID(),
           body: {
             portfolioId: req.portfolioId,
             symbol: req.symbol,
@@ -296,10 +314,13 @@ export class HttpApiClient implements ApiClient {
       mapOrder(await this.request<ApiOrder>('POST', `orders/${seg(id)}/fills`, { body: fill })),
     cancel: async (id) => mapOrder(await this.request<ApiOrder>('POST', `orders/${seg(id)}/cancel`)),
     list: async (f = {}) => {
-      const page = await this.get<{ data: ApiOrder[] }>('orders', { status: f.status, limit: 100 });
-      return page.data
-        .map(mapOrder)
-        .filter((o: Order) => (!f.mode || o.mode === f.mode) && (!f.symbol || o.symbol === f.symbol));
+      const page = await this.get<{ data: ApiOrder[]; nextCursor: string | null }>('orders', {
+        status: f.status,
+        portfolioId: f.portfolioId,
+        cursor: f.cursor,
+        limit: f.limit ?? 50,
+      });
+      return { data: page.data.map(mapOrder), nextCursor: page.nextCursor };
     },
     get: async (id) => mapOrder(await this.get<ApiOrder>(`orders/${seg(id)}`)),
     feeEstimate: () => rejectNA(),
@@ -428,22 +449,86 @@ export class HttpApiClient implements ApiClient {
     destroyAll: () => rejectNA(),
   };
 
-  // ─── no backend yet: NOT_AVAILABLE (never demo data) ────────────────────
-
   strategies: ApiClient['strategies'] = {
-    templates: () => rejectNA(),
-    list: () => rejectNA(),
-    create: () => rejectNA(),
-    setActive: () => rejectNA(),
-    signals: () => rejectNA(),
-    dismissSignal: () => rejectNA(),
+    templates: async () => (await this.get<ApiTemplate[]>('strategies/templates')).map(mapTemplate),
+    list: async () => (await this.get<ApiStrategy[]>('strategies')).map(mapStrategy),
+    create: async (input) =>
+      mapStrategy(await this.request<ApiStrategy>('POST', 'strategies', { body: toApiStrategyInput(input) })),
+    update: async (id, patch) =>
+      mapStrategy(
+        await this.request<ApiStrategy>('PATCH', `strategies/${seg(id)}`, {
+          body: toApiStrategyUpdate(patch),
+        }),
+      ),
+    remove: async (id) => {
+      await this.request<void>('DELETE', `strategies/${seg(id)}`);
+    },
+    setActive: async (id, active, stepUpToken) =>
+      mapStrategy(
+        await this.request<ApiStrategy>(
+          'POST',
+          `strategies/${seg(id)}/${active ? 'activate' : 'deactivate'}`,
+          {
+            stepUpToken: active ? stepUpToken : undefined,
+          },
+        ),
+      ),
+    validate: async ({ symbol, bars, ...def }) =>
+      mapValidation(
+        await this.request<ApiValidation>('POST', 'strategies/validate', {
+          body: { ...toApiDefinition(def), ...(symbol ? { symbol } : {}), ...(bars ? { bars } : {}) },
+        }),
+      ),
+    evaluate: async (id) =>
+      mapEvaluation(await this.request<ApiEvaluation>('POST', `strategies/${seg(id)}/evaluate`)),
+    signals: async (q = {}) =>
+      (
+        await this.get<ApiSignal[]>(q.strategyId ? `strategies/${seg(q.strategyId)}/signals` : 'signals', {
+          status: q.status,
+          limit: 100,
+        })
+      ).map(mapSignal),
   };
 
   backtests: ApiClient['backtests'] = {
-    run: () => rejectNA(),
-    list: () => rejectNA(),
-    get: () => rejectNA(),
+    run: async (req) =>
+      mapBacktest(
+        await this.request<ApiBacktest>('POST', 'backtests', {
+          body: {
+            ...(req.strategyId ? { strategyId: req.strategyId } : {}),
+            ...(req.definition ? { definition: toApiDefinition(req.definition) } : {}),
+            ...(req.symbol ? { symbol: req.symbol } : {}),
+            from: req.from,
+            to: req.to,
+            initialCapital: req.initialCapital,
+            slippageBps: req.slippageBps,
+          },
+        }),
+      ),
+    list: async () =>
+      (await this.get<{ data: ApiBacktest[] }>('backtests', { limit: 50 })).data.map(mapBacktest),
+    get: async (id) => mapBacktest(await this.get<ApiBacktest>(`backtests/${seg(id)}`)),
+    trades: async (id) => mapBacktestTrades(await this.get<ApiBacktestTrades>(`backtests/${seg(id)}/trades`)),
+    compare: async (req) =>
+      mapComparison(
+        await this.request<ApiComparison>('POST', 'backtests/compare', {
+          body: {
+            strategyIds: req.strategyIds,
+            definitions: req.definitions.map(({ label, ...d }) => ({
+              ...toApiDefinition(d),
+              ...(label ? { label } : {}),
+            })),
+            ...(req.symbol ? { symbol: req.symbol } : {}),
+            from: req.from,
+            to: req.to,
+            initialCapital: req.initialCapital,
+            slippageBps: req.slippageBps,
+          },
+        }),
+      ),
   };
+
+  // ─── no backend yet: NOT_AVAILABLE (never demo data) ────────────────────
 
   dividends: ApiClient['dividends'] = { list: () => rejectNA() };
 

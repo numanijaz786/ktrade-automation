@@ -302,3 +302,18 @@ Accepted from the quant engineer's implementation:
 - **Semantics (finance-core):** only **BUYs** are blocked when today's loss exceeds the limit. **Sells are never blocked**, because reducing risk must stay possible.
 - **Limitation (documented):** with no previous close snapshot there's no baseline, so the value is 0 and the rule can't block. Snapshots must exist: run the backfill or enable `SNAPSHOT_SCHEDULER`.
 - Covered by `trading.int.test.ts` (BUY rejected at about −50 %, SELL allowed, dashboard basis matches).
+
+## ADR-029 · Core web pages on the real API + two API fixes
+
+- **Pages** (demo and api mode):
+  - dashboard (12 KPI tiles with provenance, allocation, recent orders, portfolio switcher, "new paper portfolio");
+  - holdings; transactions (cursor paging, fee lines with provenance);
+  - **buy/sell**: Zod ticket, one Idempotency-Key per submission, preview with estimated fees, every risk check, price provenance and an expiry countdown, step-up approval. Paper shows the simulated result; live shows the manual KTrade ticket ("I placed it", "Record fill");
+  - orders (detail drawer: risk checks, timeline, fills; cancel wording explains KTrade);
+  - strategies (template forms, LIVE activation with step-up, auto-execute never offered for LIVE, dry run, evaluate, signals);
+  - backtests (metrics, equity/drawdown, trades, compare; **the disclaimer is always visible and SIMULATED gets a prominent banner**);
+  - a settings kill-switch toggle (step-up).
+- **Step-up** accepts a password when TOTP isn't enabled. **Tokens and passwords stay in memory only** (verified: no browser-storage writes besides shadcn's sidebar UI-state cookie). `/` → `/dashboard`.
+- **API fix:** a duplicate portfolio name returned 500 (unhandled P2002). It now returns 409 `ALREADY_EXISTS`.
+- **API fix:** a paper preview could fail with `NO_PRICE` on a cold start, because quotes refresh lazily. `TradingService.preview` now refreshes quotes once when a symbol has none (TradingModule imports MarketDataModule; no cycle). Both have a regression test.
+- **Remaining web gaps (TODO):** the dashboard performance chart isn't wired to `GET /portfolios/:id/performance` yet; there's no notifications or alerts UI; custom-rules strategies are view-only; dividends, analytics and reports have no backend yet.

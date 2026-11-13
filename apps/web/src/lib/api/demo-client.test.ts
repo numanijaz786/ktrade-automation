@@ -69,7 +69,7 @@ describe('DemoApiClient data', () => {
     const holdings = await c.portfolios.holdings(LIVE_PORTFOLIO_ID);
     expect(holdings.find((h) => h.symbol === 'MARI')?.source).toBe('BROKER_CONFIRMED');
     const txns = await c.portfolios.transactions(LIVE_PORTFOLIO_ID);
-    expect(txns.some((t) => t.source === 'USER_REPORTED')).toBe(true);
+    expect(txns.data.some((t) => t.source === 'USER_REPORTED')).toBe(true);
     const summary = await c.dashboard.summary(LIVE_PORTFOLIO_ID);
     expect(summary.cash.broker?.source).toBe('BROKER_CONFIRMED');
     expect(summary.feesPaid.source).toBe('ESTIMATED');
@@ -97,7 +97,7 @@ describe('DemoApiClient data', () => {
 
 /** Live trading is OFF by default (same as the real API); enabling it requires step-up. */
 async function enableLiveTrading(c: ReturnType<typeof client>) {
-  const { token } = await c.auth.stepUp('123456');
+  const { token } = await c.auth.stepUp({ totpCode: '123456' });
   await c.system.setKillSwitch({ liveTradingEnabled: true, reason: 'test', stepUpToken: token });
 }
 
@@ -138,8 +138,8 @@ describe('order preview → approval → manual ticket → fill', () => {
     await expect(
       c.orders.approve(order.id, { previewHash: order.previewHash!, stepUpToken: 'nope' }),
     ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' });
-    await expect(c.auth.stepUp('000000')).rejects.toBeInstanceOf(ApiError);
-    const { token } = await c.auth.stepUp('123456');
+    await expect(c.auth.stepUp({ totpCode: '000000' })).rejects.toBeInstanceOf(ApiError);
+    const { token } = await c.auth.stepUp({ totpCode: '123456' });
     await expect(
       c.orders.approve(order.id, { previewHash: 'sha256:wrong', stepUpToken: token }),
     ).rejects.toMatchObject({ code: 'PREVIEW_MISMATCH' });
@@ -202,7 +202,7 @@ describe('order preview → approval → manual ticket → fill', () => {
       origin: 'MANUAL',
     });
     now += 6 * 60 * 1000;
-    const { token } = await c.auth.stepUp('123456');
+    const { token } = await c.auth.stepUp({ totpCode: '123456' });
     await expect(
       c.orders.approve(o.id, { previewHash: o.previewHash!, stepUpToken: token }),
     ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
@@ -218,7 +218,7 @@ describe('order preview → approval → manual ticket → fill', () => {
       quantity: '10',
       origin: 'MANUAL',
     });
-    const { token } = await c.auth.stepUp('654321');
+    const { token } = await c.auth.stepUp({ totpCode: '654321' });
     const done = await c.orders.approve(o.id, { previewHash: o.previewHash!, stepUpToken: token });
     expect(done.status).toBe('FILLED');
     expect(done.executions[0].source).toBe('SIMULATED');
@@ -226,23 +226,75 @@ describe('order preview → approval → manual ticket → fill', () => {
 });
 
 describe('backtests', () => {
-  it('returns metrics, curve and the mandatory disclaimer', async () => {
+  it('returns metrics, curve, trades and the mandatory disclaimer, labelled SIMULATED', async () => {
     const c = client();
     const bt = await c.backtests.run({
-      strategyType: 'MA_CROSSOVER',
-      parameters: { fastPeriod: 9, slowPeriod: 21, maType: 'EMA' },
+      definition: { type: 'MA_CROSSOVER', parameters: { fastPeriod: 9, slowPeriod: 21, maType: 'EMA' } },
       symbol: 'OGDC',
-      interval: 'D1',
       from: '2025-01-01',
       to: '2026-11-13',
       initialCapital: '1000000.00',
-      slippageBps: 10,
+      slippageBps: '10',
     });
     expect(bt.status).toBe('SUCCEEDED');
     expect(bt.metrics?.totalReturnPct).toMatch(/^-?\d+\.\d{2}$/);
     expect(bt.equityCurve.length).toBeGreaterThan(100);
+    expect(bt.equityCurve.every((p) => !p.drawdownPct.startsWith('-'))).toBe(true);
     expect(bt.disclaimer).toContain('Past simulated performance does not guarantee future returns');
-    expect(bt.source).toBe('SIMULATED');
+    expect(bt.dataSource).toBe('SIMULATED');
+    const trades = await c.backtests.trades(bt.id);
+    expect(trades.source).toBe('SIMULATED');
+    expect(trades.data.filter((t) => t.open).every((t) => t.pnl === null)).toBe(true);
+  });
+
+  it('compares strategies on the same symbol and range', async () => {
+    const c = client();
+    const r = await c.backtests.compare({
+      strategyIds: ['st-ema'],
+      definitions: [{ type: 'RSI', parameters: {}, label: 'RSI default' }],
+      from: '2025-01-01',
+      to: '2026-11-13',
+      initialCapital: '500000',
+      slippageBps: '5',
+    });
+    expect(r.symbol).toBe('OGDC');
+    expect(r.rows.map((x) => x.label)).toEqual(['EMA 9/21 — OGDC', 'RSI default']);
+    expect(r.disclaimer).toMatch(/Past simulated performance/);
+  });
+});
+
+describe('strategies', () => {
+  it('refuses LIVE autoExecute and needs step-up for LIVE activation', async () => {
+    const c = client();
+    await expect(
+      c.strategies.create({
+        name: 'live auto',
+        portfolioId: LIVE_PORTFOLIO_ID,
+        symbol: 'HUBC',
+        type: 'RSI',
+        parameters: {},
+        autoExecute: true,
+        maxInvestment: '100000',
+      }),
+    ).rejects.toMatchObject({ code: 'LIVE_AUTO_EXECUTION_FORBIDDEN' });
+    await expect(c.strategies.setActive('st-trail', true)).rejects.toMatchObject({
+      code: 'STEP_UP_REQUIRED',
+    });
+    const { token } = await c.auth.stepUp({ password: 'correct horse' });
+    expect((await c.strategies.setActive('st-trail', true, token)).active).toBe(true);
+  });
+
+  it('dry-runs a definition with explainable traces', async () => {
+    const c = client();
+    const v = await c.strategies.validate({
+      type: 'MA_CROSSOVER',
+      parameters: {},
+      symbol: 'OGDC',
+      bars: 250,
+    });
+    expect(v.dryRun?.dataSource).toBe('SIMULATED');
+    expect(v.dryRun?.signals.length).toBeGreaterThan(0);
+    expect(v.dryRun?.signals[0].trace.rule?.trace[0].text).toMatch(/cross/i);
   });
 });
 

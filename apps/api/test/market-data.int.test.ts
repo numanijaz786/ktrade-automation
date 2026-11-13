@@ -90,6 +90,29 @@ describe('market data & watchlists (integration, real PostgreSQL)', () => {
     await http().get('/api/v1/market/overview').expect(401);
   });
 
+  it('order preview fetches prices itself when none were loaded yet; duplicate portfolio names are a 409', async () => {
+    await prisma.stockQuote.deleteMany({});
+    const paper = await http()
+      .post('/api/v1/portfolios')
+      .set(auth)
+      .send({ name: 'Cold start', initialCash: '100000' })
+      .expect(201);
+    const dup = await http()
+      .post('/api/v1/portfolios')
+      .set(auth)
+      .send({ name: 'Cold start', initialCash: '1' })
+      .expect(409);
+    expect(dup.body.code).toBe('ALREADY_EXISTS');
+    const prev = await http()
+      .post('/api/v1/orders/preview')
+      .set(auth)
+      .set('Idempotency-Key', randomUUID())
+      .send({ portfolioId: paper.body.id, symbol: 'OGDC', side: 'BUY', type: 'MARKET', quantity: '1' })
+      .expect(201);
+    expect(prev.body.status).toBe('PREVIEWED');
+    expect(prev.body.referencePrice.source).toBe('SIMULATED');
+  });
+
   it('overview: session state, breadth, movers, sectors — all labelled SIMULATED with a timestamp', async () => {
     const res = await http().get('/api/v1/market/overview').set(auth).expect(200);
     expect(res.body.session).toMatchObject({ open: true, tradingDay: true });

@@ -2,21 +2,109 @@
  * Demo strategy evaluator + backtester (mirrors docs/08: signal at close of bar t → fill at the
  * open of t+1 ± slippage, no look-ahead; exit priority stop-loss → trailing → take-profit → rule).
  * Indicator maths are analysis numbers; cash/positions/fees use exact Dec.
+ *
+ * Internally it keeps its own template / backtest shapes; `templatesView`, `traceOf` and
+ * `runDemoBacktest` convert them to the public API shapes (`../api/types`, which mirror the real API).
  */
 import type { SignalReason, StrategyType } from '@ktrade/shared';
 import { Dec } from '../decimal';
 import { estimateFees } from '../fees';
 import { crossesAbove, crossesBelow, ema, macd, rsi, sma, type Series } from '../indicators';
 import type {
-  Backtest,
-  BacktestMetrics,
-  BacktestRequest,
-  BacktestTrade,
+  Backtest as PublicBacktest,
+  BacktestMetrics as PublicMetrics,
+  BacktestTrade as PublicTrade,
+  SignalTrace,
   StrategyParams,
-  StrategyTemplate,
-  TraceCondition,
+  StrategyTemplate as PublicTemplate,
+  TemplateParam,
 } from '../api/types';
 import type { RawBar } from './prices';
+
+// ─── internal (demo-only) shapes ───────────────────────────────────────────
+
+interface ParamSchemaProperty {
+  type: 'integer' | 'string' | 'boolean';
+  format?: 'decimal' | 'percent';
+  title: string;
+  description?: string;
+  minimum?: number;
+  maximum?: number;
+  default: number | string | boolean;
+  enum?: string[];
+}
+
+interface ParamSchema {
+  type: 'object';
+  properties: Record<string, ParamSchemaProperty>;
+  required: string[];
+}
+
+interface StrategyTemplate {
+  type: StrategyType;
+  name: string;
+  description: string;
+  entry: string;
+  exit: string;
+  parameterSchema: ParamSchema;
+}
+
+export interface TraceCondition {
+  condition: string;
+  operands: { label: string; value: string }[];
+  result: boolean;
+}
+
+interface BacktestRequest {
+  strategyType: StrategyType;
+  parameters: StrategyParams;
+  from: string;
+  to: string;
+  initialCapital: string;
+  slippageBps: string;
+}
+
+interface BacktestMetrics {
+  totalReturnPct: string;
+  cagrPct: string;
+  maxDrawdownPct: string;
+  sharpe: string;
+  winRatePct: string;
+  profitFactor: string | null;
+  avgWin: string;
+  avgLoss: string;
+  exposurePct: string;
+  feesPaid: string;
+  tradeCount: number;
+  benchmarkReturnPct: string;
+  finalEquity: string;
+}
+
+interface BacktestTrade {
+  id: string;
+  entryDate: string;
+  exitDate: string | null;
+  side: 'BUY' | 'SELL';
+  quantity: string;
+  entryPrice: string;
+  exitPrice: string | null;
+  pnl: string;
+  returnPct: string;
+  fees: string;
+  exitReason: SignalReason | 'END_OF_TEST' | null;
+}
+
+interface Backtest {
+  id: string;
+  status: 'SUCCEEDED' | 'FAILED';
+  request: BacktestRequest;
+  createdAt: string;
+  metrics: BacktestMetrics | null;
+  equityCurve: { date: string; equity: string; benchmark: string; drawdownPct: string }[];
+  trades: BacktestTrade[];
+  source: 'SIMULATED';
+  disclaimer: string;
+}
 
 export const BACKTEST_DISCLAIMER =
   'Past simulated performance does not guarantee future returns. Results exclude market impact and may use simulated or delayed data.';
@@ -655,4 +743,151 @@ export function runBacktest(
     finalEquity: finalEq.toFixed(2),
   };
   return { ...base, metrics, equityCurve: curve, trades };
+}
+
+// ─── public-shape adapters ─────────────────────────────────────────────────
+
+/** Demo templates in the API's `GET /strategies/templates` shape. */
+export function templatesView(): PublicTemplate[] {
+  const builtIns = STRATEGY_TEMPLATES.map((t): PublicTemplate => ({
+    type: t.type,
+    label: t.name,
+    description: `${t.description} Entry: ${t.entry}. Exit: ${t.exit}.`,
+    params: Object.entries(t.parameterSchema.properties).map(([name, p]): TemplateParam => ({
+      name,
+      type: p.enum ? 'ENUM' : p.type === 'integer' ? 'INT' : p.type === 'boolean' ? 'BOOL' : 'DECIMAL',
+      default: p.default,
+      min: p.minimum === undefined ? null : String(p.minimum),
+      max: p.maximum === undefined ? null : String(p.maximum),
+      options: p.enum ? [...p.enum] : null,
+      required: t.parameterSchema.required.includes(name),
+      description: p.description ? `${p.title}: ${p.description}` : p.title,
+    })),
+    overlays: ['stopLossPct', 'takeProfitPct', 'trailingStopPct'],
+  }));
+  return [
+    ...builtIns,
+    {
+      type: 'CUSTOM_RULES',
+      label: 'Custom rules',
+      description: 'Entry/exit rules written in the rule DSL (docs/08 §3).',
+      params: [],
+      overlays: ['stopLossPct', 'takeProfitPct', 'trailingStopPct'],
+    },
+  ];
+}
+
+/** A demo event's trace in the API's explainability shape. */
+export function traceOf(ev: StrategyEvent): SignalTrace {
+  return {
+    rule: {
+      result: true,
+      warm: true,
+      trace: ev.trace.map((c, i) => ({
+        path: `$.${ev.type === 'ENTRY' ? 'entryRules' : 'exitRules'}[${i}]`,
+        kind: 'condition',
+        result: c.result,
+        operands: c.operands.map((o) => ({ label: o.label, value: o.value === '—' ? null : o.value })),
+        text: `${c.condition} -> ${String(c.result)}`,
+      })),
+    },
+    overlays: [],
+    summary: ev.explanation,
+  };
+}
+
+const s2 = (v: string | null | undefined) => (v === undefined ? null : v);
+
+/** Run the demo backtest and return it in the API shapes (equity curve + trades, drawdown as a positive %). */
+export function runDemoBacktest(
+  id: string,
+  createdAt: string,
+  req: {
+    strategyId: string | null;
+    type: StrategyType;
+    parameters: StrategyParams;
+    symbol: string;
+    from: string;
+    to: string;
+    initialCapital: string;
+    slippageBps: string;
+  },
+  bars: readonly RawBar[],
+): { backtest: PublicBacktest; trades: PublicTrade[] } {
+  const bt = runBacktest(
+    id,
+    createdAt,
+    {
+      strategyType: req.type,
+      parameters: req.parameters,
+      from: req.from,
+      to: req.to,
+      initialCapital: req.initialCapital,
+      slippageBps: req.slippageBps,
+    },
+    bars,
+  );
+  const m = bt.metrics;
+  const metrics: PublicMetrics | null = m
+    ? {
+        initialCapital: req.initialCapital,
+        finalEquity: m.finalEquity,
+        totalReturnPct: m.totalReturnPct,
+        cagrPct: m.cagrPct,
+        annualizedReturnPct: m.cagrPct,
+        maxDrawdownPct: Dec.of(m.maxDrawdownPct).abs().toFixed(2),
+        sharpe: m.sharpe,
+        sortino: null,
+        tradeCount: m.tradeCount,
+        winRatePct: m.winRatePct,
+        profitFactor: s2(m.profitFactor),
+        avgWin: m.avgWin,
+        avgLoss: m.avgLoss,
+        riskReward: Dec.of(m.avgLoss).isZero()
+          ? null
+          : Dec.of(m.avgWin).div(Dec.of(m.avgLoss).abs()).toFixed(2),
+        exposurePct: m.exposurePct,
+        feesTotal: m.feesPaid,
+        buyAndHoldReturnPct: m.benchmarkReturnPct,
+      }
+    : null;
+  const backtest: PublicBacktest = {
+    id,
+    status: bt.status,
+    strategyId: req.strategyId,
+    strategyType: req.type,
+    symbol: req.symbol,
+    from: req.from,
+    to: req.to,
+    initialCapital: req.initialCapital,
+    slippageBps: req.slippageBps,
+    metrics,
+    benchmark: { label: 'Buy & hold', totalReturnPct: m?.benchmarkReturnPct ?? null },
+    dataSource: 'SIMULATED',
+    error: bt.status === 'FAILED' ? 'Not enough daily bars in the selected range (need at least 30)' : null,
+    createdAt,
+    finishedAt: createdAt,
+    equityCurve: bt.equityCurve.map((p) => ({
+      t: `${p.date}T10:30:00.000Z`,
+      equity: p.equity,
+      drawdownPct: Dec.of(p.drawdownPct).abs().toFixed(2),
+    })),
+    disclaimer: bt.disclaimer,
+  };
+  const trades: PublicTrade[] = bt.trades.map((t) => {
+    const open = t.exitReason === 'END_OF_TEST';
+    return {
+      id: t.id,
+      entryTs: `${t.entryDate}T10:30:00.000Z`,
+      exitTs: open || !t.exitDate ? null : `${t.exitDate}T10:30:00.000Z`,
+      quantity: t.quantity,
+      entryPrice: t.entryPrice,
+      exitPrice: open ? null : t.exitPrice,
+      fees: t.fees,
+      pnl: open ? null : t.pnl,
+      exitReason: open || t.exitReason === null || t.exitReason === 'END_OF_TEST' ? null : t.exitReason,
+      open,
+    };
+  });
+  return { backtest, trades };
 }

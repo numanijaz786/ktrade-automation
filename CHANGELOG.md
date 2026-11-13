@@ -4,6 +4,16 @@ All notable changes. Dates are 2026 (PKT). Commit ids are on `main`.
 
 ## Unreleased
 
+### Added (2026-11-14, later)
+
+- Strategies, signals and backtesting API (ADR-025); BFF and real-API web client (ADR-026); portfolio snapshots, performance, alerts and notifications (ADR-027); core web pages: dashboard, holdings, transactions, buy/sell, orders, strategies, backtests (ADR-029).
+
+### Fixed (2026-11-14, later)
+
+- The DAILY_LOSS risk limit could never trigger (today P&L was always 0) (ADR-028).
+- Duplicate portfolio name returned 500 instead of 409; a cold-start paper preview could fail with NO_PRICE.
+- `.env.example` used outdated secret names, and its inline comments could break strict validation.
+
 ### Added
 
 - Market-data API: overview (session, breadth, movers, sectors), stock search/explorer, stock details (52-week range, average volume, history provenance), quotes, candles (daily per-bar provenance, intraday), movers, sectors, provider listing and switching (🔐), and EOD price import.

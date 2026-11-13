@@ -36,10 +36,12 @@ import {
 import {
   BACKTEST_DISCLAIMER,
   defaultParams,
-  runBacktest,
+  runDemoBacktest,
   runStrategy,
   scoreAt,
-  STRATEGY_TEMPLATES,
+  templatesView,
+  traceOf,
+  type StrategyEvent,
 } from '../demo/strategy-engine';
 import { DEMO_SYMBOLS, DEMO_UNIVERSE, findSeed } from '../demo/universe';
 import { countRows, demoRowKey, parseDemoCsv } from '../demo/csv';
@@ -66,6 +68,8 @@ import type {
   Alert,
   AssistantMessage,
   Backtest,
+  BacktestMetrics,
+  BacktestTrade,
   BrokerConnection,
   ChannelConfig,
   DashboardCharts,
@@ -98,6 +102,8 @@ import type {
   StockDetail,
   StockListItem,
   Strategy,
+  StrategyDefinition,
+  Transaction,
   User,
   UserSettings,
   Watchlist,
@@ -169,6 +175,9 @@ interface State {
   strategies: Strategy[];
   signals: Signal[];
   backtests: Backtest[];
+  backtestTrades: Map<string, BacktestTrade[]>;
+  /** Idempotency-Key → order id (a replayed preview returns the same order). */
+  idempotency: Map<string, string>;
   notifications: Notification[];
   alerts: Alert[];
   assistant: AssistantMessage[];
@@ -210,6 +219,35 @@ const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   'PARTIALLY_FILLED',
 ];
 const MANUAL_WARNING = 'Live execution is manual: place this order in the KTrade app after approval.';
+
+function emptyMetrics(): BacktestMetrics {
+  return {
+    initialCapital: null,
+    finalEquity: null,
+    totalReturnPct: null,
+    cagrPct: null,
+    annualizedReturnPct: null,
+    maxDrawdownPct: null,
+    sharpe: null,
+    sortino: null,
+    tradeCount: 0,
+    winRatePct: null,
+    profitFactor: null,
+    avgWin: null,
+    avgLoss: null,
+    riskReward: null,
+    exposurePct: null,
+    feesTotal: null,
+    buyAndHoldReturnPct: null,
+  };
+}
+
+/** Newest-first cursor paging by id (same contract as the API). */
+function page<T extends { id: string }>(rows: T[], cursor: string | undefined, limit: number) {
+  const start = cursor ? rows.findIndex((r) => r.id === cursor) + 1 : 0;
+  const data = rows.slice(start, start + limit);
+  return { data, nextCursor: start + limit < rows.length ? (data.at(-1)?.id ?? null) : null };
+}
 
 function clone<T>(v: T): T {
   return structuredClone(v);
@@ -314,6 +352,8 @@ export class DemoApiClient implements ApiClient {
       strategies: [],
       signals: [],
       backtests: [],
+      backtestTrades: new Map(),
+      idempotency: new Map(),
       notifications: seedNotifications(),
       alerts: seedAlerts(),
       assistant: [],
@@ -1117,57 +1157,75 @@ export class DemoApiClient implements ApiClient {
 
   private seedStrategies(): Strategy[] {
     const created = `${daysAgo(90)}T04:00:00Z`;
+    const base = {
+      stopLossPct: null,
+      takeProfitPct: null,
+      trailingStopPct: null,
+      cooldownBars: 1,
+      maxPositionQty: null,
+      riskPerTradePct: null,
+      createdAt: created,
+    };
     return [
       {
+        ...base,
         id: 'st-ema',
-        name: 'EMA 9/21 — energy',
+        name: 'EMA 9/21 — OGDC',
+        portfolioId: PAPER_PORTFOLIO_ID,
+        symbol: 'OGDC',
         type: 'MA_CROSSOVER',
         mode: 'PAPER',
-        symbols: ['OGDC', 'PPL', 'HUBC'],
         parameters: defaultParams('MA_CROSSOVER'),
         active: true,
         autoExecute: true,
         version: 3,
-        createdAt: created,
+        maxInvestment: '200000',
         lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z`,
       },
       {
+        ...base,
         id: 'st-rsi',
-        name: 'RSI swing — banks',
+        name: 'RSI swing — MCB',
+        portfolioId: PAPER_PORTFOLIO_ID,
+        symbol: 'MCB',
         type: 'RSI',
         mode: 'PAPER',
-        symbols: ['MCB', 'UBL', 'MEBL'],
         parameters: defaultParams('RSI'),
         active: true,
         autoExecute: false,
         version: 1,
-        createdAt: created,
+        maxInvestment: '150000',
+        stopLossPct: '5',
         lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z`,
       },
       {
+        ...base,
         id: 'st-macd',
-        name: 'MACD momentum — tech',
+        name: 'MACD momentum — SYS',
+        portfolioId: PAPER_PORTFOLIO_ID,
+        symbol: 'SYS',
         type: 'MACD',
         mode: 'PAPER',
-        symbols: ['SYS', 'TRG', 'NETSOL'],
         parameters: defaultParams('MACD'),
-        active: true,
+        active: false,
         autoExecute: false,
         version: 2,
-        createdAt: created,
-        lastEvaluatedAt: `${DEMO_TODAY}T10:35:00Z`,
+        maxInvestment: '100000',
+        lastEvaluatedAt: null,
       },
       {
+        ...base,
         id: 'st-trail',
         name: 'Trailing stop 7% — LUCK',
+        portfolioId: LIVE_PORTFOLIO_ID,
+        symbol: 'LUCK',
         type: 'TRAILING_STOP',
         mode: 'LIVE',
-        symbols: ['LUCK'],
         parameters: defaultParams('TRAILING_STOP'),
         active: false,
         autoExecute: false,
         version: 1,
-        createdAt: created,
+        maxInvestment: '100000',
         lastEvaluatedAt: null,
       },
     ];
@@ -1177,34 +1235,18 @@ export class DemoApiClient implements ApiClient {
     const out: Signal[] = [];
     for (const st of strategies) {
       if (st.type === 'TRAILING_STOP' || st.type === 'STOP_LOSS' || st.type === 'TAKE_PROFIT') continue;
-      for (const sym of st.symbols) {
-        const bars = barsFor(sym).slice(-260);
-        const events = runStrategy(st.type, st.parameters, bars).filter((e) => e.i >= bars.length - 40);
-        events.forEach((ev, k) => {
-          const bar = bars[ev.i];
-          const { score, components } = scoreAt(bars, ev.i);
-          const newest = k === events.length - 1 && ev.i >= bars.length - 10;
-          out.push({
-            id: `sig-${st.id}-${sym}-${bar.date}`,
-            strategyId: st.id,
-            strategyName: st.name,
-            symbol: sym,
-            type: ev.type,
-            reason: ev.reason,
-            price: { value: paisaToString(bar.close), source: PRICE_SOURCE, asOf: `${bar.date}T10:30:00Z` },
-            score,
-            scoreComponents: components,
-            status: newest
-              ? 'NEW'
-              : st.autoExecute && st.mode === 'PAPER'
-                ? 'AUTO_EXECUTED_PAPER'
-                : 'DISMISSED',
-            createdAt: `${bar.date}T10:35:00Z`,
-            trace: ev.trace,
-            explanation: ev.explanation,
-          });
-        });
-      }
+      const bars = barsFor(st.symbol).slice(-260);
+      const events = runStrategy(st.type, st.parameters, bars).filter((e) => e.i >= bars.length - 40);
+      events.forEach((ev, k) => {
+        const sig = this.signalOf(st, ev, bars);
+        const newest = k === events.length - 1 && ev.i >= bars.length - 10;
+        sig.status = newest
+          ? 'NEW'
+          : st.autoExecute && st.mode === 'PAPER'
+            ? 'AUTO_EXECUTED_PAPER'
+            : 'DISMISSED';
+        out.push(sig);
+      });
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -1279,17 +1321,27 @@ export class DemoApiClient implements ApiClient {
             email: 'owner@example.com',
             displayName: s.userSettings.displayName,
             role: 'OWNER' as const,
+            totpEnabled: true,
           },
       ),
-    stepUp: (code) =>
+    stepUp: (proof) =>
       this.run((s) => {
-        if (!/^\d{6}$/.test(code) || code === '000000')
+        if ('totpCode' in proof) {
+          if (!/^\d{6}$/.test(proof.totpCode) || proof.totpCode === '000000')
+            throw new ApiError(
+              'INVALID_TOTP',
+              401,
+              'Invalid code',
+              'Demo: any 6 digits except 000000 are accepted.',
+            );
+        } else if (proof.password.length < 8) {
           throw new ApiError(
-            'INVALID_TOTP',
+            'INVALID_CREDENTIALS',
             401,
-            'Invalid code',
-            'Demo: any 6 digits except 000000 are accepted.',
+            'Invalid password',
+            'Demo: any password of 8+ characters is accepted.',
           );
+        }
         const token = this.id('stepup');
         const exp = this.now() + 5 * 60 * 1000;
         s.stepUp.set(token, exp);
@@ -1476,6 +1528,38 @@ export class DemoApiClient implements ApiClient {
 
   portfolios: ApiClient['portfolios'] = {
     list: () => this.run((s) => s.portfolios),
+    createPaper: ({ name, initialCash }) =>
+      this.run((s) => {
+        if (!name.trim()) throw new ApiError('VALIDATION_FAILED', 422, 'Name is required');
+        if (!/^\d+(\.\d+)?$/.test(initialCash) || Dec.of(initialCash).lte(0))
+          throw new ApiError('VALIDATION_FAILED', 422, 'Starting cash must be a positive amount');
+        const pf: Portfolio = {
+          id: this.id('pf'),
+          name: name.trim(),
+          kind: 'PAPER',
+          costBasisMethod: 'WEIGHTED_AVERAGE',
+          initialCash,
+          createdAt: this.iso(),
+          demo: true,
+        };
+        s.portfolios.push(pf);
+        s.ledgers.set(pf.id, [
+          {
+            kind: 'cash',
+            cash: {
+              id: this.id('cash'),
+              portfolioId: pf.id,
+              date: DEMO_TODAY,
+              type: 'DEPOSIT',
+              amount: initialCash,
+              description: 'Paper trading starting cash',
+              source: 'SIMULATED',
+            },
+          },
+        ]);
+        s.riskLimits.set(pf.id, { ...s.riskLimits.get(PAPER_PORTFOLIO_ID)!, portfolioId: pf.id });
+        return pf;
+      }),
     holdings: (pfId) => this.run((s) => this.holdings(s, pfId).list),
     holding: (pfId, symbol) =>
       this.run((s) => {
@@ -1492,19 +1576,13 @@ export class DemoApiClient implements ApiClient {
           dividends: (s.dividends.get(pfId) ?? []).filter((d) => d.symbol === symbol),
         };
       }),
-    transactions: (pfId, f = {}) =>
-      this.run((s) =>
-        this.ledger(s, pfId)
+    transactions: (pfId, q = {}) =>
+      this.run((s) => {
+        const rows: Transaction[] = this.ledger(s, pfId)
           .flatMap((e) => (e.kind === 'txn' ? [e.txn] : []))
-          .filter(
-            (t) =>
-              (!f.symbol || t.symbol === f.symbol) &&
-              (!f.type || t.type === f.type) &&
-              (!f.from || t.tradeDate >= f.from) &&
-              (!f.to || t.tradeDate <= f.to),
-          )
-          .reverse(),
-      ),
+          .reverse();
+        return page(rows, q.cursor, q.limit ?? 50);
+      }),
     cashMovements: (pfId) =>
       this.run((s) =>
         this.ledger(s, pfId)
@@ -1555,8 +1633,11 @@ export class DemoApiClient implements ApiClient {
   orders: ApiClient['orders'] = {
     preview: (req) =>
       this.run((s) => {
+        const replayed = req.idempotencyKey ? s.idempotency.get(req.idempotencyKey) : undefined;
+        if (replayed) return this.order(s, replayed);
         const o = this.buildPreview(s, req);
         s.orders.unshift(o);
+        if (req.idempotencyKey) s.idempotency.set(req.idempotencyKey, o.id);
         return o;
       }),
     approve: (id, { previewHash, stepUpToken }) =>
@@ -1726,12 +1807,10 @@ export class DemoApiClient implements ApiClient {
     list: (f = {}) =>
       this.run((s) => {
         this.expireStale(s);
-        return s.orders.filter(
-          (o) =>
-            (!f.status || o.status === f.status) &&
-            (!f.mode || o.mode === f.mode) &&
-            (!f.symbol || o.symbol === f.symbol),
+        const rows = s.orders.filter(
+          (o) => (!f.status || o.status === f.status) && (!f.portfolioId || o.portfolioId === f.portfolioId),
         );
+        return page(rows, f.cursor, f.limit ?? 50);
       }),
     get: (id) =>
       this.run((s) => {
@@ -1991,72 +2070,357 @@ export class DemoApiClient implements ApiClient {
   }
 
   strategies: ApiClient['strategies'] = {
-    templates: () => this.run(() => STRATEGY_TEMPLATES),
+    templates: () => this.run(() => templatesView()),
     list: () => this.run((s) => s.strategies),
     create: (input) =>
       this.run((s) => {
-        if (!input.symbols.length) throw new ApiError('VALIDATION_FAILED', 422, 'Pick at least one symbol');
-        if (input.mode === 'LIVE' && input.autoExecute)
+        const pf = this.portfolio(s, input.portfolioId);
+        if (!findSeed(input.symbol))
+          throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', input.symbol);
+        if (input.type === 'CUSTOM_RULES')
           throw new ApiError(
-            'CAPABILITY_UNAVAILABLE',
-            409,
-            'Auto-execution unavailable for live',
-            'Live strategies only prepare orders for manual approval.',
+            'VALIDATION_FAILED',
+            422,
+            'Custom rules need the rule DSL',
+            'Not supported in the demo.',
           );
+        const mode = pf.kind === 'PAPER' ? 'PAPER' : 'LIVE';
+        if (mode === 'LIVE' && input.autoExecute)
+          throw new ApiError(
+            'LIVE_AUTO_EXECUTION_FORBIDDEN',
+            422,
+            'Auto-execution is PAPER-only',
+            'Live strategies only record signals; orders always need your manual approval.',
+          );
+        if (s.strategies.some((x) => x.name === input.name))
+          throw new ApiError('ALREADY_EXISTS', 409, 'A strategy with this name already exists');
         const st: Strategy = {
-          ...input,
           id: this.id('st'),
+          name: input.name,
+          portfolioId: pf.id,
+          symbol: input.symbol,
+          type: input.type,
+          mode,
           active: false,
+          autoExecute: input.autoExecute,
           version: 1,
-          createdAt: this.iso(),
+          parameters: { ...defaultParams(input.type), ...input.parameters },
+          stopLossPct: input.stopLossPct ?? null,
+          takeProfitPct: input.takeProfitPct ?? null,
+          trailingStopPct: input.trailingStopPct ?? null,
+          cooldownBars: input.cooldownBars ?? 1,
+          maxInvestment: input.maxInvestment,
+          maxPositionQty: input.maxPositionQty ?? null,
+          riskPerTradePct: input.riskPerTradePct ?? null,
           lastEvaluatedAt: null,
+          createdAt: this.iso(),
         };
-        s.strategies.push(st);
+        s.strategies.unshift(st);
         return st;
       }),
-    setActive: (id, active) =>
+    update: (id, patch) =>
       this.run((s) => {
-        const st = s.strategies.find((x) => x.id === id);
-        if (!st) throw new ApiError('NOT_FOUND', 404, 'Strategy not found');
-        st.active = active;
-        if (active) {
-          st.lastEvaluatedAt = this.iso();
-          s.signals = [
-            ...this.buildSignals([st]).filter((n) => !s.signals.some((o) => o.id === n.id)),
-            ...s.signals,
-          ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        }
+        const st = this.strategy(s, id);
+        if (st.mode === 'LIVE' && patch.autoExecute)
+          throw new ApiError('LIVE_AUTO_EXECUTION_FORBIDDEN', 422, 'Auto-execution is PAPER-only');
+        const definitionChanged = Object.keys(patch).some((k) => k !== 'name' && k !== 'autoExecute');
+        Object.assign(st, {
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.autoExecute !== undefined ? { autoExecute: patch.autoExecute } : {}),
+          ...(patch.type !== undefined ? { type: patch.type } : {}),
+          ...(patch.parameters !== undefined ? { parameters: patch.parameters } : {}),
+          ...(patch.stopLossPct !== undefined ? { stopLossPct: patch.stopLossPct || null } : {}),
+          ...(patch.takeProfitPct !== undefined ? { takeProfitPct: patch.takeProfitPct || null } : {}),
+          ...(patch.trailingStopPct !== undefined ? { trailingStopPct: patch.trailingStopPct || null } : {}),
+          ...(patch.cooldownBars !== undefined ? { cooldownBars: patch.cooldownBars } : {}),
+          ...(patch.maxInvestment !== undefined ? { maxInvestment: patch.maxInvestment } : {}),
+        });
+        if (definitionChanged) st.version += 1;
         return st;
+      }),
+    remove: (id) =>
+      this.run((s) => {
+        const st = this.strategy(s, id);
+        if (st.active)
+          throw new ApiError('STRATEGY_ACTIVE', 409, 'Deactivate the strategy before deleting it');
+        s.strategies = s.strategies.filter((x) => x.id !== id);
+      }),
+    setActive: (id, active, stepUpToken) =>
+      this.run((s) => {
+        const st = this.strategy(s, id);
+        if (active && st.mode === 'LIVE') {
+          this.requireStepUp(s, stepUpToken ?? '');
+          if (st.autoExecute)
+            throw new ApiError('LIVE_AUTO_EXECUTION_FORBIDDEN', 422, 'Auto-execution is PAPER-only');
+        }
+        st.active = active;
+        return st;
+      }),
+    validate: (req) =>
+      this.run(() => {
+        if (req.type === 'CUSTOM_RULES')
+          throw new ApiError(
+            'VALIDATION_FAILED',
+            422,
+            'Custom rules need the rule DSL',
+            'Not supported in the demo.',
+          );
+        const parameters = { ...defaultParams(req.type), ...req.parameters };
+        const base = {
+          valid: true as const,
+          warmupBars: 30,
+          parameters: Object.fromEntries(Object.entries(parameters).map(([k, v]) => [k, String(v)])),
+        };
+        if (!req.symbol) return { ...base, dryRun: null };
+        if (!findSeed(req.symbol)) throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', req.symbol);
+        const bars = barsFor(req.symbol).slice(-(req.bars ?? 250));
+        const events = runStrategy(req.type, parameters, bars);
+        return {
+          ...base,
+          dryRun: {
+            symbol: req.symbol,
+            bars: bars.length,
+            from: bars.length ? `${bars[0].date}T10:30:00.000Z` : null,
+            to: bars.length ? `${bars[bars.length - 1].date}T10:30:00.000Z` : null,
+            dataSource: 'SIMULATED' as const,
+            warmupComplete: bars.length >= 30,
+            note: 'Hypothetical replay over simulated demo bars; signals at bar close, fills at the next open.',
+            signals: events.map((ev) => {
+              const { score, components } = scoreAt(bars, ev.i);
+              return {
+                type: ev.type,
+                reason: ev.reason,
+                side: ev.type === 'ENTRY' ? ('BUY' as const) : ('SELL' as const),
+                ts: `${bars[ev.i].date}T10:30:00.000Z`,
+                price: paisaToString(bars[ev.i].close),
+                summary: ev.explanation,
+                score: {
+                  total: String(score),
+                  direction: ev.type === 'ENTRY' ? 'BULLISH' : 'BEARISH',
+                  components: components.map((c) => ({
+                    name: c.label,
+                    weight: c.max,
+                    available: true,
+                    score: String(c.points),
+                    detail: `${c.points}/${c.max}`,
+                  })),
+                },
+                trace: traceOf(ev),
+                wouldFill: ev.i < bars.length - 1,
+                note: ev.i < bars.length - 1 ? null : 'signal on the last bar: would fill at the next open',
+              };
+            }),
+            disclaimer: BACKTEST_DISCLAIMER,
+          },
+        };
+      }),
+    evaluate: (id) =>
+      this.run((s) => {
+        const st = this.strategy(s, id);
+        if (!st.active)
+          throw new ApiError('STRATEGY_INACTIVE', 409, 'Activate the strategy before evaluating it');
+        const now = this.iso();
+        st.lastEvaluatedAt = now;
+        const bars = barsFor(st.symbol).slice(-260);
+        const last = runStrategy(st.type, st.parameters, bars).find((e) => e.i === bars.length - 1);
+        const barTs = `${bars[bars.length - 1].date}T10:30:00.000Z`;
+        const execution = {
+          id: this.id('exec'),
+          status: 'SUCCEEDED' as const,
+          startedAt: now,
+          finishedAt: now,
+          barTs,
+          signalsGenerated: 0,
+          error: null,
+        };
+        if (!last)
+          return {
+            execution,
+            signal: null,
+            duplicate: false,
+            order: null,
+            note: 'no signal at the latest bar',
+          };
+        const sigId = `sig-${st.id}-${bars[last.i].date}-${last.type}`;
+        const existing = s.signals.find((x) => x.id === sigId);
+        if (existing)
+          return {
+            execution,
+            signal: existing,
+            duplicate: true,
+            order: null,
+            note: 'signal for this bar already recorded; nothing new created',
+          };
+        const signal = this.signalOf(st, last, bars);
+        s.signals.unshift(signal);
+        return {
+          execution: { ...execution, signalsGenerated: 1 },
+          signal,
+          duplicate: false,
+          order: null,
+          note:
+            st.mode === 'LIVE'
+              ? 'LIVE strategy: signal recorded only. Review it and place the order manually (approval needs step-up).'
+              : 'Demo: signal recorded; prepare an order from it manually.',
+        };
       }),
     signals: (q = {}) =>
-      this.run((s) => s.signals.filter((x) => !q.strategyId || x.strategyId === q.strategyId)),
-    dismissSignal: (id) =>
-      this.run((s) => {
-        const sig = s.signals.find((x) => x.id === id);
-        if (!sig) throw new ApiError('NOT_FOUND', 404, 'Signal not found');
-        sig.status = 'DISMISSED';
-        return sig;
-      }),
+      this.run((s) =>
+        s.signals.filter(
+          (x) => (!q.strategyId || x.strategyId === q.strategyId) && (!q.status || x.status === q.status),
+        ),
+      ),
   };
+
+  private strategy(s: State, id: string): Strategy {
+    const st = s.strategies.find((x) => x.id === id);
+    if (!st) throw new ApiError('NOT_FOUND', 404, 'Strategy not found');
+    return st;
+  }
+
+  private signalOf(st: Strategy, ev: StrategyEvent, bars: readonly RawBar[]): Signal {
+    const bar = bars[ev.i];
+    const ts = `${bar.date}T10:30:00.000Z`;
+    return {
+      id: `sig-${st.id}-${bar.date}-${ev.type}`,
+      strategyId: st.id,
+      strategyName: st.name,
+      symbol: st.symbol,
+      mode: st.mode,
+      type: ev.type,
+      reason: ev.reason,
+      side: ev.type === 'ENTRY' ? 'BUY' : 'SELL',
+      barTs: ts,
+      price: { value: paisaToString(bar.close), source: PRICE_SOURCE, asOf: ts },
+      suggestedQty: null,
+      status: 'NEW',
+      orderId: null,
+      createdAt: `${bar.date}T10:35:00.000Z`,
+    };
+  }
+
+  private demoBacktest(
+    s: State,
+    req: {
+      strategyId: string | null;
+      type: Strategy['type'];
+      parameters: Strategy['parameters'];
+      symbol: string;
+      from: string;
+      to: string;
+      initialCapital: string;
+      slippageBps: string;
+    },
+  ) {
+    if (!findSeed(req.symbol)) throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', req.symbol);
+    if (req.from >= req.to)
+      throw new ApiError('VALIDATION_FAILED', 422, 'Invalid period', '“From” must be before “to”.');
+    if (req.type === 'CUSTOM_RULES')
+      throw new ApiError(
+        'VALIDATION_FAILED',
+        422,
+        'Custom rules need the rule DSL',
+        'Not supported in the demo.',
+      );
+    return runDemoBacktest(this.id('bt'), this.iso(), req, barsFor(req.symbol));
+  }
+
+  private backtestTarget(
+    s: State,
+    req: { strategyId?: string; definition?: StrategyDefinition; symbol?: string },
+  ) {
+    if (req.strategyId) {
+      const st = this.strategy(s, req.strategyId);
+      return { strategyId: st.id, type: st.type, parameters: st.parameters, symbol: req.symbol ?? st.symbol };
+    }
+    if (!req.definition || !req.symbol)
+      throw new ApiError('VALIDATION_FAILED', 422, 'Give a strategy, or a template with a symbol');
+    return {
+      strategyId: null,
+      type: req.definition.type,
+      parameters: { ...defaultParams(req.definition.type), ...req.definition.parameters },
+      symbol: req.symbol,
+    };
+  }
 
   backtests: ApiClient['backtests'] = {
     run: (req) =>
       this.run((s) => {
-        if (!findSeed(req.symbol)) throw new ApiError('NOT_FOUND', 404, 'Unknown symbol', req.symbol);
-        if (req.from >= req.to)
-          throw new ApiError('VALIDATION_FAILED', 422, 'Invalid period', '“From” must be before “to”.');
-        const bt = runBacktest(this.id('bt'), this.iso(), req, barsFor(req.symbol));
-        s.backtests.unshift(bt);
-        return bt;
+        const { backtest, trades } = this.demoBacktest(s, {
+          ...this.backtestTarget(s, req),
+          from: req.from,
+          to: req.to,
+          initialCapital: req.initialCapital,
+          slippageBps: req.slippageBps,
+        });
+        s.backtests.unshift(backtest);
+        s.backtestTrades.set(backtest.id, trades);
+        return backtest;
       }),
-    list: () => this.run((s) => s.backtests.map((b) => ({ ...b, equityCurve: [], trades: [] }))),
-    get: (id) =>
+    list: () => this.run((s) => s.backtests.map((b) => ({ ...b, equityCurve: [] }))),
+    get: (id) => this.run((s) => this.backtest(s, id)),
+    trades: (id) =>
       this.run((s) => {
-        const b = s.backtests.find((x) => x.id === id);
-        if (!b) throw new ApiError('NOT_FOUND', 404, 'Backtest not found');
-        return b;
+        const b = this.backtest(s, id);
+        return {
+          data: s.backtestTrades.get(b.id) ?? [],
+          source: 'SIMULATED' as const,
+          disclaimer: b.disclaimer,
+        };
+      }),
+    compare: (req) =>
+      this.run((s) => {
+        const n = req.strategyIds.length + req.definitions.length;
+        if (n < 1 || n > 5) throw new ApiError('VALIDATION_FAILED', 422, 'Compare 1 to 5 strategies');
+        const symbol =
+          req.symbol ?? (req.strategyIds[0] ? this.strategy(s, req.strategyIds[0]).symbol : undefined);
+        if (!symbol) throw new ApiError('VALIDATION_FAILED', 422, 'Pick a symbol to compare on');
+        const targets = [
+          ...req.strategyIds.map((id) => ({
+            label: this.strategy(s, id).name,
+            ...this.backtestTarget(s, { strategyId: id, symbol }),
+          })),
+          ...req.definitions.map(({ label, ...definition }, i) => ({
+            label: label ?? `definition ${i + 1}`,
+            ...this.backtestTarget(s, { definition, symbol }),
+          })),
+        ];
+        const runs = targets.map((t) =>
+          this.demoBacktest(s, {
+            ...t,
+            symbol,
+            from: req.from,
+            to: req.to,
+            initialCapital: req.initialCapital,
+            slippageBps: req.slippageBps,
+          }),
+        );
+        const first = runs[0].backtest;
+        return {
+          symbol,
+          from: req.from,
+          to: req.to,
+          initialCapital: req.initialCapital,
+          slippageBps: req.slippageBps,
+          bars: first.equityCurve.length,
+          dataSource: 'SIMULATED' as const,
+          rows: runs.map((r, i) => ({
+            label: targets[i].label,
+            strategyId: targets[i].strategyId,
+            strategyType: targets[i].type,
+            metrics: r.backtest.metrics ?? emptyMetrics(),
+          })),
+          benchmark: first.benchmark,
+          disclaimer: BACKTEST_DISCLAIMER,
+        };
       }),
   };
+
+  private backtest(s: State, id: string): Backtest {
+    const b = s.backtests.find((x) => x.id === id);
+    if (!b) throw new ApiError('NOT_FOUND', 404, 'Backtest not found');
+    return b;
+  }
 
   dividends: ApiClient['dividends'] = {
     list: (pfId) =>
@@ -2267,10 +2631,8 @@ export class DemoApiClient implements ApiClient {
       if (sig)
         return {
           ...base,
-          content: `Latest signal: ${sig.type} ${sig.symbol} from “${sig.strategyName}”. Why: ${sig.explanation}. Confidence ${sig.score}/100 (${sig.scoreComponents.map((c) => `${c.label} ${c.points}/${c.max}`).join('; ')}). I can explain signals but cannot create or approve orders.`,
-          toolCalls: [
-            { name: 'explain_signal', args: { id: sig.id }, digest: `${sig.trace.length} conditions` },
-          ],
+          content: `Latest signal: ${sig.type} (${sig.reason.toLowerCase().replace(/_/g, ' ')}) ${sig.symbol} from “${sig.strategyName}” at Rs ${sig.price.value}. Open Strategies to see its trace. I can explain signals but cannot create or approve orders.`,
+          toolCalls: [{ name: 'explain_signal', args: { id: sig.id }, digest: sig.status }],
           citations: [{ label: 'Strategies & signals', href: '/strategies' }],
         };
     }

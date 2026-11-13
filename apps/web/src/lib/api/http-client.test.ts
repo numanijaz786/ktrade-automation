@@ -333,7 +333,10 @@ describe('HttpApiClient', () => {
 
   it('stepUp maps expiresIn to an absolute expiry and keeps the token in memory only', async () => {
     const { c } = client([json({ stepUpToken: 'su.jwt', expiresIn: 300 })]);
-    expect(await c.auth.stepUp('123456')).toEqual({ token: 'su.jwt', expiresAt: '2026-11-13T05:05:00.000Z' });
+    expect(await c.auth.stepUp({ totpCode: '123456' })).toEqual({
+      token: 'su.jwt',
+      expiresAt: '2026-11-13T05:05:00.000Z',
+    });
   });
 
   it('dataMode reflects the active provider', async () => {
@@ -370,8 +373,6 @@ describe('HttpApiClient', () => {
   it('groups without a backend reject with NOT_AVAILABLE and never call the network', async () => {
     const { c, fetchMock } = client([]);
     const calls = [
-      c.strategies.list(),
-      c.backtests.list(),
       c.dividends.list('p'),
       c.analytics.feesTaxes('p'),
       c.notifications.list(),

@@ -12,18 +12,18 @@ cd apps/api && RUN_INTEGRATION=1 pnpm test   # + real-PostgreSQL suites (needs D
 
 ## Results
 
-| Area                          | Suite                                                                                                                                                          | Tests          | Result |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ |
-| finance-core                  | fees, ledger (WAC/FIFO, corporate actions, dividends), returns (TWR/XIRR/drawdown), indicators, strategy DSL, risk engine, backtester                          | 184            | ✅     |
-| shared                        | enums, decimal-string schemas                                                                                                                                  | 13             | ✅     |
-| broker-sdk                    | capability chain, guardedCall, disabled KTrade stubs                                                                                                           | 8              | ✅     |
-| api: unit / e2e               | TOTP RFC 6238 vectors, envelope crypto, CSV parser, market data, Zod 4 guards, HTTP pipeline (rate limit, problem+json, headers), enum sync                    | 33             | ✅     |
-| api: integration (PostgreSQL) | auth 12 · trading 7 · imports 8 · seed 4 · market data 8 · strategies 13                                                                                       | 52             | ✅     |
-| web                           | BFF (CSRF, cookie flags, refresh-once/shared, pass-through, no tokens), HTTP client + mappers, pages (market overview, watchlists, not-available), demo client | 78             | ✅     |
-| build / typecheck / lint      | all workspaces                                                                                                                                                 | 20 turbo tasks | ✅     |
-| format                        | Prettier                                                                                                                                                       | repo           | ✅     |
+| Area                          | Suite                                                                                                                                                                                            | Tests          | Result |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- | ------ |
+| finance-core                  | fees, ledger (WAC/FIFO, corporate actions, dividends), returns (TWR/XIRR/drawdown), indicators, strategy DSL, risk engine, backtester                                                            | 184            | ✅     |
+| shared                        | enums, decimal-string schemas                                                                                                                                                                    | 13             | ✅     |
+| broker-sdk                    | capability chain, guardedCall, disabled KTrade stubs                                                                                                                                             | 8              | ✅     |
+| api: unit / e2e               | TOTP RFC 6238 vectors, envelope crypto, CSV parser, market data, Zod 4 guards, HTTP pipeline (rate limit, problem+json, headers), enum sync                                                      | 33             | ✅     |
+| api: integration (PostgreSQL) | auth · trading (incl. DAILY_LOSS) · imports · seed · market data (incl. cold-start pricing) · strategies · snapshots and alerts                                                                  | 16 files       | ✅     |
+| web                           | BFF security, HTTP client + mappers, pages (dashboard, holdings, transactions, order ticket + approval, orders, strategies, backtests, market, watchlists), step-up (password/TOTP), demo client | 117            | ✅     |
+| build / typecheck / lint      | all workspaces                                                                                                                                                                                   | 20 turbo tasks | ✅     |
+| format                        | Prettier                                                                                                                                                                                         | repo           | ✅     |
 
-**API total: 96 tests in 13 files. finance-core 188.**
+**API total: 126 tests in 16 files. finance-core 188. Web 117. Live BFF smoke test: 34/34 checks.**
 
 ## Key correctness evidence
 

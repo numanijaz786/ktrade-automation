@@ -22,6 +22,11 @@ import type {
   Role,
   TransactionType,
   PriceInterval,
+  RunStatus,
+  SignalReason,
+  SignalStatus,
+  SignalType,
+  StrategyType,
 } from '@ktrade/shared';
 import { Dec } from '../../decimal';
 import { ApiError, type FieldError } from '../errors';
@@ -46,6 +51,23 @@ import type {
   User,
   Watchlist,
   Holding,
+  Backtest,
+  BacktestComparison,
+  BacktestMetrics,
+  BacktestTrade,
+  BacktestTrades,
+  DryRunSignal,
+  OverlayTraceEntry,
+  Signal,
+  SignalTrace,
+  Strategy,
+  StrategyDefinition,
+  StrategyEvaluation,
+  StrategyInput,
+  StrategyTemplate,
+  StrategyUpdate,
+  StrategyValidation,
+  TemplateParam,
 } from '../types';
 
 // ─── problem+json ──────────────────────────────────────────────────────────
@@ -355,6 +377,8 @@ export function mapTransaction(t: ApiTransaction, portfolioId: string): Transact
     reference: null,
     orderId: null,
     reversed: t.reversed,
+    realizedPnl: t.realizedPnl,
+    feeLines: t.fees.map((f) => ({ component: f.component, amount: f.amount, source: f.source })),
   };
 }
 
@@ -644,5 +668,428 @@ export function mapImportRow(r: ImportRow & { raw?: unknown }): ImportRow {
     errors: r.errors,
     warnings: r.warnings,
     message: r.message,
+  };
+}
+
+// ─── strategies, signals, backtests (apps/api/src/strategies) ──────────────
+
+export interface ApiTemplate {
+  type: StrategyType;
+  label: string;
+  description: string;
+  params: {
+    name: string;
+    type: TemplateParam['type'];
+    default: number | string | boolean | null;
+    min: string | null;
+    max: string | null;
+    options: string[] | null;
+    required: boolean;
+    description: string;
+  }[];
+  overlays: string[];
+}
+
+export function mapTemplate(t: ApiTemplate): StrategyTemplate {
+  return {
+    type: t.type,
+    label: t.label,
+    description: t.description,
+    params: (t.params ?? []).map((p) => ({ ...p, options: p.options ? [...p.options] : null })),
+    overlays: [...(t.overlays ?? [])],
+  };
+}
+
+export interface ApiStrategy {
+  id: string;
+  name: string;
+  portfolioId: string;
+  symbol: string;
+  type: StrategyType;
+  mode: ExecutionMode;
+  isActive: boolean;
+  autoExecute: boolean;
+  version: number;
+  parameters: Record<string, string | number | boolean>;
+  stopLossPct: string | null;
+  takeProfitPct: string | null;
+  trailingStopPct: string | null;
+  cooldownBars: number;
+  maxInvestment: string;
+  maxPositionQty: string | null;
+  riskPerTradePct: string | null;
+  lastEvaluatedAt: string | null;
+  createdAt: string;
+}
+
+export function mapStrategy(s: ApiStrategy): Strategy {
+  return {
+    id: s.id,
+    name: s.name,
+    portfolioId: s.portfolioId,
+    symbol: s.symbol,
+    type: s.type,
+    mode: s.mode,
+    active: s.isActive,
+    autoExecute: s.autoExecute,
+    version: s.version,
+    parameters: { ...s.parameters },
+    stopLossPct: s.stopLossPct,
+    takeProfitPct: s.takeProfitPct,
+    trailingStopPct: s.trailingStopPct,
+    cooldownBars: s.cooldownBars,
+    maxInvestment: s.maxInvestment,
+    maxPositionQty: s.maxPositionQty,
+    riskPerTradePct: s.riskPerTradePct,
+    lastEvaluatedAt: s.lastEvaluatedAt,
+    createdAt: s.createdAt,
+  };
+}
+
+/** Body for `POST /strategies/validate` and inline backtest definitions: unset overlays are omitted. */
+export function toApiDefinition(d: StrategyDefinition): Record<string, unknown> {
+  return {
+    type: d.type,
+    parameters: d.parameters,
+    ...(d.stopLossPct ? { stopLossPct: d.stopLossPct } : {}),
+    ...(d.takeProfitPct ? { takeProfitPct: d.takeProfitPct } : {}),
+    ...(d.trailingStopPct ? { trailingStopPct: d.trailingStopPct } : {}),
+    ...(d.cooldownBars !== undefined ? { cooldownBars: d.cooldownBars } : {}),
+  };
+}
+
+export function toApiStrategyInput(i: StrategyInput): Record<string, unknown> {
+  return {
+    name: i.name,
+    portfolioId: i.portfolioId,
+    symbol: i.symbol,
+    autoExecute: i.autoExecute,
+    ...toApiDefinition(i),
+    maxInvestment: i.maxInvestment,
+    ...(i.maxPositionQty ? { maxPositionQty: i.maxPositionQty } : {}),
+    ...(i.riskPerTradePct ? { riskPerTradePct: i.riskPerTradePct } : {}),
+  };
+}
+
+/** PATCH body: fields set to null (or "") are cleared; undefined fields are left unchanged. */
+export function toApiStrategyUpdate(u: StrategyUpdate): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(u)) if (v !== undefined) out[k] = v === '' ? null : v;
+  return out;
+}
+
+export interface ApiSignal {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  symbol: string;
+  mode: ExecutionMode;
+  type: SignalType;
+  reason: SignalReason;
+  side: OrderSide;
+  barTs: string;
+  price: { value: string; source: DataSource };
+  suggestedQty: string | null;
+  status: SignalStatus;
+  orderId: string | null;
+  createdAt: string;
+}
+
+export function mapSignal(s: ApiSignal): Signal {
+  return {
+    id: s.id,
+    strategyId: s.strategyId,
+    strategyName: s.strategyName,
+    symbol: s.symbol,
+    mode: s.mode,
+    type: s.type,
+    reason: s.reason,
+    side: s.side,
+    barTs: s.barTs,
+    price: { value: s.price.value, source: s.price.source, asOf: s.barTs },
+    suggestedQty: s.suggestedQty,
+    status: s.status,
+    orderId: s.orderId,
+    createdAt: s.createdAt,
+  };
+}
+
+export interface ApiTrace {
+  rule: {
+    result: boolean;
+    warm: boolean;
+    trace: {
+      path: string;
+      kind: string;
+      result: boolean;
+      operands: { label: string; value: string | null; history?: unknown }[];
+      text: string;
+    }[];
+  } | null;
+  overlays: OverlayTraceEntry[];
+  summary: string;
+}
+
+export function mapTrace(t: ApiTrace | null | undefined): SignalTrace {
+  if (!t) return { rule: null, overlays: [], summary: '' };
+  return {
+    rule: t.rule
+      ? {
+          result: t.rule.result,
+          warm: t.rule.warm,
+          trace: t.rule.trace.map((e) => ({
+            path: e.path,
+            kind: e.kind,
+            result: e.result,
+            operands: e.operands.map((o) => ({ label: o.label, value: o.value })),
+            text: e.text,
+          })),
+        }
+      : null,
+    overlays: (t.overlays ?? []).map((o) => ({ ...o })),
+    summary: t.summary ?? '',
+  };
+}
+
+export interface ApiDryRunSignal extends Omit<DryRunSignal, 'trace' | 'note'> {
+  trace: ApiTrace;
+  note?: string | null;
+  barIndex?: number;
+}
+
+export interface ApiValidation {
+  valid: true;
+  warmupBars: number;
+  rules?: unknown;
+  parameters: Record<string, string>;
+  dryRun: {
+    symbol: string;
+    bars: number;
+    from?: string | null;
+    to?: string;
+    dataSource: DataSource | null;
+    warmupComplete?: boolean;
+    note?: string;
+    signals: ApiDryRunSignal[];
+    disclaimer: string;
+  } | null;
+}
+
+export function mapValidation(v: ApiValidation): StrategyValidation {
+  const r = v.dryRun;
+  return {
+    valid: true,
+    warmupBars: v.warmupBars,
+    parameters: { ...v.parameters },
+    dryRun: r
+      ? {
+          symbol: r.symbol,
+          bars: r.bars,
+          from: r.from ?? null,
+          to: r.to ?? null,
+          dataSource: r.dataSource,
+          warmupComplete: r.warmupComplete ?? null,
+          note: r.note ?? null,
+          signals: r.signals.map((s) => ({
+            type: s.type,
+            reason: s.reason,
+            side: s.side,
+            ts: s.ts,
+            price: s.price,
+            summary: s.summary,
+            score: s.score,
+            trace: mapTrace(s.trace),
+            wouldFill: s.wouldFill,
+            note: s.note ?? null,
+          })),
+          disclaimer: r.disclaimer,
+        }
+      : null,
+  };
+}
+
+export interface ApiEvaluation {
+  execution: StrategyEvaluation['execution'] & { mode?: string; details?: unknown };
+  signal: ApiSignal | null;
+  duplicate: boolean;
+  order: { id: string; status: OrderStatus } | null;
+  note?: string | null;
+}
+
+export function mapEvaluation(e: ApiEvaluation): StrategyEvaluation {
+  const x = e.execution;
+  return {
+    execution: {
+      id: x.id,
+      status: x.status,
+      startedAt: x.startedAt,
+      finishedAt: x.finishedAt,
+      barTs: x.barTs,
+      signalsGenerated: x.signalsGenerated,
+      error: x.error,
+    },
+    signal: e.signal ? mapSignal(e.signal) : null,
+    duplicate: e.duplicate,
+    order: e.order ?? null,
+    note: e.note ?? null,
+  };
+}
+
+type MetricKey = Exclude<keyof BacktestMetrics, 'tradeCount'>;
+export type ApiMetrics = Partial<Record<MetricKey, string | null>> & { tradeCount?: number };
+
+export function mapMetrics(m: ApiMetrics | null | undefined): BacktestMetrics | null {
+  if (!m) return null;
+  const v = (k: MetricKey) => m[k] ?? null;
+  return {
+    initialCapital: v('initialCapital'),
+    finalEquity: v('finalEquity'),
+    totalReturnPct: v('totalReturnPct'),
+    cagrPct: v('cagrPct'),
+    annualizedReturnPct: v('annualizedReturnPct'),
+    maxDrawdownPct: v('maxDrawdownPct'),
+    sharpe: v('sharpe'),
+    sortino: v('sortino'),
+    tradeCount: m.tradeCount ?? 0,
+    winRatePct: v('winRatePct'),
+    profitFactor: v('profitFactor'),
+    avgWin: v('avgWin'),
+    avgLoss: v('avgLoss'),
+    riskReward: v('riskReward'),
+    exposurePct: v('exposurePct'),
+    feesTotal: v('feesTotal'),
+    buyAndHoldReturnPct: v('buyAndHoldReturnPct'),
+  };
+}
+
+export interface ApiBacktest {
+  id: string;
+  status: RunStatus;
+  strategyId: string | null;
+  strategyType: StrategyType;
+  symbol: string;
+  from: string;
+  to: string;
+  initialCapital: string;
+  finalEquity: string | null;
+  totalReturnPct: string | null;
+  maxDrawdownPct: string | null;
+  sharpe: string | null;
+  winRatePct: string | null;
+  tradesCount: number | null;
+  feesTotal: string | null;
+  benchmark: { label: string; totalReturnPct: string | null };
+  metrics: ApiMetrics | null;
+  dataSource: DataSource;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  params?: { slippageBps?: string } | null;
+  equityCurve?: { t: string; equity: string | null; drawdown: string | null }[] | null;
+  disclaimer: string;
+}
+
+/**
+ * `metrics` holds the full values (stored params); when absent the summary columns fill in.
+ * Equity points without a value are dropped rather than zero-filled.
+ */
+export function mapBacktest(b: ApiBacktest): Backtest {
+  const metrics =
+    mapMetrics(b.metrics) ??
+    (b.status === 'SUCCEEDED'
+      ? mapMetrics({
+          initialCapital: b.initialCapital,
+          finalEquity: b.finalEquity,
+          totalReturnPct: b.totalReturnPct,
+          maxDrawdownPct: b.maxDrawdownPct,
+          sharpe: b.sharpe,
+          winRatePct: b.winRatePct,
+          feesTotal: b.feesTotal,
+          buyAndHoldReturnPct: b.benchmark?.totalReturnPct ?? null,
+          tradeCount: b.tradesCount ?? 0,
+        })
+      : null);
+  return {
+    id: b.id,
+    status: b.status,
+    strategyId: b.strategyId,
+    strategyType: b.strategyType,
+    symbol: b.symbol,
+    from: b.from,
+    to: b.to,
+    initialCapital: b.initialCapital,
+    slippageBps: b.params?.slippageBps ?? null,
+    metrics,
+    benchmark: {
+      label: b.benchmark?.label ?? 'Buy & hold',
+      totalReturnPct: b.benchmark?.totalReturnPct ?? null,
+    },
+    dataSource: b.dataSource,
+    error: b.error,
+    createdAt: b.createdAt,
+    finishedAt: b.finishedAt,
+    equityCurve: (b.equityCurve ?? []).flatMap((p) =>
+      p.equity === null ? [] : [{ t: p.t, equity: p.equity, drawdownPct: p.drawdown ?? '0' }],
+    ),
+    disclaimer: b.disclaimer,
+  };
+}
+
+export interface ApiBacktestTrades {
+  data: BacktestTrade[];
+  source: DataSource;
+  disclaimer: string;
+}
+
+export function mapBacktestTrades(r: ApiBacktestTrades): BacktestTrades {
+  return {
+    data: r.data.map((t) => ({
+      id: t.id,
+      entryTs: t.entryTs,
+      exitTs: t.exitTs,
+      quantity: t.quantity,
+      entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice,
+      fees: t.fees,
+      pnl: t.pnl,
+      exitReason: t.exitReason,
+      open: t.open,
+    })),
+    source: r.source,
+    disclaimer: r.disclaimer,
+  };
+}
+
+export interface ApiComparison {
+  symbol: string;
+  interval?: string;
+  from: string;
+  to: string;
+  initialCapital: string;
+  slippageBps: string;
+  bars: number;
+  dataSource: DataSource;
+  rows: { label: string; strategyId: string | null; strategyType: StrategyType; metrics: ApiMetrics }[];
+  benchmark: { label: string; totalReturnPct: string | null };
+  disclaimer: string;
+}
+
+export function mapComparison(c: ApiComparison): BacktestComparison {
+  return {
+    symbol: c.symbol,
+    from: c.from,
+    to: c.to,
+    initialCapital: c.initialCapital,
+    slippageBps: c.slippageBps,
+    bars: c.bars,
+    dataSource: c.dataSource,
+    rows: c.rows.map((r) => ({
+      label: r.label,
+      strategyId: r.strategyId,
+      strategyType: r.strategyType,
+      metrics: mapMetrics(r.metrics) ?? mapMetrics({})!,
+    })),
+    benchmark: { label: c.benchmark.label, totalReturnPct: c.benchmark.totalReturnPct },
+    disclaimer: c.disclaimer,
   };
 }

@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '../generated/prisma/client.js';
 import { d, type Decimal, pct, roundMoney, ZERO } from '@ktrade/finance-core';
 import { type DataSource, weakestSource } from '@ktrade/shared';
 import { AuditService } from '../audit/audit.service.js';
@@ -49,34 +50,45 @@ export class PortfolioService {
   }
 
   async createPaper(userId: string, name: string, initialCash: string, meta: RequestMeta) {
-    const p = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.portfolio.create({
-        data: { userId, name, kind: 'PAPER', initialCash, riskLimit: { create: DEFAULT_PAPER_LIMITS } },
+    let p;
+    try {
+      p = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.portfolio.create({
+          data: { userId, name, kind: 'PAPER', initialCash, riskLimit: { create: DEFAULT_PAPER_LIMITS } },
+        });
+        await tx.cashMovement.create({
+          data: {
+            portfolioId: created.id,
+            type: 'DEPOSIT',
+            amount: initialCash,
+            valueDate: new Date(),
+            description: 'Paper trading starting cash',
+            source: 'SIMULATED',
+          },
+        });
+        await this.audit.record(
+          {
+            action: 'portfolio.created',
+            actorType: 'USER',
+            actorUserId: userId,
+            entityType: 'portfolio',
+            entityId: created.id,
+            after: { name, kind: 'PAPER', initialCash },
+            ...meta,
+          },
+          tx,
+        );
+        return created;
       });
-      await tx.cashMovement.create({
-        data: {
-          portfolioId: created.id,
-          type: 'DEPOSIT',
-          amount: initialCash,
-          valueDate: new Date(),
-          description: 'Paper trading starting cash',
-          source: 'SIMULATED',
-        },
-      });
-      await this.audit.record(
-        {
-          action: 'portfolio.created',
-          actorType: 'USER',
-          actorUserId: userId,
-          entityType: 'portfolio',
-          entityId: created.id,
-          after: { name, kind: 'PAPER', initialCash },
-          ...meta,
-        },
-        tx,
-      );
-      return created;
-    });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException({
+          message: 'You already have a portfolio with that name',
+          code: 'ALREADY_EXISTS',
+        });
+      }
+      throw err;
+    }
     return { id: p.id, name: p.name, kind: p.kind };
   }
 

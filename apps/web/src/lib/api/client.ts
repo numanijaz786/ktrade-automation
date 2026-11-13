@@ -6,12 +6,15 @@
  * `<ApiClientProvider client={...}>`. Method groups follow docs/07 §2.
  */
 import { createContext, createElement, useContext, type ReactNode } from 'react';
-import type { ImportKind } from '@ktrade/shared';
+import type { ImportKind, SignalStatus } from '@ktrade/shared';
 import type {
   Alert,
   AssistantMessage,
   Backtest,
+  BacktestCompareRequest,
+  BacktestComparison,
   BacktestRequest,
+  BacktestTrades,
   BrokerConnection,
   CandleSeries,
   CashMovement,
@@ -41,6 +44,7 @@ import type {
   MoverType,
   Notification,
   Order,
+  Paginated,
   OrderFilters,
   OrderPreviewRequest,
   PerformancePeriod,
@@ -58,16 +62,21 @@ import type {
   SectorSummary,
   Session,
   Signal,
+  StepUpProof,
   StepUpToken,
   StockDetail,
   StockPage,
   StockQuery,
   Strategy,
+  StrategyEvaluation,
   StrategyInput,
+  StrategyUpdate,
+  StrategyValidateRequest,
+  StrategyValidation,
   StrategyTemplate,
   TaxRate,
   Transaction,
-  TransactionFilters,
+  TransactionPageQuery,
   Unsubscribe,
   User,
   UserSettings,
@@ -79,8 +88,8 @@ export interface AuthApi {
   register(req: RegisterRequest): Promise<User>;
   logout(): Promise<void>;
   me(): Promise<User | null>;
-  /** TOTP → short-lived step-up token for 🔐 operations. */
-  stepUp(totpCode: string): Promise<StepUpToken>;
+  /** TOTP code (2FA enabled) or password (no TOTP) → short-lived step-up token for 🔐 operations. */
+  stepUp(proof: StepUpProof): Promise<StepUpToken>;
 }
 
 export interface SystemApi {
@@ -100,9 +109,11 @@ export interface DashboardApi {
 
 export interface PortfoliosApi {
   list(): Promise<Portfolio[]>;
+  /** POST /portfolios — a PAPER portfolio with SIMULATED starting cash and default risk limits. */
+  createPaper(input: { name: string; initialCash: string }): Promise<Portfolio>;
   holdings(portfolioId: string): Promise<Holding[]>;
   holding(portfolioId: string, symbol: string): Promise<HoldingDetail>;
-  transactions(portfolioId: string, filters?: TransactionFilters): Promise<Transaction[]>;
+  transactions(portfolioId: string, query?: TransactionPageQuery): Promise<Paginated<Transaction>>;
   cashMovements(portfolioId: string): Promise<CashMovement[]>;
   resetPaper(portfolioId: string, stepUpToken: string): Promise<Portfolio>;
 }
@@ -113,7 +124,7 @@ export interface OrdersApi {
   markPlaced(orderId: string, input: { brokerOrderRef?: string }): Promise<Order>;
   recordFill(orderId: string, fill: FillRequest): Promise<Order>;
   cancel(orderId: string): Promise<Order>;
-  list(filters?: OrderFilters): Promise<Order[]>;
+  list(filters?: OrderFilters): Promise<Paginated<Order>>;
   get(orderId: string): Promise<Order>;
   feeEstimate(q: FeeEstimateQuery): Promise<FeeEstimate>;
   /** null when the portfolio has no limits configured (the API then refuses to trade). */
@@ -144,15 +155,23 @@ export interface StrategiesApi {
   templates(): Promise<StrategyTemplate[]>;
   list(): Promise<Strategy[]>;
   create(input: StrategyInput): Promise<Strategy>;
-  setActive(strategyId: string, active: boolean): Promise<Strategy>;
-  signals(query?: { strategyId?: string }): Promise<Signal[]>;
-  dismissSignal(signalId: string): Promise<Signal>;
+  update(strategyId: string, patch: StrategyUpdate): Promise<Strategy>;
+  /** Refused (409) while the strategy is active. */
+  remove(strategyId: string): Promise<void>;
+  /** Activating a LIVE strategy needs a step-up token; PAPER activation and any deactivation do not. */
+  setActive(strategyId: string, active: boolean, stepUpToken?: string): Promise<Strategy>;
+  /** Dry run: validates the definition and replays it over recent bars. Persists nothing. */
+  validate(req: StrategyValidateRequest): Promise<StrategyValidation>;
+  evaluate(strategyId: string): Promise<StrategyEvaluation>;
+  signals(query?: { strategyId?: string; status?: SignalStatus }): Promise<Signal[]>;
 }
 
 export interface BacktestsApi {
   run(req: BacktestRequest): Promise<Backtest>;
   list(): Promise<Backtest[]>;
   get(id: string): Promise<Backtest>;
+  trades(id: string): Promise<BacktestTrades>;
+  compare(req: BacktestCompareRequest): Promise<BacktestComparison>;
 }
 
 export interface DividendsApi {
