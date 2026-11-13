@@ -11,7 +11,7 @@ _Last updated: 2026-11-13 (session paused on a usage limit). Read this, `TODO.md
 | **Exact stopping point** | The parser layer is done and tested: `imports/parsers/parser.types.ts`, `imports/parsers/generic-csv.parser.ts`, plus 5 passing tests. **Not yet written:** `imports.service.ts`, `imports.controller.ts`, `imports.module.ts`, `parser-registry.ts`, wiring into `app.module.ts`, and `test/imports.int.test.ts`. |
 | **Build health at pause** | ✅ `pnpm turbo run build typecheck lint test` over packages + API: 16/16 tasks pass. ✅ API integration (real Postgres): 19/19. ✅ Web: typecheck 0 errors, lint 0 errors (3 warnings), 26 tests, `next build` succeeds. |
 | **Migrations** | 2 migrations, both applied to the dev DB, **no drift** (`prisma migrate diff` empty). No incomplete migration exists. |
-| **Git** | Repo initialised (`main`). **Nothing committed yet**, and all work is on disk. Recommended first step when resuming: a baseline commit (ask the owner). |
+| **Git** | `main` tracks `origin` = https://github.com/numanijaz786/ktrade-automation. Baseline commit `7c4047d` pushed 2026-11-13 (261 files; secret scan clean). Commit/push only when the owner asks. |
 
 ## 2. Completed work
 
