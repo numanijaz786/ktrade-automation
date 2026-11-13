@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { d } from '@ktrade/finance-core';
-import { positiveDecimalString } from '@ktrade/shared';
+import { DECIMAL_STRING_RE, positiveDecimalString } from '@ktrade/shared';
 import {
   type AuthUser,
   CurrentUser,
@@ -28,7 +28,11 @@ const pageSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().uuid().optional(),
 });
-const pctString = positiveDecimalString.refine((v) => d(v).lte(100), 'must be ≤ 100');
+// Guarded: Zod 4 runs refinements even after the regex check failed (d('abc') would throw → 500).
+const pctString = positiveDecimalString.refine(
+  (v) => !DECIMAL_STRING_RE.test(v) || d(v).lte(100),
+  'must be ≤ 100',
+);
 const riskLimitsSchema = z.object({
   maxOrderValue: positiveDecimalString,
   maxOrderQty: positiveDecimalString,

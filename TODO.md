@@ -53,12 +53,15 @@ Work top to bottom; the first unchecked item is the next task.
 - [ ] Corporate actions endpoints (bonus/split/rights apply)
 - [ ] Holding detail (lots, history) endpoint
 
-## Phase 7: Market data ← **CURRENT**
+## Phase 7: Market data (API done)
 
 - [x] Review of agent-written market-data code: accepted (ADR-023)
 - [x] `seedMarketData` (30 PSX symbols, SIMULATED D1 history, never overwrites real rows) + seed integration tests (4)
-- [ ] **NEXT: unit tests for the agent-written providers** (simulated determinism + OHLC/tick invariants, CSV-EOD parser errors, calendar/holidays, staleness, movers ordering, Capital Stake stub refuses)
-- [ ] MarketDataService + controller (`/market/providers|stocks|quotes|candles|movers|prices/import`, `/watchlists`), module, wiring, quote ticker (`MARKET_DATA_TICKER`), integration test
+- [x] Unit tests for the reviewed providers (calendar, simulated determinism/tick/OHLC, CSV parser, staleness, movers, vendor stub) + Zod 4 refinement regression tests
+- [x] MarketDataService + controllers: overview, stocks (search/sector/pagination), details (52w, avg volume, provenance), quotes (persisted to `stock_quotes`), candles, sectors, movers, providers (🔐 switch), EOD price import; quote ticker (`MARKET_DATA_TICKER`)
+- [x] Watchlists API (CRUD, idempotent add, per-user isolation, limits)
+- [x] Integration test (8) incl. paper-order preview priced from persisted quotes and "real beats simulated"
+- [ ] Frontend: market overview, stock explorer/details, watchlists pages wired to the real API (see Frontend: BFF + HttpApiClient)
 - [ ] WebSocket gateway (`quote`, `order.updated`, `notification`)
 - [ ] ⛔ Live/delayed data: owner chooses and pays for a licensed vendor
 
@@ -92,7 +95,7 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Data layer (ApiClient + DemoApiClient + hooks), app shell, nav, banners, provenance badge, shared components, tests (26)
 - [ ] 19 pages (priority: Dashboard, Holdings, Buy/Sell flow, Market Watch, Stock Details, Strategies, Backtesting, KTrade Integration; then the rest)
 - [ ] Replace `lib/decimal.ts`, `lib/fees.ts`, `lib/indicators.ts` with `@ktrade/finance-core` (remove duplication)
-- [ ] `HttpApiClient` + Next BFF route handlers (httpOnly cookies, CSRF), auth pages wired to the real API
+- [ ] **NEXT: Next BFF route handlers (httpOnly cookies, CSRF) + `HttpApiClient` + login/register pages**: the web app currently runs only on the demo client, so no real API data reaches the browser. Then wire market overview / explorer / stock details / watchlists / integration pages to it
 
 ## Repo hygiene
 

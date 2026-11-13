@@ -10,6 +10,7 @@ import { LoggerModule } from './common/logging/logger.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { HealthController } from './health/health.controller.js';
 import { ImportsModule } from './imports/imports.module.js';
+import { MarketDataModule } from './market-data/market-data.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { TradingModule } from './trading/trading.module.js';
@@ -27,6 +28,7 @@ import { TradingModule } from './trading/trading.module.js';
     AuthModule,
     TradingModule,
     ImportsModule,
+    MarketDataModule,
   ],
   controllers: [HealthController],
   providers: [

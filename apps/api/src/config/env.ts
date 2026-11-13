@@ -49,6 +49,11 @@ export const envSchema = z.object({
     .string()
     .refine((v) => Buffer.from(v, 'base64').length === 32, 'must be base64 of exactly 32 bytes'),
   APP_MASTER_KEY_VERSION: z.coerce.number().int().min(1).max(65535).default(1),
+  /** Background quote refresh (every 15 s). Off by default: quotes then refresh lazily on read. */
+  MARKET_DATA_TICKER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('true')

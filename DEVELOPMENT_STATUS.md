@@ -7,8 +7,8 @@ _Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_D
 |                    |                                                                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Overall**        | Phases 1–5 done (except reconciliation and the KTrade parsers, both blocked on samples). Phase 6 + 8 core done. Phase 7 partial. Phases 9–12 not started (their pure logic exists in `finance-core`).                                                                                              |
-| **Just completed** | Phase 5 statement import pipeline (ADR-022); repo-wide Prettier; Phase 7 part 1: market-data review + `pnpm db:seed` (ADR-023).                                                                                                                                                                    |
-| **Next task**      | **Phase 7 part 2:** unit tests for the reviewed market-data providers, then MarketDataService + controller + module (`/market/*`, `/watchlists`) with an integration test. See TODO.md.                                                                                                            |
+| **Just completed** | Phase 7 market-data API + watchlists (ADR-024), incl. two defect fixes (quotes never persisted outside tests; Zod 4 refinement 500s). Project documents created (USER_ACTION_REQUIRED, CHANGELOG, TEST_REPORT, SECURITY_REPORT, ARCHITECTURE, DEPLOYMENT_GUIDE).                                   |
+| **Next task**      | **Frontend ↔ API integration:** Next.js BFF route handlers (httpOnly cookies, CSRF) + `HttpApiClient` + login/register, then the market overview, stock explorer, stock details and watchlist pages on real data. The web app currently uses only the demo client.                                 |
 | **Also done**      | Repo-wide Prettier formatting (style-only commit `d961174`); CI `format:check` passes.                                                                                                                                                                                                             |
 | **Build health**   | ✅ `pnpm turbo run build typecheck lint test`: 20/20 tasks (incl. web production build). ✅ API: 59 tests across 8 files (unit + e2e + 3 Testcontainers suites). ✅ Web: 28 tests. ✅ Compiled-API smoke test (ready 200, auth 401, 2.5 MB body parsed / 4 MB → 413, Swagger lists import routes). |
 | **Migrations**     | 3 migrations (`init`, `auth_totp_and_hardening`, `import_target_portfolio`), all applied to the dev DB, no drift.                                                                                                                                                                                  |
@@ -60,11 +60,11 @@ _Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_D
 
 ## 3. Tests at last run
 
-| Suite                                              | Result                                                                                   |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| finance-core / shared / broker-sdk                 | 184 / 13 / 8 ✅                                                                          |
-| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 63 / 63 ✅ (auth 12, trading 7, imports 8, seed 4, parser 5, TOTP 13, envelope 5, e2e 9) |
-| Web                                                | 28 / 28 ✅, `next build` ✅                                                              |
+| Suite                                              | Result                                                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| finance-core / shared / broker-sdk                 | 184 / 13 / 8 ✅                                                                            |
+| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 83 / 83 ✅ in 12 files (integration: auth 12, trading 7, imports 8, seed 4, market-data 8) |
+| Web                                                | 28 / 28 ✅, `next build` ✅                                                                |
 
 ## 4. Known issues / blockers
 

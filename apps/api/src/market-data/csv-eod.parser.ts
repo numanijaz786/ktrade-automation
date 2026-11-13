@@ -1,5 +1,5 @@
 import { d } from '@ktrade/finance-core';
-import { positiveDecimalString } from '@ktrade/shared';
+import { DECIMAL_STRING_RE, positiveDecimalString } from '@ktrade/shared';
 import { z } from 'zod';
 import { isIsoDate, isWeekday } from './calendar.js';
 import { SYMBOL_RE } from './decimal-format.js';
@@ -33,6 +33,9 @@ const rowSchema = z
       .regex(/^\d{1,15}$/, 'must be a whole number of shares'),
   })
   .superRefine((r, ctx) => {
+    // Zod 4 runs refinements even when field checks already failed ("continuable" issues), so only compare
+    // well-formed decimals — otherwise d('') throws and a validation error becomes a 500.
+    if (![r.open, r.high, r.low, r.close].every((v) => DECIMAL_STRING_RE.test(v))) return;
     const [open, high, low, close] = [d(r.open), d(r.high), d(r.low), d(r.close)];
     if (high.lt(low)) ctx.addIssue({ code: 'custom', path: ['high'], message: 'high must be ≥ low' });
     if (open.gt(high) || open.lt(low))
