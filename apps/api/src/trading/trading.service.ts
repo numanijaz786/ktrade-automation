@@ -24,6 +24,7 @@ import { isPsxSessionOpen, pktTradeDate } from '../common/market-hours.js';
 import type { Order, Prisma } from '../generated/prisma/client.js';
 import { FeeService } from '../ledger/fee.service.js';
 import { feeLinesFromBreakdown, LedgerService } from '../ledger/ledger.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { PreviewOrderInput, RecordFillInput } from './trading.schemas.js';
 
@@ -71,6 +72,7 @@ export class TradingService {
     private readonly fees: FeeService,
     private readonly audit: AuditService,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── Preview ────────────────────────────────────────────────────────────────
@@ -197,6 +199,7 @@ export class TradingService {
         },
         tx,
       );
+      if (!risk.passed) await this.notifyOrder(tx, created, 'REJECTED_BY_RISK', stock.symbol);
       return created;
     });
 
@@ -804,6 +807,46 @@ export class TradingService {
       },
     });
     order.status = to;
+    if (to === 'FILLED' || to === 'REJECTED_BY_RISK') await this.notifyOrder(tx, order, to);
+  }
+
+  /** In-app ORDER_EXECUTED / ORDER_REJECTED notification, in the same transaction; deduped per (order, status). */
+  private async notifyOrder(
+    tx: Tx,
+    order: Pick<Order, 'id'>,
+    to: 'FILLED' | 'REJECTED_BY_RISK',
+    symbol?: string,
+  ) {
+    const o = await tx.order.findUniqueOrThrow({
+      where: { id: order.id },
+      select: {
+        userId: true,
+        side: true,
+        quantity: true,
+        mode: true,
+        avgFillPrice: true,
+        statusSource: true,
+        rejectionReason: true,
+        stock: { select: { symbol: true } },
+      },
+    });
+    const sym = symbol ?? o.stock.symbol;
+    const filled = to === 'FILLED';
+    await this.notifications.notify(
+      {
+        userId: o.userId,
+        type: filled ? 'ORDER_EXECUTED' : 'ORDER_REJECTED',
+        title: filled
+          ? `${o.mode} order filled: ${o.side} ${sym}`
+          : `${o.mode} order rejected by risk checks: ${sym}`,
+        body: filled
+          ? `${o.side} ${o.quantity.toString()} ${sym} @ ${o.avgFillPrice?.toString() ?? '—'} (${o.statusSource})`
+          : `${o.side} ${o.quantity.toString()} ${sym}: ${o.rejectionReason ?? 'risk checks failed'}`,
+        dedupeKey: `order:${order.id}:${to}`,
+        data: { orderId: order.id, symbol: sym, status: to, source: o.statusSource },
+      },
+      tx,
+    );
   }
 
   private async lockOrder(tx: Tx, orderId: string, userId: string): Promise<Order> {

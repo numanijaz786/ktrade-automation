@@ -84,10 +84,13 @@ Work top to bottom; the first unchecked item is the next task.
 
 ## Phase 10: Alerts, notifications, dividends, analytics
 
-- [ ] Portfolio snapshots (EOD) → today's/monthly P&L, TWR/XIRR in the dashboard
-- [ ] Alerts engine + notifications (in-app, email, Telegram)
+- [x] Portfolio snapshots (ledger replay + D1 closes, provenance), backfill, scheduler; performance endpoint (TWR, drawdown, monthly, simple, XIRR); summary today/month P&L with explicit basis (ADR-027)
+- [x] Alerts CRUD + evaluator (cooldown, triggerOnce, dedupe) + scheduler; in-app notifications; order/signal notifications; email/Telegram adapters disabled
+- [ ] **NEXT (safety): feed the risk engine's DAILY_LOSS rule from snapshots/live today P&L (currently 0)** + integration test
+- [ ] Make summary accountValue treat unquoted holdings consistently with snapshots (at cost, ESTIMATED)
 - [ ] Dividends (declarations, entitlements, WHT, reconcile)
 - [ ] Analytics endpoints + PDF/CSV/XLSX exports
+- [ ] ⛔ Email/Telegram delivery: owner configures channels (USER_ACTION #6)
 
 ## Phase 11: AI assistant
 

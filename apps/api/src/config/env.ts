@@ -54,6 +54,16 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /** Daily portfolio snapshots after 16:00 PKT on trading days (idempotent). Off by default. */
+  SNAPSHOT_SCHEDULER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Evaluate alerts every 60 s during PSX market hours. Off by default (POST /alerts/evaluate still works). */
+  ALERTS_SCHEDULER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('true')

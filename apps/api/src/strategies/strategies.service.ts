@@ -30,6 +30,7 @@ import { Prisma, type StrategyParameter, type TradingStrategy } from '../generat
 import { LedgerService } from '../ledger/ledger.service.js';
 import { pktDateOf } from '../market-data/calendar.js';
 import { MarketDataService } from '../market-data/market-data.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TradingService } from '../trading/trading.service.js';
 import {
@@ -117,6 +118,7 @@ export class StrategiesService {
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -628,6 +630,14 @@ export class StrategiesService {
       entityType: 'strategy_signal',
       entityId: signalRow.id,
       metadata: { strategyId: s.id, type: signal.type, reason: signal.reason, mode: s.mode },
+    });
+    await this.notifications.notify({
+      userId,
+      type: 'STRATEGY_SIGNAL',
+      title: `${s.mode} strategy signal: ${signal.side} ${s.stock.symbol}`,
+      body: `${s.name}: ${signal.type} ${signal.side} ${s.stock.symbol} @ ${signal.price.toFixed()} (${signal.reason}; ${priceSource})`,
+      dedupeKey: `signal:${signalRow.id}`,
+      data: { signalId: signalRow.id, strategyId: s.id, symbol: s.stock.symbol, source: priceSource },
     });
 
     // Execution policy (docs/08 §7): only PAPER + autoExecute is approved automatically.

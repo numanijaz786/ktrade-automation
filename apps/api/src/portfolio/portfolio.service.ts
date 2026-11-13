@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service.js';
 import type { RequestMeta } from '../auth/decorators.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PerformanceService } from '../snapshots/performance.service.js';
 
 const dec = (v: { toString(): string } | null | undefined): Decimal =>
   v === null || v === undefined ? ZERO : d(v.toString());
@@ -29,6 +30,7 @@ export class PortfolioService {
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
+    private readonly performance: PerformanceService,
   ) {}
 
   async list(userId: string) {
@@ -286,6 +288,12 @@ export class PortfolioService {
     });
     const contributions = dec(netContrib._sum.amount);
     const accountValue = cash.plus(mv);
+    // Snapshot-backed figures (Phase 10); each carries its basis (SNAPSHOT vs LIVE_VS_PREVIOUS_SNAPSHOT).
+    const perf = await this.performance.dashboard(p, {
+      accountValue,
+      netContributions: contributions,
+      source: valueSource,
+    });
 
     return {
       portfolio: { id: p.id, name: p.name, kind: p.kind },
@@ -312,8 +320,9 @@ export class PortfolioService {
         method: 'SIMPLE',
         source: valueSource,
       },
-      todayPnl: { value: null, note: 'Available once daily snapshots run (Phase 10)' },
-      monthPnl: { value: null, note: 'Available once daily snapshots run (Phase 10)' },
+      todayPnl: perf.todayPnl,
+      monthPnl: perf.monthPnl,
+      twrPct: perf.twrPct,
       dividendsReceived: { value: money(dec(divAgg._sum.netAmount)), source: ledgerSource },
       feesAndTaxes: {
         fees: money(dec(feesAgg._sum.feesTotal)),

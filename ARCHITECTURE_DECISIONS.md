@@ -277,3 +277,20 @@ Accepted from the quant engineer's implementation:
 - **Verified:** a live smoke test against a throwaway PostgreSQL through the BFF: register, me, market overview, watchlist, forced refresh, logout, with no token in any body.
 - **Test robustness:** Testing Library async queries now get 5 s (default 1 s). One page test timed out once while the full pipeline saturated the CPU. No assertion was changed.
 - **Known gaps:** the step-up dialog only accepts a TOTP code (password step-up is supported by the client but not by the dialog yet); transaction filters are client-side over the newest 200 rows.
+
+## ADR-027 · Portfolio snapshots, performance, alerts and notifications (Phase 10, backend)
+
+- **Snapshots** value a portfolio at the close of a PSX trading day:
+  - holdings are **replayed with LedgerService's own row → event mapping** (now a public method; an agent's private-member cast was replaced), so snapshots and projections can't disagree;
+  - prices are the D1 close on or before the date. A holding with no close is valued at cost, labelled ESTIMATED and listed in `unpricedSymbols`;
+  - cash, contributions, realized, dividends, fees and taxes are cumulative to that date.
+
+  Upserts are idempotent. Backfill runs from first activity to the last completed session. There's an optional `SNAPSHOT_SCHEDULER` (after 16:00 PKT on trading days).
+
+- **Flows and TWR:** only deposits and withdrawals are external flows (dividends, fees and adjustments are P&L), taken at end of day. TWR starts at the first snapshot with value above 0. Max drawdown is measured on the TWR index. Simple return and XIRR are since inception (XIRR is null when not computable). Every figure carries the weakest price source.
+- **Summary labels:** `todayPnl.basis` is `SNAPSHOT` after the close, otherwise `LIVE_VS_PREVIOUS_SNAPSHOT` (live quotes vs the last close, minus flows). `monthPnl.basis` is `SNAPSHOTS` or `SNAPSHOTS_PLUS_LIVE_TODAY`. Each carries its dates and source. Plus `twrPct`.
+- **Alerts:** typed params per alert type (decimal-guarded per ADR-024). A cooldown re-fires while the condition holds; `triggerOnce` deactivates after firing. **No double-firing:** a conditional claim update plus a per-cooldown-window notification dedupe key, in one transaction. `ALERTS_SCHEDULER` runs every 60 s while the market is open, or `POST /alerts/evaluate` runs it manually.
+- **Notifications:** an in-app inbox (unread count, read, read-all; viewers can mark their own). Order FILLED and REJECTED_BY_RISK, and strategy signals, notify inside the originating transaction. **EMAIL and TELEGRAM are disabled adapters**: rows are written as FAILED "channel not configured" and **nothing is ever sent externally** until the owner configures channels (USER_ACTION #6).
+- **Known gaps (tracked in TODO):**
+  - the risk engine's DAILY_LOSS rule still receives `todayPnlPct = 0` (now wireable from snapshots; a deliberate separate change because it alters risk behaviour);
+  - the summary's `accountValue` excludes unquoted holdings while snapshots value them at cost.

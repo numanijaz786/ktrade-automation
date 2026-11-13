@@ -229,7 +229,11 @@ export class LedgerService {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${portfolioId}:${stockId}`}, 0))`;
   }
 
-  private toEvent(
+  /**
+   * The single row → LedgerEvent mapping. Public so other read models (portfolio snapshots) replay the
+   * ledger exactly as the projections do — never re-implement it.
+   */
+  toEvent(
     r: Prisma.TransactionGetPayload<{ include: { corporateAction: true } }>,
     sequence: number,
   ): LedgerEvent {

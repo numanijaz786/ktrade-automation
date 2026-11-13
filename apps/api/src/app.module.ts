@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AlertsModule } from './alerts/alerts.module.js';
 import { AuditModule } from './audit/audit.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard, RolesGuard, StepUpGuard } from './auth/guards.js';
@@ -11,8 +12,10 @@ import { ConfigModule } from './config/config.module.js';
 import { HealthController } from './health/health.controller.js';
 import { ImportsModule } from './imports/imports.module.js';
 import { MarketDataModule } from './market-data/market-data.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { SnapshotsModule } from './snapshots/snapshots.module.js';
 import { StrategiesModule } from './strategies/strategies.module.js';
 import { TradingModule } from './trading/trading.module.js';
 
@@ -31,6 +34,9 @@ import { TradingModule } from './trading/trading.module.js';
     ImportsModule,
     MarketDataModule,
     StrategiesModule,
+    NotificationsModule,
+    SnapshotsModule,
+    AlertsModule,
   ],
   controllers: [HealthController],
   providers: [
