@@ -1,0 +1,1406 @@
+// KTrade Smart Trading Platform — PostgreSQL schema (Prisma)
+// Conventions:
+//   * Tables are snake_case plural (@@map); columns camelCase.
+//   * Money: Decimal(20,4). Prices / per-share / ratios: Decimal(20,6). Rates: Decimal(12,8).
+//   * Quantities: Decimal(20,4) (PSX shares are whole, but corporate actions can produce fractions before cash-in-lieu).
+//   * Every financial fact carries a `source: DataSource` provenance label.
+//   * All timestamps are timestamptz. Trading dates are `@db.Date` in Asia/Karachi.
+// See docs/05-database-design.md and docs/06-accounting-methodology.md.
+
+// Prisma 7: connection URL lives in prisma.config.ts; the client is generated into src/ as TypeScript (ESM).
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
+  // Generated files import each other with .js so tsc's ESM output runs under plain Node (no TS loader).
+  importFileExtension = "js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgcrypto, citext]
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Role {
+  OWNER
+  VIEWER
+}
+
+/// Provenance of a financial fact, from most to least trusted.
+enum DataSource {
+  BROKER_CONFIRMED // contract note, broker statement, CDC statement
+  BROKER_DISPLAYED // read from broker UI/API but not yet reconciled to a statement
+  PROVIDER // licensed market-data provider
+  USER_REPORTED // manually entered by the user
+  ESTIMATED // computed from fee/tax tables or reference prices
+  SIMULATED // paper trading, backtests, synthetic sample data
+}
+
+enum PortfolioKind {
+  LIVE
+  PAPER
+}
+
+enum CostBasisMethod {
+  WEIGHTED_AVERAGE
+  FIFO
+}
+
+enum TaxFilerStatus {
+  FILER
+  NON_FILER
+  UNKNOWN
+}
+
+enum BrokerAdapterKind {
+  MANUAL_IMPORT
+  PAPER
+  KTRADE_OFFICIAL_API
+  KTRADE_BROWSER
+}
+
+enum ConnectionStatus {
+  DISABLED
+  PENDING_AUTHORIZATION
+  PENDING_USER_LOGIN
+  CONNECTED
+  SESSION_EXPIRED
+  ERROR
+  REVOKED
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP_LOSS
+  STOP_LIMIT
+}
+
+enum TimeInForce {
+  DAY
+  GTC
+}
+
+enum ExecutionMode {
+  BACKTEST
+  PAPER
+  LIVE
+}
+
+enum OrderOrigin {
+  MANUAL
+  STRATEGY
+  ALERT
+  AI_SUGGESTION // always requires manual approval; AI never executes
+}
+
+enum OrderStatus {
+  DRAFT
+  PREVIEWED
+  REJECTED_BY_RISK
+  APPROVED
+  EXPIRED
+  AWAITING_MANUAL_PLACEMENT // user must place it in the KTrade app
+  PLACED_BY_USER // user says they placed it; not broker-confirmed
+  SUBMITTED // sent via an authorized adapter
+  ACCEPTED
+  PARTIALLY_FILLED
+  FILLED
+  CANCEL_REQUESTED
+  CANCELLED
+  REJECTED_BY_BROKER
+  UNKNOWN // ambiguous adapter outcome — needs human check
+}
+
+enum TransactionType {
+  BUY
+  SELL
+  BONUS_IN
+  SPLIT_ADJUSTMENT
+  RIGHTS_SUBSCRIPTION
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum CashMovementType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE_DEBIT
+  TRADE_CREDIT
+  FEE
+  TAX
+  DIVIDEND
+  PROFIT_ON_IDLE_FUNDS
+  ADJUSTMENT
+}
+
+enum FeeComponent {
+  COMMISSION
+  SST_ON_COMMISSION
+  CDC_CHARGES
+  NCCPL_CHARGES
+  SECP_LEVY
+  PSX_LEVY
+  CVT
+  CGT
+  DIVIDEND_WHT
+  ZAKAT
+  OTHER
+}
+
+enum FeeAppliesTo {
+  BUY
+  SELL
+  BOTH
+  DIVIDEND
+}
+
+enum FeeMethod {
+  PCT_OF_VALUE
+  PER_SHARE
+  MAX_OF_PCT_OR_PER_SHARE
+  FIXED
+  PCT_OF_COMPONENT // e.g. SST = 15% of COMMISSION
+  AT_ACTUAL // only known from contract note; estimate = 0 with a warning
+}
+
+enum TaxType {
+  CAPITAL_GAINS
+  DIVIDEND_WITHHOLDING
+}
+
+enum CorporateActionType {
+  CASH_DIVIDEND
+  BONUS
+  SPLIT
+  REVERSE_SPLIT
+  RIGHTS
+}
+
+enum DividendPaymentStatus {
+  ANNOUNCED
+  ENTITLED
+  PAID
+  RECONCILED
+  CANCELLED
+}
+
+enum ImportKind {
+  CONTRACT_NOTE
+  LEDGER_STATEMENT
+  HOLDINGS_STATEMENT
+  CDC_STATEMENT
+  DIVIDEND_STATEMENT
+  GENERIC_TRANSACTIONS_CSV
+  PRICE_HISTORY_CSV
+}
+
+enum ImportChannel {
+  UPLOAD
+  MAILBOX
+  BROWSER_ADAPTER
+  BROKER_API
+}
+
+enum ImportStatus {
+  UPLOADED
+  PARSING
+  AWAITING_REVIEW
+  COMMITTING
+  COMMITTED
+  REJECTED
+  FAILED
+}
+
+enum ImportRowStatus {
+  PENDING
+  VALID
+  INVALID
+  DUPLICATE
+  MATCHED // matched an existing USER_REPORTED / ESTIMATED record → upgrades it
+  COMMITTED
+  SKIPPED
+}
+
+enum PriceInterval {
+  M1
+  M5
+  M15
+  H1
+  D1
+}
+
+enum StrategyType {
+  MA_CROSSOVER
+  RSI
+  MACD
+  STOP_LOSS
+  TAKE_PROFIT
+  TRAILING_STOP
+  PRICE_ALERT
+  CUSTOM_RULES
+}
+
+enum SignalType {
+  ENTRY
+  EXIT
+}
+
+enum SignalReason {
+  RULE_ENTRY
+  RULE_EXIT
+  STOP_LOSS
+  TRAILING_STOP
+  TAKE_PROFIT
+  PRICE_TARGET
+  MANUAL
+}
+
+enum SignalStatus {
+  NEW
+  ORDER_PREPARED
+  AUTO_EXECUTED_PAPER
+  DISMISSED
+  EXPIRED
+  BLOCKED_BY_RISK
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AlertType {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PCT_CHANGE_ABOVE
+  PCT_CHANGE_BELOW
+  VOLUME_SPIKE
+  PORTFOLIO_DAILY_LOSS
+  POSITION_STOP_LOSS
+  ORDER_EXECUTED
+  ORDER_REJECTED
+  DIVIDEND_ANNOUNCED
+  DIVIDEND_RECEIVED
+  STRATEGY_SIGNAL
+  SYNC_DISCREPANCY
+  BROKER_SESSION_EXPIRED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  TELEGRAM
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  WORKER
+  STRATEGY
+  BROWSER_AGENT
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
+// ───────────────────────────── Identity & security ─────────────────────────────
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique @db.Citext
+  passwordHash     String
+  displayName      String
+  role             Role      @default(OWNER)
+  totpSecretEnc    Bytes? // AES-256-GCM envelope (see docs/04)
+  totpEnabled      Boolean   @default(false)
+  totpPendingEnc   Bytes? // secret awaiting confirmation during 2FA enrolment
+  totpLastStep     BigInt? // last accepted RFC 6238 time step — prevents code replay
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime? @db.Timestamptz(6)
+  lastLoginAt      DateTime? @db.Timestamptz(6)
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
+
+  settings          UserSettings?
+  refreshTokens     RefreshToken[]
+  credentials       CredentialVault[]
+  brokerAccounts    BrokerAccount[]
+  portfolios        Portfolio[]
+  watchlists        Watchlist[]
+  strategies        TradingStrategy[]
+  backtests         BacktestResult[]
+  alerts            Alert[]
+  notifications     Notification[]
+  notificationCfgs  NotificationChannelConfig[]
+  ordersCreated     Order[]                     @relation("OrderCreatedBy")
+  ordersApproved    Order[]                     @relation("OrderApprovedBy")
+  importsUploaded   ImportedStatement[]
+  auditLogs         AuditLog[]
+  aiConversations   AiConversation[]
+  settingsUpdated   SystemSetting[]
+
+  @@map("users")
+}
+
+model UserSettings {
+  userId             String         @id @db.Uuid
+  timezone           String         @default("Asia/Karachi")
+  baseCurrency       String         @default("PKR") @db.Char(3)
+  taxFilerStatus     TaxFilerStatus @default(UNKNOWN)
+  defaultPortfolioId String?        @db.Uuid
+  aiDataSharingOptIn Boolean        @default(false)
+  preferences        Json           @default("{}")
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  familyId     String    @db.Uuid
+  tokenHash    String    @unique // SHA-256 of the opaque token; raw token never stored
+  issuedAt     DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt    DateTime  @db.Timestamptz(6)
+  lastUsedAt   DateTime? @db.Timestamptz(6)
+  revokedAt    DateTime? @db.Timestamptz(6)
+  revokeReason String?
+  replacedById String?   @unique @db.Uuid
+  ip           String?
+  userAgent    String?
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("Rotation", fields: [replacedById], references: [id])
+  replaces   RefreshToken? @relation("Rotation")
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+/// Encrypted third-party secrets (market-data API key, SMTP, Telegram bot token, mailbox OAuth refresh token,
+/// future official-broker API tokens). KTrade/PSX password, PIN and OTP are NEVER stored here or anywhere.
+model CredentialVault {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  provider   String // e.g. "market-data:capitalstake", "mail:gmail", "notify:telegram"
+  label      String
+  ciphertext Bytes
+  iv         Bytes
+  authTag    Bytes
+  wrappedDek Bytes
+  keyVersion Int
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  rotatedAt  DateTime? @db.Timestamptz(6)
+  lastUsedAt DateTime? @db.Timestamptz(6)
+
+  user              User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerConnections BrokerConnection[]
+  notificationCfgs  NotificationChannelConfig[]
+
+  @@unique([userId, provider, label])
+  @@map("credential_vault")
+}
+
+// ───────────────────────────── Broker ─────────────────────────────
+
+model BrokerAccount {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  brokerCode       String // "KTRADE"
+  displayName      String
+  clientCodeMasked String? // e.g. "****1234" — full code only inside encrypted vault if ever needed
+  uinMasked        String?
+  currency         String   @default("PKR") @db.Char(3)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  connections      BrokerConnection[]
+  portfolios       Portfolio[]
+  importedStmts    ImportedStatement[]
+  balanceSnapshots BrokerBalanceSnapshot[]
+
+  @@unique([userId, brokerCode, displayName])
+  @@map("broker_accounts")
+}
+
+/// One row per adapter per account. `capabilities` is the capability manifest:
+/// { "<capability>": { "implemented": bool, "verified": bool, "authorized": bool, "enabled": bool, "authorizationRef": string|null } }
+/// A capability is usable only when all four flags are true (enforced in BrokerCapabilityGuard).
+model BrokerConnection {
+  id               String            @id @default(uuid()) @db.Uuid
+  brokerAccountId  String            @db.Uuid
+  adapter          BrokerAdapterKind
+  status           ConnectionStatus  @default(DISABLED)
+  capabilities     Json              @default("{}")
+  authorizationRef String? // reference to KTrade's written permission (doc id / email date)
+  authorizedAt     DateTime?         @db.Timestamptz(6)
+  credentialId     String?           @db.Uuid
+  lastSyncAt       DateTime?         @db.Timestamptz(6)
+  lastError        String?
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(6)
+
+  brokerAccount BrokerAccount    @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+  credential    CredentialVault? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@unique([brokerAccountId, adapter])
+  @@map("broker_connections")
+}
+
+/// Broker-reported cash / buying power at a point in time (from ledger imports or, if ever authorized, the adapter).
+model BrokerBalanceSnapshot {
+  id              String     @id @default(uuid()) @db.Uuid
+  brokerAccountId String     @db.Uuid
+  asOf            DateTime   @db.Timestamptz(6)
+  cashBalance     Decimal    @db.Decimal(20, 4)
+  buyingPower     Decimal?   @db.Decimal(20, 4)
+  unsettled       Decimal?   @db.Decimal(20, 4)
+  source          DataSource
+  importedStmtId  String?    @db.Uuid
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
+
+  brokerAccount BrokerAccount      @relation(fields: [brokerAccountId], references: [id], onDelete: Cascade)
+  importedStmt  ImportedStatement? @relation(fields: [importedStmtId], references: [id], onDelete: SetNull)
+
+  @@index([brokerAccountId, asOf(sort: Desc)])
+  @@map("broker_balance_snapshots")
+}
+
+// ───────────────────────────── Portfolio & ledger ─────────────────────────────
+
+model Portfolio {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @db.Uuid
+  brokerAccountId String?         @db.Uuid // null for PAPER portfolios
+  name            String
+  kind            PortfolioKind
+  costBasisMethod CostBasisMethod @default(WEIGHTED_AVERAGE)
+  baseCurrency    String          @default("PKR") @db.Char(3)
+  initialCash     Decimal?        @db.Decimal(20, 4) // PAPER only
+  archivedAt      DateTime?       @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(6)
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  brokerAccount BrokerAccount?        @relation(fields: [brokerAccountId], references: [id], onDelete: Restrict)
+  holdings      Holding[]
+  lots          HoldingLot[]
+  transactions  Transaction[]
+  cashMovements CashMovement[]
+  orders        Order[]
+  executions    OrderExecution[]
+  snapshots     PortfolioSnapshot[]
+  entitlements  DividendEntitlement[]
+  strategies    TradingStrategy[]
+  riskLimit     RiskLimit?
+  alerts        Alert[]
+
+  @@unique([userId, name])
+  @@index([brokerAccountId])
+  @@map("portfolios")
+}
+
+/// Projection maintained transactionally from `transactions`. Rebuildable via the ledger replay job.
+model Holding {
+  id            String    @id @default(uuid()) @db.Uuid
+  portfolioId   String    @db.Uuid
+  stockId       String    @db.Uuid
+  quantity      Decimal   @db.Decimal(20, 4)
+  avgCost       Decimal   @db.Decimal(20, 6) // per share, fees included (WAC)
+  totalCost     Decimal   @db.Decimal(20, 4)
+  realizedPnl   Decimal   @default(0) @db.Decimal(20, 4) // cumulative for this symbol
+  firstBuyAt    DateTime? @db.Date
+  lastTxnAt     DateTime? @db.Date
+  lastConfirmed DateTime? @db.Timestamptz(6) // last time a broker/CDC statement confirmed this quantity
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  stock     Stock     @relation(fields: [stockId], references: [id], onDelete: Restrict)
+
+  @@unique([portfolioId, stockId])
+  @@map("holdings")
+}
+
+/// Tax lots — always recorded so FIFO reporting / CGT holding-period analysis is possible regardless of method.
+model HoldingLot {
+  id                String    @id @default(uuid()) @db.Uuid
+  portfolioId       String    @db.Uuid
+  stockId           String    @db.Uuid
+  openTransactionId String    @db.Uuid
+  openDate          DateTime  @db.Date
+  originalQty       Decimal   @db.Decimal(20, 4)
+  remainingQty      Decimal   @db.Decimal(20, 4)
+  unitCost          Decimal   @db.Decimal(20, 6)
+  closedAt          DateTime? @db.Date
+
+  portfolio       Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  stock           Stock       @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  openTransaction Transaction @relation(fields: [openTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, stockId, openDate])
+  @@map("holding_lots")
+}
+
+model Transaction {
+  id                String          @id @default(uuid()) @db.Uuid
+  portfolioId       String          @db.Uuid
+  stockId           String          @db.Uuid
+  type              TransactionType
+  tradeDate         DateTime        @db.Date
+  settlementDate    DateTime?       @db.Date
+  quantity          Decimal         @db.Decimal(20, 4)
+  price             Decimal         @db.Decimal(20, 6)
+  grossAmount       Decimal         @db.Decimal(20, 4) // qty × price
+  feesTotal         Decimal         @default(0) @db.Decimal(20, 4) // capitalised / deducted (commission, SST, CDC, levies)
+  taxesTotal        Decimal         @default(0) @db.Decimal(20, 4) // CGT etc. — NOT part of cost basis
+  netAmount         Decimal         @db.Decimal(20, 4) // cash impact (signed: buy negative, sell positive)
+  realizedPnl       Decimal?        @db.Decimal(20, 4) // SELL only, computed at posting
+  avgCostBefore     Decimal?        @db.Decimal(20, 6) // audit trail of cost-basis evolution
+  avgCostAfter      Decimal?        @db.Decimal(20, 6)
+  source            DataSource
+  externalRef       String? // contract-note number / statement ref
+  importedStmtId    String?         @db.Uuid
+  executionId       String?         @unique @db.Uuid
+  corporateActionId String?         @db.Uuid
+  notes             String?
+  reversedById      String?         @unique @db.Uuid // corrections are reversals, never in-place edits
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(6)
+
+  portfolio       Portfolio          @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
+  stock           Stock              @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  importedStmt    ImportedStatement? @relation(fields: [importedStmtId], references: [id], onDelete: SetNull)
+  execution       OrderExecution?    @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  corporateAction CorporateAction?   @relation(fields: [corporateActionId], references: [id], onDelete: SetNull)
+  reversedBy      Transaction?       @relation("Reversal", fields: [reversedById], references: [id])
+  reverses        Transaction?       @relation("Reversal")
+  fees            TransactionFee[]
+  lots            HoldingLot[]
+  cashMovements   CashMovement[]
+
+  @@unique([portfolioId, externalRef, stockId, type])
+  @@index([portfolioId, tradeDate])
+  @@index([portfolioId, stockId, tradeDate])
+  @@map("transactions")
+}
+
+model TransactionFee {
+  id            String       @id @default(uuid()) @db.Uuid
+  transactionId String       @db.Uuid
+  component     FeeComponent
+  amount        Decimal      @db.Decimal(20, 4)
+  source        DataSource // ESTIMATED until a contract note confirms it
+  scheduleId    String?      @db.Uuid
+
+  transaction Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  schedule    FeeSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+
+  @@unique([transactionId, component])
+  @@map("transaction_fees")
+}
+
+model CashMovement {
+  id             String           @id @default(uuid()) @db.Uuid
+  portfolioId    String           @db.Uuid
+  type           CashMovementType
+  amount         Decimal          @db.Decimal(20, 4) // signed
+  valueDate      DateTime         @db.Date
+  description    String?
+  source         DataSource
+  externalRef    String?
+  transactionId  String?          @db.Uuid
+  importedStmtId String?          @db.Uuid
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+
+  portfolio    Portfolio            @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
+  transaction  Transaction?         @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  importedStmt ImportedStatement?   @relation(fields: [importedStmtId], references: [id], onDelete: SetNull)
+  entitlement  DividendEntitlement?
+
+  @@unique([portfolioId, externalRef, type])
+  @@index([portfolioId, valueDate])
+  @@map("cash_movements")
+}
+
+/// End-of-day valuation used for performance charts, daily P&L and TWR.
+model PortfolioSnapshot {
+  id               String     @id @default(uuid()) @db.Uuid
+  portfolioId      String     @db.Uuid
+  date             DateTime   @db.Date
+  marketValue      Decimal    @db.Decimal(20, 4)
+  cashBalance      Decimal    @db.Decimal(20, 4)
+  totalValue       Decimal    @db.Decimal(20, 4)
+  netContributions Decimal    @db.Decimal(20, 4) // cumulative deposits − withdrawals
+  investedCost     Decimal    @db.Decimal(20, 4)
+  unrealizedPnl    Decimal    @db.Decimal(20, 4)
+  realizedPnlCum   Decimal    @db.Decimal(20, 4)
+  dividendsCum     Decimal    @db.Decimal(20, 4)
+  feesCum          Decimal    @db.Decimal(20, 4)
+  taxesCum         Decimal    @db.Decimal(20, 4)
+  dailyPnl         Decimal    @db.Decimal(20, 4)
+  dailyReturn      Decimal    @db.Decimal(20, 10)
+  priceSource      DataSource // weakest provenance among prices used
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, date])
+  @@map("portfolio_snapshots")
+}
+
+// ───────────────────────────── Fees, taxes, risk ─────────────────────────────
+
+model FeeSchedule {
+  id            String    @id @default(uuid()) @db.Uuid
+  brokerCode    String
+  name          String
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+  sourceNote    String? // e.g. "KTrade Commission Structure PDF, 2025-01"
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+
+  items           FeeScheduleItem[]
+  transactionFees TransactionFee[]
+
+  @@unique([brokerCode, effectiveFrom])
+  @@map("fee_schedules")
+}
+
+model FeeScheduleItem {
+  id            String        @id @default(uuid()) @db.Uuid
+  scheduleId    String        @db.Uuid
+  component     FeeComponent
+  appliesTo     FeeAppliesTo
+  method        FeeMethod
+  rate          Decimal?      @db.Decimal(12, 8) // 0.003 = 0.3%
+  perShare      Decimal?      @db.Decimal(20, 6)
+  fixedAmount   Decimal?      @db.Decimal(20, 4)
+  minAmount     Decimal?      @db.Decimal(20, 4)
+  baseComponent FeeComponent? // for PCT_OF_COMPONENT
+  capitalise    Boolean       @default(true) // false → tracked as tax, not cost basis
+  sortOrder     Int           @default(0)
+
+  schedule FeeSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, component, appliesTo])
+  @@map("fee_schedule_items")
+}
+
+/// Effective-dated tax rates. Seed values are placeholders flagged `verified=false` until checked against FBR/NCCPL.
+model TaxRate {
+  id              String         @id @default(uuid()) @db.Uuid
+  taxType         TaxType
+  filerStatus     TaxFilerStatus
+  minHoldingDays  Int?
+  maxHoldingDays  Int?
+  rate            Decimal        @db.Decimal(12, 8)
+  effectiveFrom   DateTime       @db.Date
+  effectiveTo     DateTime?      @db.Date
+  verified        Boolean        @default(false)
+  sourceNote      String?
+
+  @@index([taxType, filerStatus, effectiveFrom])
+  @@map("tax_rates")
+}
+
+model RiskLimit {
+  id                       String   @id @default(uuid()) @db.Uuid
+  portfolioId              String   @unique @db.Uuid
+  maxOrderValue            Decimal  @db.Decimal(20, 4)
+  maxOrderQty              Decimal  @db.Decimal(20, 4)
+  maxDailyTradedValue      Decimal  @db.Decimal(20, 4)
+  maxDailyOrders           Int
+  maxPositionPct           Decimal  @db.Decimal(8, 4) // concentration cap, % of portfolio value
+  priceBandPct             Decimal  @db.Decimal(8, 4) // fat-finger guard vs last price
+  maxDailyLossPct          Decimal  @db.Decimal(8, 4) // breach → block new BUYs for the day + alert
+  allowMarketOrders        Boolean  @default(false)
+  /// Live auto-execution (no per-order human approval). Can only be true when the adapter's placeOrder
+  /// capability is implemented+verified+authorized+enabled AND global kill switch is on. Default false.
+  liveAutoExecutionEnabled Boolean  @default(false)
+  updatedAt                DateTime @updatedAt @db.Timestamptz(6)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@map("risk_limits")
+}
+
+model SystemSetting {
+  key         String   @id // e.g. "trading.live.enabled" (global kill switch), "marketData.activeProvider"
+  value       Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}
+
+// ───────────────────────────── Orders ─────────────────────────────
+
+model Order {
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @db.Uuid
+  portfolioId       String        @db.Uuid
+  stockId           String        @db.Uuid
+  mode              ExecutionMode // PAPER | LIVE (BACKTEST orders live in backtest_trades)
+  origin            OrderOrigin
+  side              OrderSide
+  type              OrderType
+  timeInForce       TimeInForce   @default(DAY)
+  quantity          Decimal       @db.Decimal(20, 4)
+  limitPrice        Decimal?      @db.Decimal(20, 6)
+  stopPrice         Decimal?      @db.Decimal(20, 6)
+  referencePrice    Decimal?      @db.Decimal(20, 6) // last price at preview
+  referencePriceSrc DataSource?
+  status            OrderStatus   @default(DRAFT)
+  statusSource      DataSource    @default(USER_REPORTED)
+  idempotencyKey    String
+  previewHash       String? // SHA-256 over immutable preview fields
+  previewExpiresAt  DateTime?     @db.Timestamptz(6)
+  estNotional       Decimal?      @db.Decimal(20, 4)
+  estFees           Decimal?      @db.Decimal(20, 4)
+  estTotal          Decimal?      @db.Decimal(20, 4)
+  approvedById      String?       @db.Uuid
+  approvedAt        DateTime?     @db.Timestamptz(6)
+  submittedAt       DateTime?     @db.Timestamptz(6)
+  adapter           BrokerAdapterKind?
+  brokerOrderRef    String?
+  filledQuantity    Decimal       @default(0) @db.Decimal(20, 4)
+  avgFillPrice      Decimal?      @db.Decimal(20, 6)
+  rejectionReason   String?
+  strategyId        String?       @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
+
+  user       User             @relation("OrderCreatedBy", fields: [userId], references: [id], onDelete: Restrict)
+  approvedBy User?            @relation("OrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  portfolio  Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
+  stock      Stock            @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  strategy   TradingStrategy? @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  signal     StrategySignal?
+  events     OrderEvent[]
+  riskChecks OrderRiskCheck[]
+  executions OrderExecution[]
+
+  @@unique([userId, idempotencyKey])
+  @@unique([adapter, brokerOrderRef])
+  @@index([portfolioId, status])
+  @@index([portfolioId, createdAt(sort: Desc)])
+  @@map("orders")
+}
+
+/// Append-only state-transition log for every order.
+model OrderEvent {
+  id         BigInt       @id @default(autoincrement())
+  orderId    String       @db.Uuid
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actorType  ActorType
+  actorId    String?
+  reason     String?
+  metadata   Json         @default("{}")
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
+}
+
+model OrderRiskCheck {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  rule      String // KILL_SWITCH, CAPABILITY, BUYING_POWER, HOLDING_QTY, MAX_ORDER_VALUE, MAX_ORDER_QTY, PRICE_BAND, DAILY_VALUE, DAILY_COUNT, CONCENTRATION, DAILY_LOSS, MARKET_HOURS
+  passed    Boolean
+  observed  String?
+  limit     String?
+  message   String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_risk_checks")
+}
+
+/// A fill. May exist without a known order (e.g. trade placed directly in the KTrade app, learned from a contract note).
+model OrderExecution {
+  id             String     @id @default(uuid()) @db.Uuid
+  orderId        String?    @db.Uuid
+  portfolioId    String     @db.Uuid
+  stockId        String     @db.Uuid
+  side           OrderSide
+  quantity       Decimal    @db.Decimal(20, 4)
+  price          Decimal    @db.Decimal(20, 6)
+  executedAt     DateTime   @db.Timestamptz(6)
+  brokerExecRef  String?
+  source         DataSource
+  importedStmtId String?    @db.Uuid
+  createdAt      DateTime   @default(now()) @db.Timestamptz(6)
+
+  order        Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  portfolio    Portfolio          @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
+  stock        Stock              @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  importedStmt ImportedStatement? @relation(fields: [importedStmtId], references: [id], onDelete: SetNull)
+  transaction  Transaction?
+
+  @@unique([portfolioId, brokerExecRef])
+  @@index([orderId])
+  @@map("order_executions")
+}
+
+// ───────────────────────────── Market data ─────────────────────────────
+
+model Stock {
+  id        String   @id @default(uuid()) @db.Uuid
+  symbol    String   @unique
+  name      String
+  sector    String?
+  isShariah Boolean?
+  isActive  Boolean  @default(true)
+  faceValue Decimal? @db.Decimal(20, 4)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  prices           StockPrice[]
+  quote            StockQuote?
+  holdings         Holding[]
+  lots             HoldingLot[]
+  transactions     Transaction[]
+  orders           Order[]
+  executions       OrderExecution[]
+  dividends        Dividend[]
+  corporateActions CorporateAction[]
+  watchlistItems   WatchlistStock[]
+  strategies       TradingStrategy[]
+  signals          StrategySignal[]
+  alerts           Alert[]
+
+  @@index([sector])
+  @@map("stocks")
+}
+
+/// OHLCV bars. One provider per bar row; `source` tells you if it is licensed data, user CSV, or SIMULATED.
+model StockPrice {
+  id          BigInt        @id @default(autoincrement())
+  stockId     String        @db.Uuid
+  interval    PriceInterval
+  ts          DateTime      @db.Timestamptz(6) // bar open time
+  open        Decimal       @db.Decimal(20, 6)
+  high        Decimal       @db.Decimal(20, 6)
+  low         Decimal       @db.Decimal(20, 6)
+  close       Decimal       @db.Decimal(20, 6)
+  volume      BigInt
+  isAdjusted  Boolean       @default(false)
+  providerKey String
+  source      DataSource
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, interval, isAdjusted, ts])
+  @@index([ts], type: Brin)
+  @@map("stock_prices")
+}
+
+/// Latest quote per symbol (hot copy also in Redis).
+model StockQuote {
+  stockId      String     @id @db.Uuid
+  last         Decimal    @db.Decimal(20, 6)
+  open         Decimal?   @db.Decimal(20, 6)
+  prevClose    Decimal?   @db.Decimal(20, 6)
+  high         Decimal?   @db.Decimal(20, 6)
+  low          Decimal?   @db.Decimal(20, 6)
+  volume       BigInt?
+  change       Decimal?   @db.Decimal(20, 6)
+  changePct    Decimal?   @db.Decimal(12, 6)
+  asOf         DateTime   @db.Timestamptz(6)
+  delayMinutes Int        @default(0)
+  providerKey  String
+  source       DataSource
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@map("stock_quotes")
+}
+
+model MarketHoliday {
+  date DateTime @id @db.Date
+  name String
+
+  @@map("market_holidays")
+}
+
+model Watchlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistStock[]
+
+  @@unique([userId, name])
+  @@map("watchlists")
+}
+
+model WatchlistStock {
+  watchlistId String   @db.Uuid
+  stockId     String   @db.Uuid
+  sortOrder   Int      @default(0)
+  addedAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  stock     Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@id([watchlistId, stockId])
+  @@map("watchlist_stocks")
+}
+
+// ───────────────────────────── Corporate actions & dividends ─────────────────────────────
+
+model CorporateAction {
+  id                String              @id @default(uuid()) @db.Uuid
+  stockId           String              @db.Uuid
+  type              CorporateActionType
+  announcementDate  DateTime?           @db.Date
+  exDate            DateTime?           @db.Date
+  bookClosureFrom   DateTime?           @db.Date
+  bookClosureTo     DateTime?           @db.Date
+  ratioNumerator    Decimal?            @db.Decimal(20, 6) // bonus 1:10 → 1 / 10 ; split 2:1 → 2 / 1
+  ratioDenominator  Decimal?            @db.Decimal(20, 6)
+  subscriptionPrice Decimal?            @db.Decimal(20, 6) // RIGHTS
+  appliedAt         DateTime?           @db.Timestamptz(6)
+  source            DataSource
+  details           Json                @default("{}")
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+
+  stock        Stock         @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+  dividend     Dividend?
+
+  @@unique([stockId, type, bookClosureFrom])
+  @@map("corporate_actions")
+}
+
+/// Declared cash dividend (per share).
+model Dividend {
+  id                String     @id @default(uuid()) @db.Uuid
+  stockId           String     @db.Uuid
+  corporateActionId String?    @unique @db.Uuid
+  announcementDate  DateTime?  @db.Date
+  bookClosureFrom   DateTime   @db.Date // eligibility: holders at start of book closure (T+settlement)
+  bookClosureTo     DateTime?  @db.Date
+  paymentDate       DateTime?  @db.Date
+  dividendPerShare  Decimal    @db.Decimal(20, 6)
+  source            DataSource
+  createdAt         DateTime   @default(now()) @db.Timestamptz(6)
+
+  stock           Stock                 @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  corporateAction CorporateAction?      @relation(fields: [corporateActionId], references: [id], onDelete: SetNull)
+  entitlements    DividendEntitlement[]
+
+  @@unique([stockId, bookClosureFrom])
+  @@map("dividends")
+}
+
+/// What THIS portfolio is owed / received for a dividend.
+model DividendEntitlement {
+  id             String                @id @default(uuid()) @db.Uuid
+  dividendId     String                @db.Uuid
+  portfolioId    String                @db.Uuid
+  sharesEligible Decimal               @db.Decimal(20, 4)
+  grossAmount    Decimal               @db.Decimal(20, 4)
+  whtRate        Decimal               @db.Decimal(12, 8)
+  whtAmount      Decimal               @db.Decimal(20, 4)
+  zakatAmount    Decimal               @default(0) @db.Decimal(20, 4)
+  netAmount      Decimal               @db.Decimal(20, 4)
+  status         DividendPaymentStatus @default(ENTITLED)
+  paidAt         DateTime?             @db.Date
+  cashMovementId String?               @unique @db.Uuid
+  source         DataSource // ESTIMATED until reconciled with a statement
+  reconciledAt   DateTime?             @db.Timestamptz(6)
+  createdAt      DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(6)
+
+  dividend     Dividend      @relation(fields: [dividendId], references: [id], onDelete: Restrict)
+  portfolio    Portfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  cashMovement CashMovement? @relation(fields: [cashMovementId], references: [id], onDelete: SetNull)
+
+  @@unique([dividendId, portfolioId])
+  @@map("dividend_entitlements")
+}
+
+// ───────────────────────────── Imports / sync ─────────────────────────────
+
+model ImportedStatement {
+  id                String        @id @default(uuid()) @db.Uuid
+  brokerAccountId   String        @db.Uuid
+  uploadedById      String?       @db.Uuid
+  kind              ImportKind
+  channel           ImportChannel
+  fileName          String
+  mimeType          String
+  sizeBytes         Int
+  fileSha256        String
+  storagePath       String? // encrypted blob; nulled after retention purge
+  emailMessageId    String? // MAILBOX channel
+  parserKey         String // e.g. "ktrade.contract-note.pdf"
+  parserVersion     String
+  periodFrom        DateTime?     @db.Date
+  periodTo          DateTime?     @db.Date
+  status            ImportStatus  @default(UPLOADED)
+  rowsTotal         Int           @default(0)
+  rowsCommitted     Int           @default(0)
+  rowsDuplicate     Int           @default(0)
+  rowsMatched       Int           @default(0)
+  rowsInvalid       Int           @default(0)
+  errors            Json          @default("[]")
+  committedAt       DateTime?     @db.Timestamptz(6)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
+
+  brokerAccount    BrokerAccount           @relation(fields: [brokerAccountId], references: [id], onDelete: Restrict)
+  uploadedBy       User?                   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  rows             ImportedRow[]
+  transactions     Transaction[]
+  cashMovements    CashMovement[]
+  executions       OrderExecution[]
+  balanceSnapshots BrokerBalanceSnapshot[]
+
+  @@unique([brokerAccountId, fileSha256])
+  @@unique([brokerAccountId, emailMessageId])
+  @@index([brokerAccountId, createdAt(sort: Desc)])
+  @@map("imported_statements")
+}
+
+model ImportedRow {
+  id                String          @id @default(uuid()) @db.Uuid
+  statementId       String          @db.Uuid
+  rowIndex          Int
+  rowType           String // TRADE, CASH, HOLDING, DIVIDEND, FEE, PRICE
+  raw               Json
+  parsed            Json?
+  fingerprint       String // normalized hash for cross-file dedupe
+  status            ImportRowStatus @default(PENDING)
+  matchedEntityType String?
+  matchedEntityId   String?
+  errors            Json            @default("[]")
+
+  statement ImportedStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@unique([statementId, rowIndex])
+  @@index([fingerprint])
+  @@map("imported_rows")
+}
+
+// ───────────────────────────── Strategies, signals, backtests ─────────────────────────────
+
+model TradingStrategy {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @db.Uuid
+  portfolioId      String        @db.Uuid
+  stockId          String        @db.Uuid
+  name             String
+  type             StrategyType
+  mode             ExecutionMode // PAPER or LIVE (BACKTEST runs are separate records)
+  interval         PriceInterval @default(D1)
+  isActive         Boolean       @default(false)
+  /// Rule DSL (docs/08). Built-in types compile into this; CUSTOM_RULES edits it directly.
+  entryRules       Json
+  exitRules        Json
+  stopLossPct      Decimal?      @db.Decimal(8, 4)
+  takeProfitPct    Decimal?      @db.Decimal(8, 4)
+  trailingStopPct  Decimal?      @db.Decimal(8, 4)
+  maxInvestment    Decimal       @db.Decimal(20, 4)
+  maxPositionQty   Decimal?      @db.Decimal(20, 4)
+  riskPerTradePct  Decimal?      @db.Decimal(8, 4)
+  cooldownBars     Int           @default(1)
+  /// PAPER: signals auto-execute against the paper broker when true.
+  /// LIVE: only takes effect if RiskLimit.liveAutoExecutionEnabled and the adapter capability chain allow it.
+  autoExecute      Boolean       @default(false)
+  version          Int           @default(1)
+  lastEvaluatedAt  DateTime?     @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(6)
+
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolio  Portfolio           @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
+  stock      Stock               @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  parameters StrategyParameter[]
+  signals    StrategySignal[]
+  executions StrategyExecution[]
+  backtests  BacktestResult[]
+  orders     Order[]
+
+  @@unique([userId, name])
+  @@index([isActive, interval])
+  @@map("trading_strategies")
+}
+
+model StrategyParameter {
+  id         String @id @default(uuid()) @db.Uuid
+  strategyId String @db.Uuid
+  key        String // e.g. "fastPeriod"
+  value      String // stored as string; typed by valueType, parsed with decimal.js
+  valueType  String // INT | DECIMAL | BOOL | ENUM | STRING
+
+  strategy TradingStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@unique([strategyId, key])
+  @@map("strategy_parameters")
+}
+
+model StrategySignal {
+  id              String        @id @default(uuid()) @db.Uuid
+  strategyId      String        @db.Uuid
+  stockId         String        @db.Uuid
+  mode            ExecutionMode
+  type            SignalType
+  reason          SignalReason
+  side            OrderSide
+  barTs           DateTime      @db.Timestamptz(6) // bar that produced the signal
+  price           Decimal       @db.Decimal(20, 6)
+  priceSource     DataSource
+  suggestedQty    Decimal?      @db.Decimal(20, 4)
+  indicators      Json // snapshot of indicator values & conditions evaluated (explainability)
+  strategyVersion Int
+  status          SignalStatus  @default(NEW)
+  orderId         String?       @unique @db.Uuid
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+
+  strategy TradingStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  stock    Stock           @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  order    Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([strategyId, barTs, type, reason])
+  @@index([status, createdAt])
+  @@map("strategy_signals")
+}
+
+/// Log of each evaluation run of a strategy (scheduler tick).
+model StrategyExecution {
+  id               String        @id @default(uuid()) @db.Uuid
+  strategyId       String        @db.Uuid
+  mode             ExecutionMode
+  status           RunStatus
+  startedAt        DateTime      @default(now()) @db.Timestamptz(6)
+  finishedAt       DateTime?     @db.Timestamptz(6)
+  barTs            DateTime?     @db.Timestamptz(6)
+  signalsGenerated Int           @default(0)
+  details          Json          @default("{}")
+  error            String?
+
+  strategy TradingStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId, startedAt(sort: Desc)])
+  @@map("strategy_executions")
+}
+
+model BacktestResult {
+  id              String     @id @default(uuid()) @db.Uuid
+  userId          String     @db.Uuid
+  strategyId      String?    @db.Uuid
+  strategyType    StrategyType
+  symbol          String
+  interval        PriceInterval
+  params          Json // full snapshot: rules, parameters, fees, slippage
+  fromDate        DateTime   @db.Date
+  toDate          DateTime   @db.Date
+  initialCapital  Decimal    @db.Decimal(20, 4)
+  finalEquity     Decimal?   @db.Decimal(20, 4)
+  totalReturnPct  Decimal?   @db.Decimal(12, 6)
+  cagrPct         Decimal?   @db.Decimal(12, 6)
+  maxDrawdownPct  Decimal?   @db.Decimal(12, 6)
+  sharpe          Decimal?   @db.Decimal(12, 6)
+  winRatePct      Decimal?   @db.Decimal(12, 6)
+  tradesCount     Int?
+  feesTotal       Decimal?   @db.Decimal(20, 4)
+  benchmarkReturn Decimal?   @db.Decimal(12, 6) // buy-and-hold same symbol
+  equityCurve     Json? // [{t, equity, drawdown}]
+  dataSource      DataSource // SIMULATED if run on synthetic prices
+  status          RunStatus  @default(QUEUED)
+  error           String?
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
+  finishedAt      DateTime?  @db.Timestamptz(6)
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategy TradingStrategy? @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  trades   BacktestTrade[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("backtest_results")
+}
+
+model BacktestTrade {
+  id         String       @id @default(uuid()) @db.Uuid
+  backtestId String       @db.Uuid
+  entryTs    DateTime     @db.Timestamptz(6)
+  exitTs     DateTime?    @db.Timestamptz(6)
+  quantity   Decimal      @db.Decimal(20, 4)
+  entryPrice Decimal      @db.Decimal(20, 6)
+  exitPrice  Decimal?     @db.Decimal(20, 6)
+  fees       Decimal      @db.Decimal(20, 4)
+  pnl        Decimal?     @db.Decimal(20, 4)
+  exitReason SignalReason?
+
+  backtest BacktestResult @relation(fields: [backtestId], references: [id], onDelete: Cascade)
+
+  @@index([backtestId, entryTs])
+  @@map("backtest_trades")
+}
+
+// ───────────────────────────── Alerts & notifications ─────────────────────────────
+
+model Alert {
+  id              String                @id @default(uuid()) @db.Uuid
+  userId          String                @db.Uuid
+  type            AlertType
+  stockId         String?               @db.Uuid
+  portfolioId     String?               @db.Uuid
+  threshold       Decimal?              @db.Decimal(20, 6)
+  params          Json                  @default("{}")
+  channels        NotificationChannel[]
+  isActive        Boolean               @default(true)
+  triggerOnce     Boolean               @default(false)
+  cooldownMinutes Int                   @default(60)
+  lastTriggeredAt DateTime?             @db.Timestamptz(6)
+  createdAt       DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(6)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock         Stock?         @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  portfolio     Portfolio?     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([isActive, type])
+  @@map("alerts")
+}
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @db.Uuid
+  alertId   String?             @db.Uuid
+  channel   NotificationChannel
+  title     String
+  body      String
+  data      Json                @default("{}")
+  dedupeKey String?
+  status    NotificationStatus  @default(PENDING)
+  attempts  Int                 @default(0)
+  error     String?
+  sentAt    DateTime?           @db.Timestamptz(6)
+  readAt    DateTime?           @db.Timestamptz(6)
+  createdAt DateTime            @default(now()) @db.Timestamptz(6)
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alert Alert? @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, channel, dedupeKey])
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model NotificationChannelConfig {
+  id           String              @id @default(uuid()) @db.Uuid
+  userId       String              @db.Uuid
+  channel      NotificationChannel
+  isEnabled    Boolean             @default(false)
+  target       String? // email address or Telegram chat id (not secret)
+  credentialId String?             @db.Uuid // SMTP / bot token in vault
+  quietHours   Json? // {"from":"22:00","to":"07:00"}
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential CredentialVault? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, channel])
+  @@map("notification_channel_configs")
+}
+
+// ───────────────────────────── AI assistant ─────────────────────────────
+
+model AiConversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  title     String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String        @id @default(uuid()) @db.Uuid
+  conversationId String        @db.Uuid
+  role           AiMessageRole
+  content        String
+  toolCalls      Json? // tool name, args, result digest — the "references to underlying data"
+  provider       String?
+  model          String?
+  inputTokens    Int?
+  outputTokens   Int?
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+// ───────────────────────────── Audit ─────────────────────────────
+
+/// Append-only. Application DB role has INSERT/SELECT only (enforced in migration SQL).
+model AuditLog {
+  id          BigInt    @id @default(autoincrement())
+  occurredAt  DateTime  @default(now()) @db.Timestamptz(6)
+  actorType   ActorType
+  actorUserId String?   @db.Uuid
+  action      String // e.g. "order.approved"
+  entityType  String?
+  entityId    String?
+  requestId   String?
+  ip          String?
+  userAgent   String?
+  before      Json?
+  after       Json?
+  metadata    Json      @default("{}")
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, occurredAt(sort: Desc)])
+  @@index([action, occurredAt(sort: Desc)])
+  @@map("audit_logs")
+}

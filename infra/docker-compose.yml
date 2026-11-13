@@ -1,0 +1,41 @@
+# Development infrastructure. All ports bind to 127.0.0.1 only (docs/04 §1).
+# Usage (from repo root):  pnpm db:up   |   pnpm db:down
+# Production compose (api, worker, web, nginx, migrate) is added in Phase 12.
+name: ktrade
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ktrade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ktrade_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-ktrade}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # Valkey: BSD-licensed, protocol-compatible Redis fork (ADR-009). Persistence on for BullMQ durability.
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ['valkey-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:
