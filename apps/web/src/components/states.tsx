@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { AlertTriangle, Inbox } from 'lucide-react';
+import { AlertTriangle, Construction, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { errorMessage } from '@/lib/api/errors';
+import { errorMessage, isNotAvailable } from '@/lib/api/errors';
 
 export function EmptyState({
   title,
@@ -35,6 +35,27 @@ export function EmptyState({
   );
 }
 
+/** The feature's backend does not exist yet (ApiError NOT_AVAILABLE). Never replaced by demo data. */
+export function NotAvailableState({ feature, className }: { feature?: string; className?: string }) {
+  return (
+    <div
+      role="status"
+      data-testid="not-available"
+      className={cn(
+        'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-center',
+        className,
+      )}
+    >
+      <Construction className="size-8 text-muted-foreground" aria-hidden="true" />
+      <p className="font-medium">Not available yet — coming in a later phase</p>
+      <p className="max-w-md text-sm text-muted-foreground">
+        {feature ? `${feature} has` : 'This feature has'} no backend yet. No sample or simulated data is shown
+        in its place.
+      </p>
+    </div>
+  );
+}
+
 export function ErrorState({
   error,
   onRetry,
@@ -44,6 +65,7 @@ export function ErrorState({
   onRetry?: () => void;
   className?: string;
 }) {
+  if (isNotAvailable(error)) return <NotAvailableState className={className} />;
   return (
     <div
       role="alert"

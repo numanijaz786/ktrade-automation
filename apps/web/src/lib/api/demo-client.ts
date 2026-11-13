@@ -72,11 +72,13 @@ import type {
   DashboardSummary,
   Discrepancy,
   Dividend,
+  FeeEstimate,
   Holding,
   ImportBatch,
   ImportRow,
   KillSwitch,
   MailboxStatus,
+  MarketOverview,
   MarketProvider,
   Notification,
   Order,
@@ -89,9 +91,12 @@ import type {
   Report,
   RiskCheck,
   RiskLimits,
+  SectorSummary,
   Session,
   Signal,
-  Stock,
+  SourcedValue,
+  StockDetail,
+  StockListItem,
   Strategy,
   User,
   UserSettings,
@@ -99,6 +104,41 @@ import type {
 } from './types';
 
 export { LIVE_PORTFOLIO_ID, PAPER_PORTFOLIO_ID };
+
+/**
+ * The demo always produces every figure. These narrow the API-nullable public types so the demo's
+ * internal arithmetic stays exact; they are assignable to the public types.
+ */
+type DemoQuote = Quote & {
+  open: string;
+  high: string;
+  low: string;
+  prevClose: string;
+  change: string;
+  changePct: string;
+  volume: string;
+};
+type DemoHolding = Holding & {
+  sector: string;
+  lastPrice: SourcedValue;
+  marketValue: string;
+  unrealizedPnl: string;
+  unrealizedPnlPct: string;
+  weight: string;
+  dayChangePct: string;
+};
+type DemoOrder = Order & {
+  estimate: FeeEstimate;
+  previewHash: string;
+  previewExpiresAt: string;
+  updatedAt: string;
+};
+interface DemoWatchlist {
+  id: string;
+  name: string;
+  createdAt: string;
+  symbols: string[];
+}
 
 interface QuoteState {
   symbol: string;
@@ -124,8 +164,8 @@ interface State {
   ledgers: Map<string, LedgerEntry[]>;
   dividends: Map<string, Dividend[]>;
   portfolios: Portfolio[];
-  orders: Order[];
-  watchlists: Watchlist[];
+  orders: DemoOrder[];
+  watchlists: DemoWatchlist[];
   strategies: Strategy[];
   signals: Signal[];
   backtests: Backtest[];
@@ -300,6 +340,7 @@ export class DemoApiClient implements ApiClient {
             maxDailyCount: 10,
             maxPositionPct: '25',
             maxDailyLossPct: '3',
+            allowMarketOrders: true,
             liveAutoExecutionEnabled: false,
           },
         ]),
@@ -372,7 +413,7 @@ export class DemoApiClient implements ApiClient {
     return q ? Dec.fromMinor(q.last, 2) : Dec.zero();
   }
 
-  private quote(s: State, symbol: string): Quote {
+  private quote(s: State, symbol: string): DemoQuote {
     const q = s.quotes.get(symbol);
     if (!q) throw new ApiError('NOT_FOUND', 404, 'Unknown symbol', symbol);
     const change = q.last - q.prevClose;
@@ -393,12 +434,12 @@ export class DemoApiClient implements ApiClient {
     };
   }
 
-  private holdings(s: State, pfId: string): { list: Holding[]; state: LedgerState } {
+  private holdings(s: State, pfId: string): { list: DemoHolding[]; state: LedgerState } {
     const state = replay(this.ledger(s, pfId));
     const open = [...state.positions.values()].filter((p) => p.qty.gt(0));
     const mvs = open.map((p) => p.qty.mul(this.last(s, p.symbol)));
     const totalMv = Dec.sum(mvs);
-    const list = open.map((p, i): Holding => {
+    const list = open.map((p, i): DemoHolding => {
       const seed = findSeed(p.symbol);
       const last = this.last(s, p.symbol);
       const mv = mvs[i];
@@ -525,7 +566,7 @@ export class DemoApiClient implements ApiClient {
   private riskChecks(
     s: State,
     o: Pick<
-      Order,
+      DemoOrder,
       'id' | 'portfolioId' | 'mode' | 'symbol' | 'side' | 'type' | 'quantity' | 'limitPrice' | 'estimate'
     >,
   ): RiskCheck[] {
@@ -694,7 +735,7 @@ export class DemoApiClient implements ApiClient {
     if (errs.length) throw new ApiError('VALIDATION_FAILED', 422, 'Invalid order', errs.join('; '));
   }
 
-  private buildPreview(s: State, req: OrderPreviewRequest): Order {
+  private buildPreview(s: State, req: OrderPreviewRequest): DemoOrder {
     this.validatePreview(req);
     const pf = this.portfolio(s, req.portfolioId);
     const mode = pf.kind === 'PAPER' ? 'PAPER' : 'LIVE';
@@ -777,7 +818,7 @@ export class DemoApiClient implements ApiClient {
     };
   }
 
-  private order(s: State, id: string): Order {
+  private order(s: State, id: string): DemoOrder {
     const o = s.orders.find((x) => x.id === id);
     if (!o) throw new ApiError('NOT_FOUND', 404, 'Order not found', id);
     return o;
@@ -814,7 +855,7 @@ export class DemoApiClient implements ApiClient {
 
   private applyFill(
     s: State,
-    o: Order,
+    o: DemoOrder,
     qty: string,
     price: string,
     at: string,
@@ -854,16 +895,16 @@ export class DemoApiClient implements ApiClient {
     this.appendLedger(s, o.portfolioId, { kind: 'txn', txn });
   }
 
-  private seedOrders(s: State): Order[] {
+  private seedOrders(s: State): DemoOrder[] {
     const mk = (
       req: OrderPreviewRequest,
       createdAt: string,
       steps: { status: OrderStatus; note: string; actor?: OrderEvent['actor']; at?: string }[],
-      extra: Partial<Order> = {},
-    ): Order => {
+      extra: Partial<DemoOrder> = {},
+    ): DemoOrder => {
       const base = this.buildPreview(s, req);
       const expires = new Date(Date.parse(createdAt) + 5 * 60 * 1000).toISOString();
-      const o: Order = { ...base, createdAt, updatedAt: createdAt, previewExpiresAt: expires, ...extra };
+      const o: DemoOrder = { ...base, createdAt, updatedAt: createdAt, previewExpiresAt: expires, ...extra };
       o.events = [
         { ...base.events[0], at: createdAt },
         { ...base.events[1], at: createdAt },
@@ -877,7 +918,7 @@ export class DemoApiClient implements ApiClient {
     const mariTxn = replay(s.ledgers.get(live)!).positions.get('MARI');
     const mariQty = mariTxn?.qty.toString() ?? '200';
     const mariPx = paisaToString(barsFor('MARI').find((b) => b.date === daysAgo(10))?.close ?? 60000);
-    const orders: Order[] = [];
+    const orders: DemoOrder[] = [];
     orders.push(
       mk(
         {
@@ -1401,7 +1442,7 @@ export class DemoApiClient implements ApiClient {
       }),
   };
 
-  private breakdown(list: Holding[]): Partial<Record<DataSource, string>> {
+  private breakdown(list: DemoHolding[]): Partial<Record<DataSource, string>> {
     const total = Dec.sum(list.map((h) => h.marketValue));
     if (total.isZero()) return { SIMULATED: '1' };
     const m = new Map<DataSource, Dec>();
@@ -1708,15 +1749,29 @@ export class DemoApiClient implements ApiClient {
   };
 
   market: ApiClient['market'] = {
+    overview: () => this.run((s) => this.overviewOf(s)),
     stocks: (q = {}) =>
-      this.run(() =>
-        DEMO_UNIVERSE.filter(
+      this.run((s) => {
+        const matches = DEMO_UNIVERSE.filter(
           (st) =>
             (!q.sector || st.sector === q.sector) &&
             (!q.search || `${st.symbol} ${st.name}`.toLowerCase().includes(q.search.toLowerCase())),
-        ).map((st) => this.stockOf(st.symbol)),
-      ),
-    stock: (symbol) => this.run(() => this.stockOf(symbol)),
+        );
+        const offset = q.offset ?? 0;
+        const limit = q.limit ?? 50;
+        return {
+          total: matches.length,
+          data: matches.slice(offset, offset + limit).map((st): StockListItem => ({
+            symbol: st.symbol,
+            name: st.name,
+            sector: st.sector,
+            isShariah: false,
+            quote: s.quotes.has(st.symbol) ? this.quote(s, st.symbol) : null,
+          })),
+        };
+      }),
+    stock: (symbol) => this.run((s) => this.stockOf(s, symbol)),
+    sectors: () => this.run((s) => this.sectorsOf(s)),
     quotes: (symbols) =>
       this.run((s) =>
         (symbols?.length ? symbols : [...s.quotes.keys()])
@@ -1732,57 +1787,83 @@ export class DemoApiClient implements ApiClient {
           ...bars.slice(0, -1),
           { ...bars[bars.length - 1], close: live.last, high: live.high, low: live.low, volume: live.volume },
         ];
+        const candles = withLive
+          .filter((b) => (!q.from || b.date >= q.from) && (!q.to || b.date <= q.to))
+          .map((b) => ({
+            ts: `${b.date}T00:00:00.000Z`,
+            open: paisaToString(b.open),
+            high: paisaToString(b.high),
+            low: paisaToString(b.low),
+            close: paisaToString(b.close),
+            volume: String(b.volume),
+            source: PRICE_SOURCE,
+          }));
         return {
           symbol,
           interval: 'D1' as const,
-          source: PRICE_SOURCE,
-          candles: withLive
-            .filter((b) => (!q.from || b.date >= q.from) && (!q.to || b.date <= q.to))
-            .map((b) => ({
-              time: b.date,
-              open: paisaToString(b.open),
-              high: paisaToString(b.high),
-              low: paisaToString(b.low),
-              close: paisaToString(b.close),
-              volume: String(b.volume),
-            })),
+          from: candles[0]?.ts ?? `${q.from ?? DEMO_TODAY}T00:00:00.000Z`,
+          to: candles.at(-1)?.ts ?? `${q.to ?? DEMO_TODAY}T00:00:00.000Z`,
+          source: candles.length ? PRICE_SOURCE : null,
+          candles,
         };
       }),
-    movers: (type, limit = 10) =>
-      this.run((s) => {
-        const qs = [...s.quotes.keys()].map((x) => this.quote(s, x));
-        const sorted =
-          type === 'active'
-            ? qs.sort((a, b) => Dec.of(b.volume).mul(b.last).cmp(Dec.of(a.volume).mul(a.last)))
-            : qs.sort((a, b) =>
-                type === 'gainers'
-                  ? Dec.of(b.changePct).cmp(a.changePct)
-                  : Dec.of(a.changePct).cmp(b.changePct),
-              );
-        return sorted.slice(0, limit);
-      }),
+    movers: (type, limit = 10) => this.run((s) => this.moversOf(s, type, limit)),
     providers: () => this.run((s) => s.providers),
-    watchlists: () => this.run((s) => s.watchlists),
-    createWatchlist: (name) =>
+    watchlists: () => this.run((s) => s.watchlists.map((w) => this.watchlistOf(s, w))),
+    createWatchlist: (name, symbols = []) =>
       this.run((s) => {
-        const w = { id: this.id('wl'), name: name.trim() || 'Untitled', symbols: [] };
+        const trimmed = name.trim();
+        if (s.watchlists.some((x) => x.name === trimmed))
+          throw new ApiError(
+            'ALREADY_EXISTS',
+            409,
+            'Conflict',
+            'You already have a watchlist with that name',
+          );
+        for (const sym of symbols)
+          if (!findSeed(sym)) throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', sym);
+        const w: DemoWatchlist = {
+          id: this.id('wl'),
+          name: trimmed || 'Untitled',
+          createdAt: this.iso(),
+          symbols: [...new Set(symbols)],
+        };
         s.watchlists.push(w);
-        return w;
+        return this.watchlistOf(s, w);
+      }),
+    renameWatchlist: (wid, name) =>
+      this.run((s) => {
+        const w = this.watchlist(s, wid);
+        const trimmed = name.trim();
+        if (s.watchlists.some((x) => x.id !== wid && x.name === trimmed))
+          throw new ApiError(
+            'ALREADY_EXISTS',
+            409,
+            'Conflict',
+            'You already have a watchlist with that name',
+          );
+        w.name = trimmed || w.name;
+        return this.watchlistOf(s, w);
+      }),
+    deleteWatchlist: (wid) =>
+      this.run((s) => {
+        this.watchlist(s, wid);
+        s.watchlists = s.watchlists.filter((x) => x.id !== wid);
       }),
     addToWatchlist: (wid, symbol) =>
       this.run((s) => {
-        const w = s.watchlists.find((x) => x.id === wid);
-        if (!w) throw new ApiError('NOT_FOUND', 404, 'Watchlist not found');
-        if (!findSeed(symbol)) throw new ApiError('NOT_FOUND', 404, 'Unknown symbol', symbol);
+        const w = this.watchlist(s, wid);
+        if (!findSeed(symbol)) throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', symbol);
         if (!w.symbols.includes(symbol)) w.symbols.push(symbol);
-        return w;
+        return this.watchlistOf(s, w);
       }),
     removeFromWatchlist: (wid, symbol) =>
       this.run((s) => {
-        const w = s.watchlists.find((x) => x.id === wid);
-        if (!w) throw new ApiError('NOT_FOUND', 404, 'Watchlist not found');
+        const w = this.watchlist(s, wid);
+        if (!w.symbols.includes(symbol))
+          throw new ApiError('NOT_FOUND', 404, 'Not found', `${symbol} is not on this watchlist`);
         w.symbols = w.symbols.filter((x) => x !== symbol);
-        return w;
+        return this.watchlistOf(s, w);
       }),
     subscribeQuotes: (symbols, onTick) => {
       const l = { symbols: new Set(symbols), cb: onTick };
@@ -1803,33 +1884,109 @@ export class DemoApiClient implements ApiClient {
     this.tick();
   }
 
-  private stockOf(symbol: string): Stock {
+  private watchlist(s: State, wid: string): DemoWatchlist {
+    const w = s.watchlists.find((x) => x.id === wid);
+    if (!w) throw new ApiError('NOT_FOUND', 404, 'Not found', 'Watchlist not found');
+    return w;
+  }
+
+  private watchlistOf(s: State, w: DemoWatchlist): Watchlist {
+    return {
+      id: w.id,
+      name: w.name,
+      createdAt: w.createdAt,
+      items: w.symbols.map((symbol) => ({
+        symbol,
+        addedAt: w.createdAt,
+        quote: s.quotes.has(symbol) ? this.quote(s, symbol) : null,
+      })),
+    };
+  }
+
+  private moversOf(s: State, type: 'gainers' | 'losers' | 'active', limit: number): Quote[] {
+    const qs = [...s.quotes.keys()].map((x) => this.quote(s, x));
+    const sorted =
+      type === 'active'
+        ? qs.sort((a, b) => Dec.of(b.volume).mul(b.last).cmp(Dec.of(a.volume).mul(a.last)))
+        : qs.sort((a, b) =>
+            type === 'gainers' ? Dec.of(b.changePct).cmp(a.changePct) : Dec.of(a.changePct).cmp(b.changePct),
+          );
+    return sorted.slice(0, limit);
+  }
+
+  private sectorsOf(s: State): SectorSummary[] {
+    const bySector = new Map<string, DemoQuote[]>();
+    for (const sym of s.quotes.keys()) {
+      const sector = findSeed(sym)?.sector ?? 'Unclassified';
+      bySector.set(sector, [...(bySector.get(sector) ?? []), this.quote(s, sym)]);
+    }
+    return [...bySector.entries()]
+      .map(([sector, qs]) => ({
+        sector,
+        stocks: qs.length,
+        advancers: qs.filter((q) => Dec.of(q.changePct).gt(0)).length,
+        decliners: qs.filter((q) => Dec.of(q.changePct).lt(0)).length,
+        avgChangePct: Dec.sum(qs.map((q) => q.changePct))
+          .div(qs.length)
+          .toFixed(2),
+        volume: Dec.sum(qs.map((q) => q.volume)).toFixed(0),
+        source: PRICE_SOURCE,
+      }))
+      .sort((a, b) => (a.sector < b.sector ? -1 : 1));
+  }
+
+  private overviewOf(s: State): MarketOverview {
+    const qs = [...s.quotes.keys()].map((x) => this.quote(s, x));
+    const asOf = qs.reduce<string | null>((m, q) => (m === null || q.asOf > m ? q.asOf : m), null);
+    return {
+      session: {
+        open: true,
+        tradingDay: true,
+        lastCompletedSession: null,
+        hours: 'Mon–Fri 09:30–15:30 PKT',
+      },
+      breadth: {
+        advancers: qs.filter((q) => Dec.of(q.changePct).gt(0)).length,
+        decliners: qs.filter((q) => Dec.of(q.changePct).lt(0)).length,
+        unchanged: qs.filter((q) => Dec.of(q.changePct).isZero()).length,
+        total: qs.length,
+      },
+      totalVolume: Dec.sum(qs.map((q) => q.volume)).toFixed(0),
+      gainers: this.moversOf(s, 'gainers', 5).filter((q) => Dec.of(q.changePct ?? '0').gt(0)),
+      losers: this.moversOf(s, 'losers', 5).filter((q) => Dec.of(q.changePct ?? '0').lt(0)),
+      mostActive: this.moversOf(s, 'active', 5),
+      sectors: this.sectorsOf(s),
+      dataSource: PRICE_SOURCE,
+      staleQuotes: 0,
+      asOf,
+      providerKey: 'simulated',
+    };
+  }
+
+  private stockOf(s: State, symbol: string): StockDetail {
     const seed = findSeed(symbol);
-    if (!seed) throw new ApiError('NOT_FOUND', 404, 'Unknown symbol', symbol);
-    const s = this.state();
-    const shares = Dec.of(Math.round(seed.sharesM * 1000)).mul(1000);
-    const h = (seed.symbol.charCodeAt(0) * 7 + seed.symbol.length * 13) % 100;
+    if (!seed) throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', symbol);
+    const year = barsFor(symbol).slice(-250);
+    const avg = year.slice(-20);
     return {
       symbol,
       name: seed.name,
       sector: seed.sector,
-      lotSize: 1,
-      marketCap: shares.mul(this.last(s, symbol)).toFixed(0),
-      sharesOutstanding: shares.toFixed(0),
-      freeFloatPct: Dec.of(15 + (h % 60)).toFixed(0),
-      peRatio:
-        h % 9 === 0
-          ? null
-          : Dec.of(30 + (h % 90))
-              .div(10)
-              .toFixed(1),
-      dividendYieldPct:
-        h % 5 === 0
-          ? null
-          : Dec.of(10 + (h % 120))
-              .div(10)
-              .toFixed(1),
-      source: 'SIMULATED',
+      isShariah: false,
+      faceValue: '10',
+      quote: s.quotes.has(symbol) ? this.quote(s, symbol) : null,
+      stats: {
+        week52High: year.length ? paisaToString(Math.max(...year.map((b) => b.high))) : null,
+        week52Low: year.length ? paisaToString(Math.min(...year.map((b) => b.low))) : null,
+        avgVolume20d: avg.length
+          ? Dec.sum(avg.map((b) => b.volume))
+              .div(avg.length)
+              .toFixed(0)
+          : null,
+        sessions: year.length,
+        historySources: year.length ? [PRICE_SOURCE] : [],
+        historySource: year.length ? PRICE_SOURCE : null,
+      },
     };
   }
 
@@ -2166,6 +2323,10 @@ export class DemoApiClient implements ApiClient {
 
   broker: ApiClient['broker'] = {
     connections: () => this.run((s) => s.connections),
+    registerAccount: () =>
+      this.run(() => {
+        throw new ApiError('ALREADY_EXISTS', 409, 'Conflict', 'The demo already has a KTrade account.');
+      }),
     imports: () => this.run((s) => s.imports),
     importRows: (id) => this.run((s) => s.importRows.get(id) ?? []),
     // Mirrors the real pipeline's rules (apps/api/src/imports): file-hash dedupe, row validation, duplicate
@@ -2281,7 +2442,7 @@ export class DemoApiClient implements ApiClient {
             `A ${row.status} row cannot be included — fix the file and re-upload.`,
           );
         b.rowCounts = countRows(s.importRows.get(importId) ?? []);
-        return row;
+        return b;
       }),
     commitImport: (id) =>
       this.run((s) => {

@@ -79,16 +79,22 @@ export interface User {
   email: string;
   displayName: string;
   role: Role;
+  /** From the API (`AuthTokensResponse.user`); the demo omits it. */
+  totpEnabled?: boolean;
 }
 
 export interface LoginRequest {
   email: string;
   password: string;
+  /** Required by the API once TOTP is enabled (it answers 401 `TOTP_REQUIRED` without it). */
+  totpCode?: string;
 }
-export interface RegisterRequest extends LoginRequest {
+export interface RegisterRequest {
+  email: string;
+  password: string;
   displayName: string;
 }
-export type LoginResult = { user: User; totpRequired: false } | { totpRequired: true; challengeId: string };
+export type LoginResult = { user: User; totpRequired: false } | { totpRequired: true };
 
 export interface StepUpToken {
   token: string;
@@ -98,10 +104,13 @@ export interface StepUpToken {
 export interface Session {
   id: string;
   device: string;
-  ip: string;
-  location: string;
-  createdAt: Instant;
+  ip: string | null;
+  /** Not tracked by the API (null there). */
+  location: string | null;
+  /** Not tracked by the API (null there). */
+  createdAt: Instant | null;
   lastSeenAt: Instant;
+  expiresAt?: Instant;
   current: boolean;
 }
 
@@ -124,8 +133,9 @@ export interface DataMode {
 
 export interface KillSwitch {
   liveTradingEnabled: boolean;
-  reason: string;
-  updatedAt: Instant;
+  /** The API returns only `liveTradingEnabled` (the reason lives in the audit log). */
+  reason?: string;
+  updatedAt?: Instant;
 }
 
 // ─── Dashboard & portfolio ─────────────────────────────────────────────────
@@ -135,11 +145,16 @@ export interface Portfolio {
   name: string;
   kind: PortfolioKind;
   costBasisMethod: CostBasisMethod;
-  initialCash?: Decimal;
-  createdAt: Instant;
+  initialCash?: Decimal | null;
+  /** Not returned by `GET /portfolios`. */
+  createdAt?: Instant;
   demo: boolean;
 }
 
+/**
+ * `GET /dashboard/summary`. Figures the API cannot compute yet (daily snapshots arrive in Phase 10)
+ * are `null`, never zero-filled.
+ */
 export interface DashboardSummary {
   portfolioId: string;
   accountValue: AggregateValue;
@@ -148,20 +163,22 @@ export interface DashboardSummary {
   cash: { ledger: SourcedValue; broker: SourcedValue | null };
   realizedPnl: AggregateValue;
   unrealizedPnl: AggregateValue;
-  todayPnl: AggregateValue;
-  todayPnlPct: SourcedValue;
-  monthPnl: AggregateValue;
-  totalReturnPct: SourcedValue;
-  twrPct: SourcedValue;
-  xirrPct: SourcedValue;
+  todayPnl: AggregateValue | null;
+  todayPnlPct: SourcedValue | null;
+  monthPnl: AggregateValue | null;
+  totalReturnPct: SourcedValue | null;
+  twrPct: SourcedValue | null;
+  xirrPct: SourcedValue | null;
   dividendsReceived: AggregateValue;
   feesPaid: AggregateValue;
   taxesPaid: AggregateValue;
   activeHoldings: number;
   pendingOrders: number;
-  sourceBreakdown: SourceBreakdown;
-  pricesAsOf: Instant;
-  priceSource: DataSource;
+  /** Holdings with no quote (excluded from market value). */
+  unpricedHoldings?: number;
+  sourceBreakdown: SourceBreakdown | null;
+  pricesAsOf: Instant | null;
+  priceSource: DataSource | null;
 }
 
 export type ChartRange = '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
@@ -176,21 +193,23 @@ export interface DashboardCharts {
   distribution: { symbol: string; value: Decimal; weight: Decimal }[];
 }
 
+/** Price-derived fields are `null` when the symbol has no quote (the API never invents one). */
 export interface Holding {
   symbol: string;
   name: string;
-  sector: string;
+  sector: string | null;
   quantity: Decimal;
   avgCost: Decimal;
-  lastPrice: SourcedValue;
+  lastPrice: SourcedValue | null;
   totalCost: Decimal;
-  marketValue: Decimal;
-  unrealizedPnl: Decimal;
-  unrealizedPnlPct: Decimal;
+  marketValue: Decimal | null;
+  unrealizedPnl: Decimal | null;
+  unrealizedPnlPct: Decimal | null;
   realizedPnl: Decimal;
   /** Fraction of portfolio market value. */
-  weight: Decimal;
-  dayChangePct: Decimal;
+  weight: Decimal | null;
+  /** Not provided by the API holdings endpoint (null there). */
+  dayChangePct: Decimal | null;
   /** Provenance of the position itself (quantity / cost basis). */
   source: DataSource;
   lastConfirmed: IsoDate | null;
@@ -215,10 +234,14 @@ export interface Transaction {
   price: Decimal;
   grossAmount: Decimal;
   fees: Decimal;
+  /** Taxes are reported separately by the API (`taxesTotal`). */
+  taxes?: Decimal;
   netAmount: Decimal;
   source: DataSource;
   reference: string | null;
   orderId: string | null;
+  /** Reversed transactions stay visible but no longer count. */
+  reversed?: boolean;
 }
 
 export interface CashMovement {
@@ -261,85 +284,158 @@ export interface TransactionFilters {
   to?: IsoDate;
 }
 
-// ─── Market data ───────────────────────────────────────────────────────────
+// ─── Market data (mirrors apps/api/src/market-data, ADR-024) ──────────────
 
-export interface Stock {
-  symbol: string;
-  name: string;
-  sector: string;
-  lotSize: number;
-  /** Simulated fundamentals for the stats panel. */
-  marketCap: Decimal;
-  sharesOutstanding: Decimal;
-  freeFloatPct: Decimal;
-  peRatio: Decimal | null;
-  dividendYieldPct: Decimal | null;
-  source: DataSource;
-}
-
+/**
+ * One quote. Fields the provider did not supply are `null` (the API omits them).
+ * `stale` = older than the trading session allows; the UI must mark it visibly.
+ */
 export interface Quote {
   symbol: string;
+  name?: string;
+  sector?: string | null;
   last: Decimal;
-  open: Decimal;
-  high: Decimal;
-  low: Decimal;
-  prevClose: Decimal;
-  change: Decimal;
-  changePct: Decimal;
-  volume: Decimal;
+  open: Decimal | null;
+  high: Decimal | null;
+  low: Decimal | null;
+  prevClose: Decimal | null;
+  change: Decimal | null;
+  changePct: Decimal | null;
+  volume: Decimal | null;
   asOf: Instant;
   delayMinutes: number;
   source: DataSource;
+  providerKey?: string;
   stale: boolean;
 }
 
-/** WebSocket `quote` event payload. */
+/** Realtime / polled `quote` event payload. */
 export type QuoteTick = Pick<
   Quote,
   'symbol' | 'last' | 'change' | 'changePct' | 'volume' | 'asOf' | 'source' | 'delayMinutes'
 > &
-  Partial<Pick<Quote, 'high' | 'low'>>;
+  Partial<Pick<Quote, 'high' | 'low' | 'stale'>>;
 
+export interface StockQuery {
+  search?: string;
+  sector?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** `GET /market/stocks` row. */
+export interface StockListItem {
+  symbol: string;
+  name: string;
+  sector: string | null;
+  isShariah: boolean;
+  quote: Quote | null;
+}
+
+export interface StockPage {
+  total: number;
+  data: StockListItem[];
+}
+
+/** `GET /market/stocks/:symbol`. Stats come from stored daily bars (last 365 days). */
+export interface StockDetail {
+  symbol: string;
+  name: string;
+  sector: string | null;
+  isShariah: boolean;
+  faceValue: Decimal | null;
+  quote: Quote | null;
+  stats: {
+    week52High: Decimal | null;
+    week52Low: Decimal | null;
+    avgVolume20d: Decimal | null;
+    sessions: number;
+    historySources: DataSource[];
+    /** Weakest source across the history window. */
+    historySource: DataSource | null;
+  };
+}
+
+export interface SectorSummary {
+  sector: string;
+  stocks: number;
+  advancers: number;
+  decliners: number;
+  avgChangePct: Decimal | null;
+  volume: Decimal;
+  source: DataSource;
+}
+
+/** `GET /market/overview`. */
+export interface MarketOverview {
+  session: { open: boolean; tradingDay: boolean; lastCompletedSession: IsoDate | null; hours: string };
+  breadth: { advancers: number; decliners: number; unchanged: number; total: number };
+  totalVolume: Decimal;
+  gainers: Quote[];
+  losers: Quote[];
+  mostActive: Quote[];
+  sectors: SectorSummary[];
+  /** Weakest source across all quotes. */
+  dataSource: DataSource | null;
+  staleQuotes: number;
+  asOf: Instant | null;
+  providerKey: string;
+}
+
+/** A bar carries its own provenance (one series can mix imported and simulated days). */
 export interface Candle {
-  time: IsoDate;
+  /** Bar open, ISO instant. */
+  ts: Instant;
   open: Decimal;
   high: Decimal;
   low: Decimal;
   close: Decimal;
   volume: Decimal;
+  source: DataSource;
 }
 
 export interface CandleSeries {
   symbol: string;
   interval: PriceInterval;
-  source: DataSource;
+  from: Instant;
+  to: Instant;
+  /** Weakest source across the bars (null when there are none). */
+  source: DataSource | null;
   candles: Candle[];
 }
 
 export type MoverType = 'gainers' | 'losers' | 'active';
 
+export interface WatchlistItem {
+  symbol: string;
+  addedAt: Instant;
+  quote: Quote | null;
+}
+
 export interface Watchlist {
   id: string;
   name: string;
-  symbols: string[];
+  createdAt: Instant;
+  items: WatchlistItem[];
 }
 
 export interface MarketProvider {
   key: string;
-  name: string;
+  displayName: string;
   source: DataSource;
+  enabled: boolean;
   active: boolean;
-  available: boolean;
-  delayMinutes: number;
-  health: 'OK' | 'DEGRADED' | 'DOWN' | 'NOT_CONFIGURED';
+  disabledReason: string | null;
   capabilities: {
     quotes: boolean;
     intradayBars: boolean;
     eodBars: boolean;
     corporateActions: boolean;
     streaming: boolean;
+    delayMinutes: number;
   };
-  note: string;
+  /** null for disabled providers (never health-checked). */
+  health: { ok: boolean; checkedAt: Instant; message?: string } | null;
 }
 
 export type Unsubscribe = () => void;
@@ -360,7 +456,9 @@ export type RiskRule =
   | 'DAILY_VALUE'
   | 'DAILY_COUNT'
   | 'CONCENTRATION'
-  | 'DAILY_LOSS';
+  | 'DAILY_LOSS'
+  | 'MARKET_ORDERS_ALLOWED'
+  | 'PRICE_SOURCE';
 
 export interface RiskCheck {
   rule: RiskRule;
@@ -431,16 +529,22 @@ export interface Order {
   quantity: Decimal;
   limitPrice: Decimal | null;
   stopPrice: Decimal | null;
-  timeInForce: TimeInForce;
+  /** Not stored by the API (null there). */
+  timeInForce: TimeInForce | null;
   origin: OrderOrigin;
-  referencePrice: SourcedValue & { delayMinutes: number };
-  estimate: FeeEstimate;
+  referencePrice: (SourcedValue & { delayMinutes?: number }) | null;
+  /** Null when the API has no estimate (e.g. orders listed before preview data existed). */
+  estimate: FeeEstimate | null;
+  /** Empty in list responses; full detail comes from `get`. */
   riskChecks: RiskCheck[];
-  previewHash: string;
-  previewExpiresAt: Instant;
+  /** Only present while the order is PREVIEWED. */
+  previewHash: string | null;
+  previewExpiresAt: Instant | null;
   warnings: string[];
   createdAt: Instant;
-  updatedAt: Instant;
+  updatedAt?: Instant;
+  companyName?: string;
+  rejectionReason?: string | null;
   brokerOrderRef: string | null;
   filledQuantity: Decimal;
   avgFillPrice: Decimal | null;
@@ -469,6 +573,8 @@ export interface RiskLimits {
   maxDailyCount: number;
   maxPositionPct: Decimal;
   maxDailyLossPct: Decimal;
+  /** MARKET orders are refused unless enabled (LIVE default: off). */
+  allowMarketOrders: boolean;
   liveAutoExecutionEnabled: boolean;
 }
 

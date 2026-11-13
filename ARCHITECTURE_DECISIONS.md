@@ -261,3 +261,19 @@ Accepted from the quant engineer's implementation:
   - Metrics too large for NUMERIC(12,6) are stored as null, with the full value in `params.metrics`. An open position at the end is saved as a trade without an exit.
   - New finance-core metrics: Sortino (downside vs the per-bar risk-free rate), annualised return, and risk/reward. Decimal-only, with hand-computed tests.
 - **Not yet built:** `signals/:id/prepare-order | dismiss`, the scheduled evaluation (BullMQ), walk-forward splits and the shadow "mirror" mode.
+
+## ADR-026 · Web ↔ API integration through a BFF (frontend)
+
+- **The browser only calls `/bff/*`** (Next.js route handlers). Access token: `ktrade_at` (httpOnly, SameSite=Strict, Path=/bff, Max-Age = token TTL). Refresh token: `ktrade_rt`, taken from the API's Set-Cookie (httpOnly, Strict, **Path=/bff**). Both are Secure in production. **No token ever appears in a response body.** Step-up tokens are returned to the client and kept **in memory only**.
+- **CSRF:** a double-submit `ktrade_csrf` cookie must match the `x-csrf-token` header, compared in constant time, plus a same-origin `Origin` check. It's required on every non-GET request, login and register included. The cookie is issued by `/bff/auth/me` and by `proxy.ts` when the login and register pages load.
+- **Catch-all proxy:** forwards an allow-list of headers; never forwards the API's Set-Cookie; refuses token-issuing `/auth/*` routes (only `sessions`, `2fa` and `password` pass) and path traversal; JSON only (415) up to 3 MB (413); problem+json passes through unchanged. **On a 401 it refreshes once** (concurrent refreshes with the same token share one call, because the API revokes the whole session on refresh-token reuse), then retries. If the refresh fails, the cookies are cleared and it returns 401.
+- **`NEXT_PUBLIC_DATA_MODE=api|demo`** (default `demo`). In api mode, features without a backend throw `NOT_AVAILABLE` and show a "not available yet" state. **Demo data is never mixed into the real UI.** Unauthenticated users are redirected to `/login`.
+- **Pages on real data:** login (TOTP when required), register, market overview, stock explorer, stock details (candles with per-bar source, add to watchlist), watchlists, and the KTrade integration page (account registration and imports). Every price shows provenance, as-of time and a visible stale marker.
+- **Deviations accepted:**
+  1. Refresh-cookie Path=/bff (the narrower `/bff/auth` would never reach the catch-all's refresh).
+  2. `BFF_COOKIE_SECURE=false` opt-out for plain-http local smoke tests.
+  3. `/` redirects to `/market/overview` until the dashboard page exists.
+  4. 15 s polling for quotes until a realtime gateway exists.
+- **Verified:** a live smoke test against a throwaway PostgreSQL through the BFF: register, me, market overview, watchlist, forced refresh, logout, with no token in any body.
+- **Test robustness:** Testing Library async queries now get 5 s (default 1 s). One page test timed out once while the full pipeline saturated the CPU. No assertion was changed.
+- **Known gaps:** the step-up dialog only accepts a TOTP code (password step-up is supported by the client but not by the dialog yet); transaction filters are client-side over the newest 200 rows.

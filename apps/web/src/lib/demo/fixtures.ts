@@ -15,7 +15,6 @@ import type {
   Session,
   TaxRate,
   UserSettings,
-  Watchlist,
 } from '../api/types';
 import { daysAgo } from './ledger';
 
@@ -90,17 +89,24 @@ export function seedConnections(): BrokerConnection[] {
   ];
 }
 
-export function seedWatchlists(): Watchlist[] {
+export function seedWatchlists(): { id: string; name: string; createdAt: string; symbols: string[] }[] {
   return [
     {
       id: 'wl-core',
       name: 'Core holdings',
+      createdAt: `${daysAgo(90)}T04:00:00Z`,
       symbols: ['OGDC', 'HUBC', 'MCB', 'ENGRO', 'LUCK', 'MEBL', 'FFC', 'PSO', 'MARI', 'SYS'],
     },
-    { id: 'wl-banks', name: 'Banks', symbols: ['MCB', 'UBL', 'MEBL', 'HBL', 'BAFL', 'NBP'] },
+    {
+      id: 'wl-banks',
+      name: 'Banks',
+      createdAt: `${daysAgo(60)}T04:00:00Z`,
+      symbols: ['MCB', 'UBL', 'MEBL', 'HBL', 'BAFL', 'NBP'],
+    },
     {
       id: 'wl-energy',
       name: 'Energy',
+      createdAt: `${daysAgo(30)}T04:00:00Z`,
       symbols: ['OGDC', 'PPL', 'MARI', 'POL', 'PSO', 'SNGP', 'HUBC', 'KEL'],
     },
   ];
@@ -515,57 +521,58 @@ export function seedTaxRates(): TaxRate[] {
 }
 
 export function seedProviders(): MarketProvider[] {
+  const checkedAt = `${daysAgo(0)}T04:00:00Z`;
   return [
     {
       key: 'simulated',
-      name: 'Simulated provider',
+      displayName: 'Simulated provider',
       source: 'SIMULATED',
+      enabled: true,
       active: true,
-      available: true,
-      delayMinutes: 0,
-      health: 'OK',
+      disabledReason: null,
       capabilities: {
         quotes: true,
         intradayBars: true,
         eodBars: true,
         corporateActions: false,
         streaming: true,
+        delayMinutes: 0,
       },
-      note: 'Seeded synthetic prices. Live trading refuses these prices.',
+      health: { ok: true, checkedAt, message: 'Synthetic data — every value is SIMULATED' },
     },
     {
       key: 'csv-eod',
-      name: 'CSV end-of-day import',
+      displayName: 'CSV end-of-day import',
       source: 'USER_REPORTED',
+      enabled: true,
       active: false,
-      available: true,
-      delayMinutes: 1440,
-      health: 'NOT_CONFIGURED',
+      disabledReason: null,
       capabilities: {
         quotes: false,
         intradayBars: false,
         eodBars: true,
         corporateActions: false,
         streaming: false,
+        delayMinutes: 1440,
       },
-      note: 'Import EOD files you hold a licence to use.',
+      health: { ok: true, checkedAt, message: 'Import EOD files you hold a licence to use.' },
     },
     {
       key: 'capitalstake',
-      name: 'Capital Stake',
+      displayName: 'Capital Stake',
       source: 'PROVIDER',
+      enabled: false,
       active: false,
-      available: false,
-      delayMinutes: 0,
-      health: 'NOT_CONFIGURED',
+      disabledReason: 'Adapter scaffolded but disabled: needs your subscription and API key.',
       capabilities: {
         quotes: true,
         intradayBars: true,
         eodBars: true,
         corporateActions: true,
         streaming: true,
+        delayMinutes: 0,
       },
-      note: 'Adapter scaffolded but disabled: needs your subscription and API key.',
+      health: null,
     },
   ];
 }

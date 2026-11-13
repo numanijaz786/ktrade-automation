@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowLeftRight,
   Banknote,
   Bell,
@@ -16,6 +17,7 @@ import {
   Settings,
   ShoppingCart,
   Sparkles,
+  Star,
   Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -48,7 +50,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/trade', label: 'Buy / Sell', icon: ShoppingCart },
       { href: '/orders', label: 'Orders', icon: ListChecks },
       { href: '/paper', label: 'Paper trading', icon: ArrowLeftRight },
-      { href: '/market', label: 'Market watch', icon: CandlestickChart },
+      { href: '/market/overview', label: 'Market overview', icon: Activity },
+      { href: '/market', label: 'Stock explorer', icon: CandlestickChart },
+      { href: '/watchlists', label: 'Watchlists', icon: Star },
     ],
   },
   {
@@ -76,10 +80,15 @@ export const MOBILE_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/holdings', label: 'Holdings', icon: Wallet },
   { href: '/trade', label: 'Trade', icon: ShoppingCart },
-  { href: '/market', label: 'Market', icon: ChartNoAxesCombined },
+  { href: '/market/overview', label: 'Market', icon: ChartNoAxesCombined },
 ];
+
+/** Exact match for `/market` so it is not highlighted together with `/market/overview`. */
+const EXACT = new Set(['/market']);
 
 export function isActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
+  if (EXACT.has(href))
+    return pathname === href || (pathname.startsWith(`${href}/`) && pathname !== '/market/overview');
   return pathname === href || pathname.startsWith(`${href}/`);
 }

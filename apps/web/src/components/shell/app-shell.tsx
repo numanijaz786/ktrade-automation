@@ -2,13 +2,17 @@
 
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { Bell, LogOut } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useApiClient } from '@/lib/api/client';
+import { errorMessage } from '@/lib/api/errors';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useMediaQuery } from '@/hooks/use-now';
-import { useNotifications } from '@/lib/api/hooks';
+import { useLogout, useMe, useNotifications } from '@/lib/api/hooks';
 import { useActivePortfolio } from '@/lib/portfolio-context';
 import { AppSidebar } from './app-sidebar';
 import { GlobalBanners } from './global-banners';
@@ -53,6 +57,32 @@ function NotificationsButton() {
   );
 }
 
+/** API mode: who is signed in, and sign-out (clears the httpOnly session cookies via the BFF). */
+function SessionButton() {
+  const api = useApiClient();
+  const me = useMe();
+  const logout = useLogout();
+  const router = useRouter();
+  if (api.kind !== 'http' || !me.data) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={logout.isPending}
+      onClick={() =>
+        logout.mutate(undefined, {
+          onSuccess: () => router.replace('/login'),
+          onError: (e) => toast.error(errorMessage(e)),
+        })
+      }
+      aria-label={`Sign out ${me.data.displayName}`}
+    >
+      <LogOut aria-hidden="true" />
+      <span className="hidden sm:inline">Sign out</span>
+    </Button>
+  );
+}
+
 /**
  * Responsive shell: full sidebar ≥ xl, collapsible icon rail on tablets, bottom nav on phones
  * (the sidebar becomes a sheet behind “More”).
@@ -80,6 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <PortfolioSwitcher />
               <NotificationsButton />
               <ThemeToggle />
+              <SessionButton />
             </div>
           </div>
           <GlobalBanners />

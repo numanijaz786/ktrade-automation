@@ -25,7 +25,7 @@ _Status as of 2026-11-14. Design: [docs/04](docs/04-security-and-credential-mana
 
 ## Open items (before any public deployment)
 
-1. **BFF and CSRF for the web app:** the browser currently runs only the demo client. The real-API client must go through a server-side BFF (httpOnly cookies, CSRF token) before going live.
+1. ~~BFF and CSRF for the web app~~: **done** (ADR-026): httpOnly session cookies, double-submit CSRF + Origin check, no tokens in browser-visible bodies, refresh-once with a shared refresh.
 2. **Credential vault endpoints** (write-only secrets) and **"destroy all"**: designed, not yet built.
 3. **TLS and Nginx, production secrets** (OS keychain / secret manager), **backups**: Phase 12.
 4. **Rate-limit store** must move to Redis before running more than one API instance.

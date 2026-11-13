@@ -60,7 +60,7 @@ describe('DemoApiClient data', () => {
       expect(typeof h.marketValue).toBe('string');
       expect(h.marketValue).toMatch(/^-?\d+\.\d{2}$/);
     }
-    const weights = Dec.sum(holdings.map((h) => h.weight));
+    const weights = Dec.sum(holdings.map((h) => h.weight!));
     expect(weights.round(3).toString()).toBe('1');
   });
 
@@ -136,7 +136,7 @@ describe('order preview → approval → manual ticket → fill', () => {
     expect(order.previewExpiresAt).toBe('2026-11-13T07:20:00.000Z');
 
     await expect(
-      c.orders.approve(order.id, { previewHash: order.previewHash, stepUpToken: 'nope' }),
+      c.orders.approve(order.id, { previewHash: order.previewHash!, stepUpToken: 'nope' }),
     ).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' });
     await expect(c.auth.stepUp('000000')).rejects.toBeInstanceOf(ApiError);
     const { token } = await c.auth.stepUp('123456');
@@ -144,7 +144,10 @@ describe('order preview → approval → manual ticket → fill', () => {
       c.orders.approve(order.id, { previewHash: 'sha256:wrong', stepUpToken: token }),
     ).rejects.toMatchObject({ code: 'PREVIEW_MISMATCH' });
 
-    const approved = await c.orders.approve(order.id, { previewHash: order.previewHash, stepUpToken: token });
+    const approved = await c.orders.approve(order.id, {
+      previewHash: order.previewHash!,
+      stepUpToken: token,
+    });
     expect(approved.status).toBe('AWAITING_MANUAL_PLACEMENT');
     expect(approved.filledQuantity).toBe('0');
     expect(approved.executions).toHaveLength(0);
@@ -201,7 +204,7 @@ describe('order preview → approval → manual ticket → fill', () => {
     now += 6 * 60 * 1000;
     const { token } = await c.auth.stepUp('123456');
     await expect(
-      c.orders.approve(o.id, { previewHash: o.previewHash, stepUpToken: token }),
+      c.orders.approve(o.id, { previewHash: o.previewHash!, stepUpToken: token }),
     ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
   });
 
@@ -216,7 +219,7 @@ describe('order preview → approval → manual ticket → fill', () => {
       origin: 'MANUAL',
     });
     const { token } = await c.auth.stepUp('654321');
-    const done = await c.orders.approve(o.id, { previewHash: o.previewHash, stepUpToken: token });
+    const done = await c.orders.approve(o.id, { previewHash: o.previewHash!, stepUpToken: token });
     expect(done.status).toBe('FILLED');
     expect(done.executions[0].source).toBe('SIMULATED');
   });

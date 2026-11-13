@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { FlaskConical, Hand, Power, PowerOff } from 'lucide-react';
+import { FlaskConical, Hand, MonitorSmartphone, Power, PowerOff, Server } from 'lucide-react';
+import { useApiClient } from '@/lib/api/client';
 import { useDataMode, useKillSwitch } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
@@ -10,12 +11,39 @@ import { cn } from '@/lib/utils';
  * Each item carries an icon + text so meaning never depends on colour.
  */
 export function GlobalBanners() {
+  const api = useApiClient();
   const { data: mode } = useDataMode();
   const { data: ks } = useKillSwitch();
   const simulated = !mode || mode.priceSource === 'SIMULATED';
+  const simulatedNote =
+    api.kind === 'http'
+      ? ' — the backend provider is synthetic, not real market prices'
+      : ' — demo data, not real market prices';
   return (
     <div role="region" aria-label="Trading status" className="border-b bg-muted/40 text-xs">
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5 lg:px-6">
+        <li className="inline-flex items-center gap-1.5 font-medium" data-testid="data-mode">
+          {api.kind === 'http' ? (
+            <>
+              <Server className="size-3.5" aria-hidden="true" />
+              <span>
+                Mode: API
+                <span className="font-normal text-muted-foreground"> — data from your backend</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <MonitorSmartphone className="size-3.5" aria-hidden="true" />
+              <span>
+                Mode: DEMO
+                <span className="font-normal text-muted-foreground">
+                  {' '}
+                  — in-browser sample data, nothing is saved
+                </span>
+              </span>
+            </>
+          )}
+        </li>
         <li
           className={cn(
             'inline-flex items-center gap-1.5 font-medium',
@@ -25,9 +53,7 @@ export function GlobalBanners() {
           <FlaskConical className="size-3.5" aria-hidden="true" />
           <span>
             Prices: {mode ? mode.priceSource : 'SIMULATED'}
-            {simulated && (
-              <span className="font-normal text-muted-foreground"> — demo data, not real market prices</span>
-            )}
+            {simulated && <span className="font-normal text-muted-foreground">{simulatedNote}</span>}
             {mode && mode.delayMinutes > 0 && ` (${mode.delayMinutes} min delay)`}
           </span>
         </li>

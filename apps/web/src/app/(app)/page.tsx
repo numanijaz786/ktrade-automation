@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 
 export default function Home() {
-  redirect('/dashboard');
+  // The dashboard page is not built yet; the market overview is the first page on real data.
+  redirect('/market/overview');
 }

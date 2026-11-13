@@ -61,7 +61,7 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] MarketDataService + controllers: overview, stocks (search/sector/pagination), details (52w, avg volume, provenance), quotes (persisted to `stock_quotes`), candles, sectors, movers, providers (🔐 switch), EOD price import; quote ticker (`MARKET_DATA_TICKER`)
 - [x] Watchlists API (CRUD, idempotent add, per-user isolation, limits)
 - [x] Integration test (8) incl. paper-order preview priced from persisted quotes and "real beats simulated"
-- [ ] Frontend: market overview, stock explorer/details, watchlists pages wired to the real API (see Frontend: BFF + HttpApiClient)
+- [x] Frontend: market overview, stock explorer/details, watchlists on the real API
 - [ ] WebSocket gateway (`quote`, `order.updated`, `notification`)
 - [ ] ⛔ Live/delayed data: owner chooses and pays for a licensed vendor
 
@@ -98,7 +98,10 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Data layer (ApiClient + DemoApiClient + hooks), app shell, nav, banners, provenance badge, shared components, tests (26)
 - [ ] 19 pages (priority: Dashboard, Holdings, Buy/Sell flow, Market Watch, Stock Details, Strategies, Backtesting, KTrade Integration; then the rest)
 - [ ] Replace `lib/decimal.ts`, `lib/fees.ts`, `lib/indicators.ts` with `@ktrade/finance-core` (remove duplication)
-- [ ] **NEXT: Next BFF route handlers (httpOnly cookies, CSRF) + `HttpApiClient` + login/register pages**: the web app currently runs only on the demo client, so no real API data reaches the browser. Then wire market overview / explorer / stock details / watchlists / integration pages to it
+- [x] BFF route handlers (httpOnly cookies, CSRF, refresh-once), HttpApiClient (NOT_AVAILABLE for unbuilt features, no demo fallback), login/register (ADR-026)
+- [x] Real-data pages: market overview, explorer, stock details (candles), watchlists, KTrade integration (account + imports)
+- [ ] Step-up dialog: password option when TOTP is not enabled
+- [ ] Dashboard, holdings, orders/buy-sell, transactions pages on the real API
 
 ## Repo hygiene
 

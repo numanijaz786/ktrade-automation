@@ -5,7 +5,13 @@
  * Query keys are namespaced per endpoint group so mutations can invalidate precisely.
  */
 import { useEffect } from 'react';
-import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+} from '@tanstack/react-query';
 import { useApiClient } from './client';
 import type {
   BacktestRequest,
@@ -19,6 +25,7 @@ import type {
   Quote,
   QuoteTick,
   RiskLimits,
+  StockQuery,
   StrategyInput,
   TransactionFilters,
   UserSettings,
@@ -40,6 +47,8 @@ export const qk = {
   orders: (f: OrderFilters) => ['orders', 'list', f] as const,
   order: (id: string) => ['orders', 'one', id] as const,
   riskLimits: (pf: string) => ['orders', 'riskLimits', pf] as const,
+  overview: ['market', 'overview'] as const,
+  sectors: ['market', 'sectors'] as const,
   stocks: (q: object) => ['market', 'stocks', q] as const,
   stock: (s: string) => ['market', 'stock', s] as const,
   quotes: (symbols: readonly string[] | 'all') => ['market', 'quotes', symbols] as const,
@@ -74,6 +83,8 @@ export const qk = {
 
 /** Portfolio-derived figures move with prices; refresh them on a modest cadence. */
 const LIVE_REFRESH_MS = 15_000;
+/** The API refreshes quotes at most every 10 s; polling faster only repeats the same snapshot. */
+const MARKET_REFRESH_MS = 15_000;
 
 // ─── system & auth ─────────────────────────────────────────────────────────
 
@@ -289,14 +300,37 @@ export function useUpdateRiskLimits() {
 
 // ─── market ────────────────────────────────────────────────────────────────
 
-export function useStocks(q: { search?: string; sector?: string } = {}) {
+export function useMarketOverview() {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.stocks(q), queryFn: () => api.market.stocks(q), staleTime: 5 * 60_000 });
+  return useQuery({
+    queryKey: qk.overview,
+    queryFn: () => api.market.overview(),
+    refetchInterval: MARKET_REFRESH_MS,
+  });
+}
+
+export function useSectors() {
+  const api = useApiClient();
+  return useQuery({ queryKey: qk.sectors, queryFn: () => api.market.sectors(), staleTime: 60_000 });
+}
+
+export function useStocks(q: StockQuery = {}) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: qk.stocks(q),
+    queryFn: () => api.market.stocks(q),
+    placeholderData: keepPreviousData,
+    refetchInterval: MARKET_REFRESH_MS,
+  });
 }
 
 export function useStock(symbol: string) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.stock(symbol), queryFn: () => api.market.stock(symbol) });
+  return useQuery({
+    queryKey: qk.stock(symbol),
+    queryFn: () => api.market.stock(symbol),
+    refetchInterval: MARKET_REFRESH_MS,
+  });
 }
 
 export function useQuotes(symbols?: readonly string[]) {
@@ -307,9 +341,14 @@ export function useQuotes(symbols?: readonly string[]) {
   });
 }
 
-export function useCandles(symbol: string) {
+/** Daily candles from `from` (YYYY-MM-DD) to today; the API defaults to ~6 months. */
+export function useCandles(symbol: string, from?: string) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.candles(symbol), queryFn: () => api.market.candles(symbol) });
+  return useQuery({
+    queryKey: [...qk.candles(symbol), from ?? 'default'],
+    queryFn: () => api.market.candles(symbol, from ? { from } : {}),
+    staleTime: 60_000,
+  });
 }
 
 export function useMovers(type: MoverType) {
@@ -328,7 +367,11 @@ export function useProviders() {
 
 export function useWatchlists() {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.watchlists, queryFn: () => api.market.watchlists() });
+  return useQuery({
+    queryKey: qk.watchlists,
+    queryFn: () => api.market.watchlists(),
+    refetchInterval: MARKET_REFRESH_MS,
+  });
 }
 
 export function useWatchlistMutations() {
@@ -336,12 +379,23 @@ export function useWatchlistMutations() {
   const qc = useQueryClient();
   const done = () => qc.invalidateQueries({ queryKey: qk.watchlists });
   return {
-    create: useMutation({ mutationFn: (name: string) => api.market.createWatchlist(name), onSuccess: done }),
-    add: useMutation({
-      mutationFn: (v: { id: string; symbol: string }) => api.market.addToWatchlist(v.id, v.symbol),
+    create: useMutation({
+      mutationFn: (v: { name: string; symbols?: string[] }) => api.market.createWatchlist(v.name, v.symbols),
+      onSuccess: done,
+    }),
+    rename: useMutation({
+      mutationFn: (v: { id: string; name: string }) => api.market.renameWatchlist(v.id, v.name),
       onSuccess: done,
     }),
     remove: useMutation({
+      mutationFn: (id: string) => api.market.deleteWatchlist(id),
+      onSuccess: done,
+    }),
+    addSymbol: useMutation({
+      mutationFn: (v: { id: string; symbol: string }) => api.market.addToWatchlist(v.id, v.symbol),
+      onSuccess: done,
+    }),
+    removeSymbol: useMutation({
       mutationFn: (v: { id: string; symbol: string }) => api.market.removeFromWatchlist(v.id, v.symbol),
       onSuccess: done,
     }),
@@ -360,6 +414,7 @@ function applyTick(q: Quote, t: QuoteTick): Quote {
     asOf: t.asOf,
     source: t.source,
     delayMinutes: t.delayMinutes,
+    stale: t.stale ?? q.stale,
   };
 }
 
@@ -543,6 +598,19 @@ export function useSendAssistant() {
 export function useConnections() {
   const api = useApiClient();
   return useQuery({ queryKey: qk.connections, queryFn: () => api.broker.connections() });
+}
+
+export function useRegisterBrokerAccount() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { displayName: string; clientCodeLast4?: string; portfolioName?: string }) =>
+      api.broker.registerAccount(v),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['broker'] });
+      void qc.invalidateQueries({ queryKey: qk.portfolios });
+    },
+  });
 }
 
 export function useImports() {

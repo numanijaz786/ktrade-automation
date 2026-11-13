@@ -1,0 +1,477 @@
+/**
+ * `ApiClient` over the Next.js BFF (`/bff/*`). The browser never sees an access or refresh token:
+ * both live in httpOnly cookies that only the BFF reads. Every non-GET call carries the double-submit
+ * CSRF header. Groups without a backend yet reject with `NOT_AVAILABLE` and never fall back to demo data.
+ */
+import type { ApiClient } from './client';
+import { ApiError, notAvailable } from './errors';
+import {
+  type ApiBrokerAccount,
+  type ApiCandles,
+  type ApiHolding,
+  type ApiOrder,
+  type ApiOverview,
+  type ApiPortfolio,
+  type ApiQuote,
+  type ApiRiskLimits,
+  type ApiSession,
+  type ApiStockDetail,
+  type ApiStockPage,
+  type ApiSummary,
+  type ApiTransaction,
+  type ApiUser,
+  type ApiWatchlist,
+  ledgerSourceOf,
+  mapCandles,
+  mapConnections,
+  mapHolding,
+  mapImportRow,
+  mapOrder,
+  mapOverview,
+  mapPortfolio,
+  mapQuote,
+  mapRiskLimits,
+  mapSession,
+  mapStepUp,
+  mapStockDetail,
+  mapStockPage,
+  mapSummary,
+  mapTransaction,
+  mapUser,
+  mapWatchlist,
+  problemToApiError,
+  toApiRiskLimits,
+} from './http/mappers';
+import type { DataMode, ImportBatch, ImportRow, MarketProvider, Order, QuoteTick } from './types';
+
+export const CSRF_COOKIE = 'ktrade_csrf';
+export const CSRF_HEADER = 'x-csrf-token';
+export const STEP_UP_HEADER = 'X-Step-Up-Token';
+/** The API has no realtime gateway yet, so quote "streaming" polls at the server's refresh cadence. */
+export const QUOTE_POLL_MS = 15_000;
+
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type Query = Record<string, string | number | undefined>;
+
+interface RequestOptions {
+  query?: Query;
+  body?: unknown;
+  stepUpToken?: string;
+  idempotencyKey?: string;
+}
+
+export interface HttpApiClientOptions {
+  /** BFF mount point. Default `/bff`. */
+  basePath?: string;
+  fetch?: typeof fetch;
+  /** Reads `document.cookie` by default (only the non-httpOnly CSRF cookie is visible there). */
+  readCookie?: (name: string) => string | undefined;
+  now?: () => number;
+  /** Called when the BFF reports the session is gone (refresh failed). */
+  onUnauthenticated?: () => void;
+  pollMs?: number;
+}
+
+function documentCookie(name: string): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  for (const part of document.cookie.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return decodeURIComponent(v.join('='));
+  }
+  return undefined;
+}
+
+const seg = (v: string) => encodeURIComponent(v);
+const rejectNA = <T>(): Promise<T> => Promise.reject(notAvailable());
+
+export class HttpApiClient implements ApiClient {
+  readonly kind = 'http' as const;
+  private readonly base: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly readCookie: (name: string) => string | undefined;
+  private readonly now: () => number;
+  private readonly onUnauthenticated?: () => void;
+  private readonly pollMs: number;
+
+  constructor(opts: HttpApiClientOptions = {}) {
+    this.base = (opts.basePath ?? '/bff').replace(/\/$/, '');
+    this.fetchImpl = opts.fetch ?? ((...args) => globalThis.fetch(...args));
+    this.readCookie = opts.readCookie ?? documentCookie;
+    this.now = opts.now ?? Date.now;
+    this.onUnauthenticated = opts.onUnauthenticated;
+    this.pollMs = opts.pollMs ?? QUOTE_POLL_MS;
+  }
+
+  // ─── transport ───────────────────────────────────────────────────────────
+
+  /** The CSRF cookie is issued by `GET /bff/auth/me`; fetch it once if this tab has none yet. */
+  private async csrfToken(): Promise<string> {
+    let token = this.readCookie(CSRF_COOKIE);
+    if (!token) {
+      await this.fetchImpl(`${this.base}/auth/me`, { credentials: 'same-origin', cache: 'no-store' }).catch(
+        () => undefined,
+      );
+      token = this.readCookie(CSRF_COOKIE);
+    }
+    if (!token)
+      throw new ApiError('CSRF_FAILED', 403, 'Security check failed', 'Reload the page and try again.');
+    return token;
+  }
+
+  async request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(opts.query ?? {}))
+      if (v !== undefined && v !== '') qs.set(k, String(v));
+    const search = qs.toString();
+    const url = `${this.base}/${path}${search ? `?${search}` : ''}`;
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    if (method !== 'GET') headers[CSRF_HEADER] = await this.csrfToken();
+    if (opts.stepUpToken) headers[STEP_UP_HEADER] = opts.stepUpToken;
+    if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
+
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+    } catch {
+      throw new ApiError('NETWORK_ERROR', 0, 'Network error', 'Could not reach the server.');
+    }
+    if (res.status === 204) return undefined as T;
+    const text = await res.text();
+    let body: unknown = undefined;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        if (res.ok) throw new ApiError('BAD_RESPONSE', res.status, 'Unexpected response', 'Invalid JSON');
+      }
+    }
+    if (!res.ok) {
+      const err = problemToApiError(res.status, body);
+      if (res.status === 401 && !path.startsWith('auth/')) this.onUnauthenticated?.();
+      throw err;
+    }
+    return body as T;
+  }
+
+  private get<T>(path: string, query?: Query) {
+    return this.request<T>('GET', path, { query });
+  }
+
+  // ─── groups ──────────────────────────────────────────────────────────────
+
+  auth: ApiClient['auth'] = {
+    login: async (req) => {
+      try {
+        const r = await this.request<{ user: ApiUser }>('POST', 'auth/login', {
+          body: {
+            email: req.email,
+            password: req.password,
+            ...(req.totpCode ? { totpCode: req.totpCode } : {}),
+          },
+        });
+        return { user: mapUser(r.user), totpRequired: false as const };
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'TOTP_REQUIRED') return { totpRequired: true as const };
+        throw e;
+      }
+    },
+    register: async (req) => {
+      const r = await this.request<{ user: ApiUser }>('POST', 'auth/register', {
+        body: { email: req.email, password: req.password, displayName: req.displayName },
+      });
+      return mapUser(r.user);
+    },
+    logout: async () => {
+      await this.request<void>('POST', 'auth/logout');
+    },
+    me: async () => {
+      try {
+        return mapUser(await this.get<ApiUser>('auth/me'));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return null;
+        throw e;
+      }
+    },
+    // The API accepts a TOTP code, or the password when TOTP is not enabled.
+    stepUp: async (proof) => {
+      const body = /^\d{6}$/.test(proof) ? { totpCode: proof } : { password: proof };
+      const r = await this.request<{ stepUpToken: string; expiresIn: number }>('POST', 'auth/step-up', {
+        body,
+      });
+      return mapStepUp(r, this.now());
+    },
+  };
+
+  system: ApiClient['system'] = {
+    dataMode: async (): Promise<DataMode> => {
+      const providers = await this.market.providers();
+      const active = providers.find((p) => p.active);
+      if (!active) throw new ApiError('BAD_RESPONSE', 502, 'No active market-data provider');
+      return {
+        priceSource: active.source,
+        providerKey: active.key,
+        delayMinutes: active.capabilities.delayMinutes,
+        liveExecution: 'MANUAL',
+        demo: false,
+      };
+    },
+    killSwitch: () => this.get<{ liveTradingEnabled: boolean }>('admin/kill-switch'),
+    setKillSwitch: ({ liveTradingEnabled, reason, stepUpToken }) =>
+      this.request('PUT', 'admin/kill-switch', { body: { liveTradingEnabled, reason }, stepUpToken }),
+  };
+
+  dashboard: ApiClient['dashboard'] = {
+    summary: async (pf) => mapSummary(await this.get<ApiSummary>('dashboard/summary', { portfolioId: pf })),
+    charts: () => rejectNA(),
+  };
+
+  portfolios: ApiClient['portfolios'] = {
+    list: async () => (await this.get<ApiPortfolio[]>('portfolios')).map(mapPortfolio),
+    holdings: async (pf) => {
+      const [portfolios, rows] = await Promise.all([
+        this.get<ApiPortfolio[]>('portfolios'),
+        this.get<ApiHolding[]>(`portfolios/${seg(pf)}/holdings`),
+      ]);
+      const source = ledgerSourceOf(portfolios.find((p) => p.id === pf)?.kind);
+      return rows.map((h) => mapHolding(h, source));
+    },
+    holding: () => rejectNA(),
+    // The API pages by cursor and has no filters yet: fetch the newest 200 and filter here.
+    transactions: async (pf, f = {}) => {
+      const page = await this.get<{ data: ApiTransaction[] }>(`portfolios/${seg(pf)}/transactions`, {
+        limit: 200,
+      });
+      return page.data
+        .map((t) => mapTransaction(t, pf))
+        .filter(
+          (t) =>
+            (!f.symbol || t.symbol === f.symbol) &&
+            (!f.type || t.type === f.type) &&
+            (!f.from || t.tradeDate >= f.from) &&
+            (!f.to || t.tradeDate <= f.to),
+        );
+    },
+    cashMovements: () => rejectNA(),
+    resetPaper: () => rejectNA(),
+  };
+
+  orders: ApiClient['orders'] = {
+    preview: async (req) =>
+      mapOrder(
+        await this.request<ApiOrder>('POST', 'orders/preview', {
+          idempotencyKey: crypto.randomUUID(),
+          body: {
+            portfolioId: req.portfolioId,
+            symbol: req.symbol,
+            side: req.side,
+            type: req.type,
+            quantity: req.quantity,
+            ...(req.limitPrice ? { limitPrice: req.limitPrice } : {}),
+            ...(req.stopPrice ? { stopPrice: req.stopPrice } : {}),
+            origin: req.origin,
+          },
+        }),
+      ),
+    approve: async (id, { previewHash, stepUpToken }) =>
+      mapOrder(
+        await this.request<ApiOrder>('POST', `orders/${seg(id)}/approve`, {
+          body: { previewHash },
+          stepUpToken,
+        }),
+      ),
+    markPlaced: async (id, { brokerOrderRef }) =>
+      mapOrder(
+        await this.request<ApiOrder>('POST', `orders/${seg(id)}/mark-placed`, {
+          body: brokerOrderRef ? { brokerOrderRef } : {},
+        }),
+      ),
+    recordFill: async (id, fill) =>
+      mapOrder(await this.request<ApiOrder>('POST', `orders/${seg(id)}/fills`, { body: fill })),
+    cancel: async (id) => mapOrder(await this.request<ApiOrder>('POST', `orders/${seg(id)}/cancel`)),
+    list: async (f = {}) => {
+      const page = await this.get<{ data: ApiOrder[] }>('orders', { status: f.status, limit: 100 });
+      return page.data
+        .map(mapOrder)
+        .filter((o: Order) => (!f.mode || o.mode === f.mode) && (!f.symbol || o.symbol === f.symbol));
+    },
+    get: async (id) => mapOrder(await this.get<ApiOrder>(`orders/${seg(id)}`)),
+    feeEstimate: () => rejectNA(),
+    riskLimits: async (pf) => {
+      const r = await this.get<ApiRiskLimits | null>(`portfolios/${seg(pf)}/risk-limits`);
+      return r ? mapRiskLimits(r, pf) : null;
+    },
+    updateRiskLimits: async (limits, stepUpToken) =>
+      mapRiskLimits(
+        await this.request<ApiRiskLimits>('PUT', `portfolios/${seg(limits.portfolioId)}/risk-limits`, {
+          body: toApiRiskLimits(limits),
+          stepUpToken,
+        }),
+        limits.portfolioId,
+      ),
+  };
+
+  market: ApiClient['market'] = {
+    overview: async () => mapOverview(await this.get<ApiOverview>('market/overview')),
+    stocks: async (q = {}) =>
+      mapStockPage(
+        await this.get<ApiStockPage>('market/stocks', {
+          search: q.search?.trim() || undefined,
+          sector: q.sector || undefined,
+          limit: q.limit,
+          offset: q.offset,
+        }),
+      ),
+    stock: async (symbol) => mapStockDetail(await this.get<ApiStockDetail>(`market/stocks/${seg(symbol)}`)),
+    sectors: () => this.get('market/sectors'),
+    quotes: async (symbols) =>
+      (
+        await this.get<ApiQuote[]>('market/quotes', {
+          symbols: symbols?.length ? symbols.join(',') : undefined,
+        })
+      ).map(mapQuote),
+    candles: async (symbol, q = {}) =>
+      mapCandles(await this.get<ApiCandles>(`market/candles/${seg(symbol)}`, { interval: 'D1', ...q })),
+    movers: async (type, limit = 10) =>
+      (await this.get<ApiQuote[]>('market/movers', { type, limit })).map(mapQuote),
+    providers: () => this.get<MarketProvider[]>('market/providers'),
+    watchlists: async () => (await this.get<ApiWatchlist[]>('watchlists')).map(mapWatchlist),
+    createWatchlist: async (name, symbols = []) =>
+      mapWatchlist(await this.request<ApiWatchlist>('POST', 'watchlists', { body: { name, symbols } })),
+    renameWatchlist: async (id, name) =>
+      mapWatchlist(await this.request<ApiWatchlist>('PATCH', `watchlists/${seg(id)}`, { body: { name } })),
+    deleteWatchlist: async (id) => {
+      await this.request<void>('DELETE', `watchlists/${seg(id)}`);
+    },
+    addToWatchlist: async (id, symbol) =>
+      mapWatchlist(
+        await this.request<ApiWatchlist>('POST', `watchlists/${seg(id)}/stocks`, { body: { symbol } }),
+      ),
+    removeFromWatchlist: async (id, symbol) =>
+      mapWatchlist(await this.request<ApiWatchlist>('DELETE', `watchlists/${seg(id)}/stocks/${seg(symbol)}`)),
+    subscribeQuotes: (symbols, onTick) => {
+      const wanted = [...new Set(symbols)].slice(0, 200);
+      if (!wanted.length) return () => undefined;
+      let stopped = false;
+      const poll = async () => {
+        try {
+          const quotes = await this.market.quotes(wanted);
+          if (stopped) return;
+          for (const q of quotes) {
+            const tick: QuoteTick = {
+              symbol: q.symbol,
+              last: q.last,
+              change: q.change,
+              changePct: q.changePct,
+              volume: q.volume,
+              asOf: q.asOf,
+              source: q.source,
+              delayMinutes: q.delayMinutes,
+              high: q.high,
+              low: q.low,
+              stale: q.stale,
+            };
+            onTick(tick);
+          }
+        } catch {
+          // A failed poll keeps the last known (timestamped) quote on screen; the next poll retries.
+        }
+      };
+      const timer = setInterval(() => void poll(), this.pollMs);
+      return () => {
+        stopped = true;
+        clearInterval(timer);
+      };
+    },
+  };
+
+  broker: ApiClient['broker'] = {
+    connections: async () => mapConnections(await this.get<ApiBrokerAccount[]>('broker/accounts')),
+    registerAccount: async ({ displayName, clientCodeLast4, portfolioName }) => {
+      await this.request<ApiBrokerAccount>('POST', 'broker/accounts', {
+        body: {
+          displayName,
+          ...(clientCodeLast4 ? { clientCodeLast4 } : {}),
+          ...(portfolioName ? { portfolioName } : {}),
+        },
+      });
+    },
+    imports: () => this.get<ImportBatch[]>('imports'),
+    importRows: async (id) => (await this.get<ImportRow[]>(`imports/${seg(id)}/rows`)).map(mapImportRow),
+    upload: ({ portfolioId, fileName, content, kind }) =>
+      this.request<ImportBatch>('POST', 'imports', {
+        body: { portfolioId, fileName, content, ...(kind ? { kind } : {}) },
+      }),
+    updateImportRow: (importId, rowId, action) =>
+      this.request<ImportBatch>('PATCH', `imports/${seg(importId)}/rows/${seg(rowId)}`, { body: { action } }),
+    commitImport: (id) => this.request<ImportBatch>('POST', `imports/${seg(id)}/commit`),
+    rejectImport: (id) => this.request<ImportBatch>('POST', `imports/${seg(id)}/reject`),
+    mailbox: () => rejectNA(),
+    discrepancies: () => rejectNA(),
+  };
+
+  security: ApiClient['security'] = {
+    overview: () => rejectNA(),
+    sessions: async () => (await this.get<ApiSession[]>('auth/sessions')).map(mapSession),
+    revokeSession: async (id) => {
+      await this.request<void>('DELETE', `auth/sessions/${seg(id)}`);
+    },
+    revokeAllSessions: async () => {
+      await this.request<{ revoked: number }>('DELETE', 'auth/sessions');
+    },
+    destroyAll: () => rejectNA(),
+  };
+
+  // ─── no backend yet: NOT_AVAILABLE (never demo data) ────────────────────
+
+  strategies: ApiClient['strategies'] = {
+    templates: () => rejectNA(),
+    list: () => rejectNA(),
+    create: () => rejectNA(),
+    setActive: () => rejectNA(),
+    signals: () => rejectNA(),
+    dismissSignal: () => rejectNA(),
+  };
+
+  backtests: ApiClient['backtests'] = {
+    run: () => rejectNA(),
+    list: () => rejectNA(),
+    get: () => rejectNA(),
+  };
+
+  dividends: ApiClient['dividends'] = { list: () => rejectNA() };
+
+  analytics: ApiClient['analytics'] = {
+    performance: () => rejectNA(),
+    realizedUnrealized: () => rejectNA(),
+    feesTaxes: () => rejectNA(),
+  };
+
+  reports: ApiClient['reports'] = { create: () => rejectNA(), list: () => rejectNA() };
+
+  notifications: ApiClient['notifications'] = {
+    list: () => rejectNA(),
+    markRead: () => rejectNA(),
+    markAllRead: () => rejectNA(),
+    alerts: () => rejectNA(),
+    setAlertActive: () => rejectNA(),
+  };
+
+  assistant: ApiClient['assistant'] = { history: () => rejectNA(), send: () => rejectNA() };
+
+  settings: ApiClient['settings'] = {
+    feeSchedules: () => rejectNA(),
+    taxRates: () => rejectNA(),
+    channels: () => rejectNA(),
+    updateChannel: () => rejectNA(),
+    testChannel: () => rejectNA(),
+    user: () => rejectNA(),
+    updateUser: () => rejectNA(),
+  };
+}

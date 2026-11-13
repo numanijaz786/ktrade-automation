@@ -1,4 +1,5 @@
 import { CandlestickChart } from 'lucide-react';
+import { DATA_MODE } from '@/lib/api/mode';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -11,8 +12,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </div>
       <div className="w-full max-w-sm">{children}</div>
       <p className="max-w-sm text-center text-xs text-muted-foreground">
-        Demo build: sign-in is simulated and no credentials leave your browser. Tokens are never stored in
-        localStorage; the real BFF uses httpOnly cookies.
+        {DATA_MODE === 'api'
+          ? 'Your session is kept in httpOnly cookies by this server; tokens never reach browser storage.'
+          : 'Demo mode: sign-in is simulated and nothing leaves your browser.'}
       </p>
     </main>
   );

@@ -10,11 +10,18 @@ import { GenericStatus } from '@/components/status-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ApiError } from '@/lib/api/errors';
-import { useConnections, useImportMutations, useImportRows, useImports } from '@/lib/api/hooks';
+import {
+  useConnections,
+  useImportMutations,
+  useImportRows,
+  useImports,
+  useRegisterBrokerAccount,
+} from '@/lib/api/hooks';
 import type { ImportBatch, ImportRow } from '@/lib/api/types';
 import { useActivePortfolio } from '@/lib/portfolio-context';
 
@@ -163,9 +170,12 @@ function ImportsSection() {
             <Alert>
               <Info className="size-4" />
               <AlertTitle>No live portfolio yet</AlertTitle>
-              <AlertDescription>
-                Register your KTrade account first. Imports go into a LIVE portfolio, never into paper
-                trading.
+              <AlertDescription className="space-y-3">
+                <p>
+                  Register your KTrade account first. Imports go into a LIVE portfolio, never into paper
+                  trading.
+                </p>
+                <RegisterAccountForm />
               </AlertDescription>
             </Alert>
           ) : (
@@ -420,5 +430,53 @@ function ImportReview({ batch, onClose }: { batch: ImportBatch | undefined; onCl
         </QueryState>
       </CardContent>
     </Card>
+  );
+}
+
+/** Registers the KTrade account anchor + LIVE portfolio. No credentials: at most the client code's last 4. */
+function RegisterAccountForm() {
+  const register = useRegisterBrokerAccount();
+  const [displayName, setDisplayName] = useState('KTrade');
+  const [last4, setLast4] = useState('');
+  const last4Valid = last4 === '' || /^[A-Za-z0-9]{4}$/.test(last4);
+  return (
+    <form
+      className="flex flex-wrap items-end gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!displayName.trim() || !last4Valid) return;
+        register.mutate(
+          { displayName: displayName.trim(), ...(last4 ? { clientCodeLast4: last4 } : {}) },
+          {
+            onSuccess: () => toast.success('KTrade account registered with a LIVE portfolio'),
+            onError: (err) => toast.error(errorText(err)),
+          },
+        );
+      }}
+    >
+      <div className="grid gap-1.5">
+        <Label htmlFor="broker-name">Account label</Label>
+        <Input
+          id="broker-name"
+          value={displayName}
+          maxLength={80}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="broker-last4">Client code, last 4 (optional)</Label>
+        <Input
+          id="broker-last4"
+          value={last4}
+          maxLength={4}
+          className="w-28"
+          aria-invalid={!last4Valid}
+          onChange={(e) => setLast4(e.target.value.trim())}
+        />
+      </div>
+      <Button type="submit" disabled={register.isPending || !displayName.trim() || !last4Valid}>
+        Register account
+      </Button>
+    </form>
   );
 }

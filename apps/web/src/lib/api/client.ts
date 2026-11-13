@@ -36,6 +36,7 @@ import type {
   LoginRequest,
   LoginResult,
   MailboxStatus,
+  MarketOverview,
   MarketProvider,
   MoverType,
   Notification,
@@ -54,10 +55,13 @@ import type {
   ReportType,
   RiskLimits,
   SecurityOverview,
+  SectorSummary,
   Session,
   Signal,
   StepUpToken,
-  Stock,
+  StockDetail,
+  StockPage,
+  StockQuery,
   Strategy,
   StrategyInput,
   StrategyTemplate,
@@ -112,22 +116,27 @@ export interface OrdersApi {
   list(filters?: OrderFilters): Promise<Order[]>;
   get(orderId: string): Promise<Order>;
   feeEstimate(q: FeeEstimateQuery): Promise<FeeEstimate>;
-  riskLimits(portfolioId: string): Promise<RiskLimits>;
+  /** null when the portfolio has no limits configured (the API then refuses to trade). */
+  riskLimits(portfolioId: string): Promise<RiskLimits | null>;
   updateRiskLimits(limits: RiskLimits, stepUpToken: string): Promise<RiskLimits>;
 }
 
 export interface MarketApi {
-  stocks(query?: { search?: string; sector?: string }): Promise<Stock[]>;
-  stock(symbol: string): Promise<Stock>;
+  overview(): Promise<MarketOverview>;
+  stocks(query?: StockQuery): Promise<StockPage>;
+  stock(symbol: string): Promise<StockDetail>;
+  sectors(): Promise<SectorSummary[]>;
   quotes(symbols?: string[]): Promise<Quote[]>;
   candles(symbol: string, query?: { from?: string; to?: string }): Promise<CandleSeries>;
   movers(type: MoverType, limit?: number): Promise<Quote[]>;
   providers(): Promise<MarketProvider[]>;
   watchlists(): Promise<Watchlist[]>;
-  createWatchlist(name: string): Promise<Watchlist>;
+  createWatchlist(name: string, symbols?: string[]): Promise<Watchlist>;
+  renameWatchlist(watchlistId: string, name: string): Promise<Watchlist>;
+  deleteWatchlist(watchlistId: string): Promise<void>;
   addToWatchlist(watchlistId: string, symbol: string): Promise<Watchlist>;
   removeFromWatchlist(watchlistId: string, symbol: string): Promise<Watchlist>;
-  /** Realtime `quote` events (Socket.IO `/realtime` in the HTTP client). */
+  /** Quote updates. The HTTP client polls `/market/quotes` (the API has no realtime gateway yet). */
   subscribeQuotes(symbols: string[], onTick: (tick: QuoteTick) => void): Unsubscribe;
 }
 
@@ -176,6 +185,15 @@ export interface AssistantApi {
 
 export interface BrokerApi {
   connections(): Promise<BrokerConnection[]>;
+  /**
+   * POST /broker/accounts — registers the KTrade account anchor + its LIVE portfolio. Never takes
+   * credentials; only the last 4 characters of the client code, optionally.
+   */
+  registerAccount(input: {
+    displayName: string;
+    clientCodeLast4?: string;
+    portfolioName?: string;
+  }): Promise<void>;
   imports(): Promise<ImportBatch[]>;
   importRows(importId: string): Promise<ImportRow[]>;
   /** POST /imports — `content` is the file text (UTF-8, ≤ 2 MB). Target must be a LIVE broker portfolio. */
@@ -186,7 +204,7 @@ export interface BrokerApi {
     kind?: ImportKind;
   }): Promise<ImportBatch>;
   /** PATCH /imports/:id/rows/:rowId — skip any row; include only rows flagged DUPLICATE (never INVALID). */
-  updateImportRow(importId: string, rowId: string, action: ImportRowAction): Promise<ImportRow>;
+  updateImportRow(importId: string, rowId: string, action: ImportRowAction): Promise<ImportBatch>;
   /** POST /imports/:id/commit — all-or-nothing; blocked while INVALID rows remain. */
   commitImport(importId: string): Promise<ImportBatch>;
   rejectImport(importId: string): Promise<ImportBatch>;
