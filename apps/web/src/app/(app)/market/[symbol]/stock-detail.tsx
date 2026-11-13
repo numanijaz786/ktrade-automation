@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Star } from 'lucide-react';
+import { ArrowLeft, BellPlus, Star } from 'lucide-react';
 import { toast } from 'sonner';
+import { AlertFormDialog } from '@/components/alert-form';
 import { CandleChart } from '@/components/candle-chart';
 import { PageHeader, Section } from '@/components/page-header';
 import { ProvenanceBadge } from '@/components/provenance-badge';
@@ -15,9 +16,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { errorMessage } from '@/lib/api/errors';
-import { useCandles, useStock, useWatchlistMutations, useWatchlists } from '@/lib/api/hooks';
+import { useCandles, useMe, useStock, useWatchlistMutations, useWatchlists } from '@/lib/api/hooks';
 import type { StockDetail } from '@/lib/api/types';
 import { formatNumber } from '@/lib/format';
+import { useActivePortfolio } from '@/lib/portfolio-context';
 
 const RANGES = [
   { key: '3M', days: 92 },
@@ -64,7 +66,12 @@ function Detail({ s }: { s: StockDetail }) {
             {s.faceValue && <span>Face value Rs {formatNumber(s.faceValue)}</span>}
           </span>
         }
-        actions={<AddToWatchlist symbol={s.symbol} />}
+        actions={
+          <>
+            <CreatePriceAlert symbol={s.symbol} />
+            <AddToWatchlist symbol={s.symbol} />
+          </>
+        }
       />
       <DataStamp source={q?.source} asOf={q?.asOf} stale={q?.stale} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -134,6 +141,29 @@ function Detail({ s }: { s: StockDetail }) {
           {(c) => <CandleChart symbol={s.symbol} candles={c.candles} />}
         </QueryState>
       </Section>
+    </>
+  );
+}
+
+/** Shortcut: a PRICE_ABOVE alert pre-filled with this symbol (type can be changed in the form). OWNER only. */
+function CreatePriceAlert({ symbol }: { symbol: string }) {
+  const me = useMe();
+  const { portfolios, portfolioId } = useActivePortfolio();
+  const [open, setOpen] = useState(false);
+  if (me.data?.role !== 'OWNER') return null;
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <BellPlus aria-hidden="true" /> Create price alert
+      </Button>
+      <AlertFormDialog
+        open={open}
+        onOpenChange={setOpen}
+        portfolios={portfolios}
+        defaultPortfolioId={portfolioId}
+        defaultType="PRICE_ABOVE"
+        defaultSymbol={symbol}
+      />
     </>
   );
 }

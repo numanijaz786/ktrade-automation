@@ -9,6 +9,9 @@ import { createContext, createElement, useContext, type ReactNode } from 'react'
 import type { ImportKind, SignalStatus } from '@ktrade/shared';
 import type {
   Alert,
+  AlertEvaluation,
+  AlertInput,
+  AlertUpdate,
   AssistantMessage,
   Backtest,
   BacktestCompareRequest,
@@ -43,13 +46,17 @@ import type {
   MarketProvider,
   MoverType,
   Notification,
+  NotificationPage,
+  NotificationQuery,
   Order,
   Paginated,
   OrderFilters,
   OrderPreviewRequest,
   PerformancePeriod,
+  PerformanceRange,
   PerformanceRow,
   Portfolio,
+  PortfolioPerformance,
   Quote,
   QuoteTick,
   RealizedUnrealized,
@@ -62,6 +69,7 @@ import type {
   SectorSummary,
   Session,
   Signal,
+  SnapshotBackfillResult,
   StepUpProof,
   StepUpToken,
   StockDetail,
@@ -105,6 +113,10 @@ export interface SystemApi {
 export interface DashboardApi {
   summary(portfolioId: string): Promise<DashboardSummary>;
   charts(portfolioId: string, range: ChartRange): Promise<DashboardCharts>;
+  /** GET /portfolios/:id/performance?range= — snapshot-backed value series, TWR, drawdown, monthly P&L. */
+  performance(portfolioId: string, range: PerformanceRange): Promise<PortfolioPerformance>;
+  /** POST /portfolios/:id/snapshots/backfill (OWNER) — rebuild daily close snapshots; idempotent. */
+  backfillSnapshots(portfolioId: string): Promise<SnapshotBackfillResult>;
 }
 
 export interface PortfoliosApi {
@@ -189,12 +201,20 @@ export interface ReportsApi {
   list(): Promise<Report[]>;
 }
 
+/** The in-app inbox (EMAIL / TELEGRAM delivery is not configured yet). */
 export interface NotificationsApi {
-  list(query?: { unread?: boolean }): Promise<Notification[]>;
-  markRead(id: string): Promise<void>;
-  markAllRead(): Promise<void>;
-  alerts(): Promise<Alert[]>;
-  setAlertActive(id: string, active: boolean): Promise<Alert>;
+  list(query?: NotificationQuery): Promise<NotificationPage>;
+  markRead(id: string): Promise<Notification>;
+  markAllRead(): Promise<{ updated: number }>;
+}
+
+export interface AlertsApi {
+  list(): Promise<Alert[]>;
+  create(input: AlertInput): Promise<Alert>;
+  update(id: string, patch: AlertUpdate): Promise<Alert>;
+  remove(id: string): Promise<void>;
+  /** POST /alerts/evaluate (OWNER) — evaluate your active alerts now; idempotent per cooldown window. */
+  evaluate(): Promise<AlertEvaluation>;
 }
 
 export interface AssistantApi {
@@ -263,6 +283,7 @@ export interface ApiClient {
   analytics: AnalyticsApi;
   reports: ReportsApi;
   notifications: NotificationsApi;
+  alerts: AlertsApi;
   assistant: AssistantApi;
   broker: BrokerApi;
   security: SecurityApi;

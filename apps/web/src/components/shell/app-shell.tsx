@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import Link from 'next/link';
-import { Bell, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useApiClient } from '@/lib/api/client';
@@ -12,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useMediaQuery } from '@/hooks/use-now';
-import { useLogout, useMe, useNotifications } from '@/lib/api/hooks';
+import { NotificationsBell } from '@/components/notifications-bell';
+import { useLogout, useMe } from '@/lib/api/hooks';
 import { useActivePortfolio } from '@/lib/portfolio-context';
 import { AppSidebar } from './app-sidebar';
 import { GlobalBanners } from './global-banners';
@@ -35,25 +35,6 @@ function PortfolioSwitcher() {
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-function NotificationsButton() {
-  const { data } = useNotifications(true);
-  const n = data?.length ?? 0;
-  return (
-    <Button variant="ghost" size="icon" asChild>
-      <Link
-        href="/notifications"
-        aria-label={n ? `Notifications, ${n} unread` : 'Notifications'}
-        className="relative"
-      >
-        <Bell aria-hidden="true" />
-        {n > 0 && (
-          <span className="absolute top-1 right-1 size-2 rounded-full bg-destructive" aria-hidden="true" />
-        )}
-      </Link>
-    </Button>
   );
 }
 
@@ -108,7 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="truncate text-sm font-semibold md:hidden">PSX Smart Trading</span>
             <div className="ml-auto flex items-center gap-1">
               <PortfolioSwitcher />
-              <NotificationsButton />
+              <NotificationsBell />
               <ThemeToggle />
               <SessionButton />
             </div>

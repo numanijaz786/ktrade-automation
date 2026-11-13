@@ -23,7 +23,7 @@ cd apps/api && RUN_INTEGRATION=1 pnpm test   # + real-PostgreSQL suites (needs D
 | build / typecheck / lint      | all workspaces                                                                                                                                                                                   | 20 turbo tasks | ✅     |
 | format                        | Prettier                                                                                                                                                                                         | repo           | ✅     |
 
-**API total: 126 tests in 16 files. finance-core 188. Web 117. Live BFF smoke test: 34/34 checks.**
+**API total: 136 tests in 18 files. finance-core 188. Web 145 in 17 files.**
 
 ## Key correctness evidence
 

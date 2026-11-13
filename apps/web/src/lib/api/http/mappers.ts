@@ -27,10 +27,24 @@ import type {
   SignalStatus,
   SignalType,
   StrategyType,
+  NotificationChannel,
+  NotificationStatus,
 } from '@ktrade/shared';
 import { Dec } from '../../decimal';
 import { ApiError, type FieldError } from '../errors';
 import type {
+  Alert,
+  AlertEvaluation,
+  AlertInput,
+  AlertKind,
+  AlertUpdate,
+  Notification,
+  NotificationPage,
+  PerformanceRange,
+  PnlBasis,
+  PnlFigure,
+  PortfolioPerformance,
+  SnapshotBackfillResult,
   BrokerConnection,
   Capability,
   CapabilityState,
@@ -396,8 +410,15 @@ export interface ApiSummary {
   realizedPnl: { value: string; source: DataSource };
   unrealizedPnl: { value: string; source: DataSource };
   totalReturnPct: ApiValue & { method?: string };
-  todayPnl: ApiValue;
-  monthPnl: ApiValue;
+  todayPnl: ApiValue & {
+    pct?: string | null;
+    basis?: PnlBasis;
+    tradingDate?: string;
+    previousCloseDate?: string | null;
+  };
+  monthPnl: ApiValue & { basis?: PnlBasis; month?: string; sessions?: number };
+  /** Older API builds omit it. */
+  twrPct?: ApiValue & { method?: string; since?: string | null; asOf?: string | null; basis?: string };
   dividendsReceived: { value: string; source: DataSource };
   feesAndTaxes: { fees: string; taxes: string; source: DataSource };
   activeHoldings: number;
@@ -408,7 +429,29 @@ export interface ApiSummary {
 const sourcedOrNull = (v: ApiValue | undefined) =>
   v && v.value !== null && v.source ? { value: v.value, source: v.source, asOf: v.asOf, note: v.note } : null;
 
+type ApiPnl = ApiValue & {
+  basis?: PnlBasis;
+  tradingDate?: string;
+  previousCloseDate?: string | null;
+  month?: string;
+  sessions?: number;
+};
+
+function pnlFigure(v: ApiPnl | undefined): PnlFigure | null {
+  const base = sourcedOrNull(v);
+  if (!base || !v) return null;
+  const out: PnlFigure = { ...base };
+  if (v.basis) out.basis = v.basis;
+  if (v.tradingDate) out.tradingDate = v.tradingDate;
+  if (v.previousCloseDate !== undefined) out.previousCloseDate = v.previousCloseDate;
+  if (v.month) out.month = v.month;
+  if (v.sessions !== undefined) out.sessions = v.sessions;
+  return out;
+}
+
 export function mapSummary(s: ApiSummary): DashboardSummary {
+  const today = pnlFigure(s.todayPnl);
+  const todayPct = s.todayPnl?.pct;
   return {
     portfolioId: s.portfolio.id,
     accountValue: { ...s.accountValue },
@@ -417,11 +460,11 @@ export function mapSummary(s: ApiSummary): DashboardSummary {
     cash: { ledger: { ...s.cash.ledger }, broker: s.cash.broker ? { ...s.cash.broker } : null },
     realizedPnl: { ...s.realizedPnl },
     unrealizedPnl: { ...s.unrealizedPnl },
-    todayPnl: sourcedOrNull(s.todayPnl),
-    todayPnlPct: null,
-    monthPnl: sourcedOrNull(s.monthPnl),
+    todayPnl: today,
+    todayPnlPct: today && todayPct ? { value: todayPct, source: today.source } : null,
+    monthPnl: pnlFigure(s.monthPnl),
     totalReturnPct: sourcedOrNull(s.totalReturnPct),
-    twrPct: null,
+    twrPct: sourcedOrNull(s.twrPct),
     xirrPct: null,
     dividendsReceived: { ...s.dividendsReceived },
     feesPaid: { value: s.feesAndTaxes.fees, source: s.feesAndTaxes.source },
@@ -432,6 +475,7 @@ export function mapSummary(s: ApiSummary): DashboardSummary {
     sourceBreakdown: null,
     pricesAsOf: null,
     priceSource: s.portfolioValue.source,
+    snapshotsNote: today ? null : (s.todayPnl?.note ?? null),
   };
 }
 
@@ -1091,5 +1135,239 @@ export function mapComparison(c: ApiComparison): BacktestComparison {
     })),
     benchmark: { label: c.benchmark.label, totalReturnPct: c.benchmark.totalReturnPct },
     disclaimer: c.disclaimer,
+  };
+}
+
+// ─── performance & snapshots (apps/api/src/snapshots) ─────────────────────
+
+interface ApiReturnFigure {
+  valuePct: string | null;
+  method?: string;
+  since?: string | null;
+  asOf?: string;
+  baseDate?: string | null;
+  source: DataSource;
+}
+
+export interface ApiPerformance {
+  portfolioId: string;
+  range: PerformanceRange;
+  from: string | null;
+  to: string | null;
+  source: DataSource;
+  methodology?: string;
+  note?: string;
+  series: { date: string; totalValue: string; dailyPnl: string; twrIndex: string | null }[];
+  twr: ApiReturnFigure;
+  maxDrawdown: {
+    valuePct: string | null;
+    peakDate: string | null;
+    troughDate: string | null;
+    recoveryDate: string | null;
+    source: DataSource;
+  } | null;
+  monthly: { month: string; pnl: string; days: number; source: DataSource }[];
+  simpleReturn: ApiReturnFigure;
+  xirr: ApiReturnFigure;
+}
+
+export function mapPerformance(p: ApiPerformance): PortfolioPerformance {
+  return {
+    portfolioId: p.portfolioId,
+    range: p.range,
+    from: p.from,
+    to: p.to,
+    source: p.source,
+    methodology: p.methodology ?? null,
+    note: p.note ?? null,
+    series: p.series.map((x) => ({
+      date: x.date,
+      totalValue: x.totalValue,
+      dailyPnl: x.dailyPnl,
+      twrIndex: x.twrIndex,
+    })),
+    twr: { valuePct: p.twr.valuePct, baseDate: p.twr.baseDate ?? null, source: p.twr.source },
+    maxDrawdown: p.maxDrawdown
+      ? {
+          valuePct: p.maxDrawdown.valuePct,
+          peakDate: p.maxDrawdown.peakDate,
+          troughDate: p.maxDrawdown.troughDate,
+          recoveryDate: p.maxDrawdown.recoveryDate,
+          source: p.maxDrawdown.source,
+        }
+      : null,
+    monthly: p.monthly.map((m) => ({ month: m.month, pnl: m.pnl, days: m.days, source: m.source })),
+    simpleReturn: {
+      valuePct: p.simpleReturn.valuePct,
+      asOf: p.simpleReturn.asOf ?? null,
+      source: p.simpleReturn.source,
+    },
+    xirr: { valuePct: p.xirr.valuePct, asOf: p.xirr.asOf ?? null, source: p.xirr.source },
+  };
+}
+
+export interface ApiBackfillResult {
+  portfolioId: string;
+  from: string;
+  to: string;
+  tradingDays: number;
+  unpricedSymbols?: string[];
+}
+
+export function mapBackfill(r: ApiBackfillResult): SnapshotBackfillResult {
+  return {
+    portfolioId: r.portfolioId,
+    from: r.from,
+    to: r.to,
+    tradingDays: r.tradingDays,
+    unpricedSymbols: r.unpricedSymbols ?? [],
+  };
+}
+
+// ─── notifications (apps/api/src/notifications) ───────────────────────────
+
+export interface ApiNotification {
+  id: string;
+  type: string | null;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  channel: NotificationChannel;
+  status: NotificationStatus;
+  alertId: string | null;
+  createdAt: string;
+  readAt: string | null;
+}
+
+/** In-app route for a notification (derived from its type; never from free-form data). */
+export function notificationLink(type: string | null, alertId: string | null): string | undefined {
+  if (alertId) return '/alerts';
+  switch (type) {
+    case 'ORDER_EXECUTED':
+    case 'ORDER_REJECTED':
+      return '/orders';
+    case 'STRATEGY_SIGNAL':
+      return '/strategies';
+    case 'SYNC_DISCREPANCY':
+      return '/integration';
+    default:
+      return undefined;
+  }
+}
+
+export function mapNotification(n: ApiNotification): Notification {
+  const link = notificationLink(n.type, n.alertId);
+  return {
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    body: n.body,
+    createdAt: n.createdAt,
+    readAt: n.readAt,
+    read: n.readAt !== null,
+    channel: n.channel,
+    status: n.status,
+    alertId: n.alertId,
+    ...(link ? { link } : {}),
+  };
+}
+
+export interface ApiNotificationPage {
+  data: ApiNotification[];
+  nextCursor: string | null;
+  unreadCount: number;
+}
+
+export function mapNotificationPage(p: ApiNotificationPage): NotificationPage {
+  return { data: p.data.map(mapNotification), nextCursor: p.nextCursor, unreadCount: p.unreadCount };
+}
+
+// ─── alerts (apps/api/src/alerts) ─────────────────────────────────────────
+
+export interface ApiAlert {
+  id: string;
+  type: AlertKind;
+  symbol: string | null;
+  portfolio: { id: string; name: string } | null;
+  params: Record<string, string>;
+  threshold: string | null;
+  channels: NotificationChannel[];
+  isActive: boolean;
+  triggerOnce: boolean;
+  cooldownMinutes: number;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function mapAlert(a: ApiAlert): Alert {
+  return {
+    id: a.id,
+    type: a.type,
+    symbol: a.symbol,
+    portfolio: a.portfolio ? { id: a.portfolio.id, name: a.portfolio.name } : null,
+    params: { ...a.params },
+    threshold: a.threshold,
+    channels: [...a.channels],
+    active: a.isActive,
+    triggerOnce: a.triggerOnce,
+    cooldownMinutes: a.cooldownMinutes,
+    lastTriggeredAt: a.lastTriggeredAt,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  };
+}
+
+const SYMBOL_ALERTS: ReadonlySet<AlertKind> = new Set<AlertKind>([
+  'PRICE_ABOVE',
+  'PRICE_BELOW',
+  'PCT_CHANGE_ABOVE',
+  'PCT_CHANGE_BELOW',
+  'VOLUME_SPIKE',
+  'POSITION_STOP_LOSS',
+]);
+const PORTFOLIO_ALERTS: ReadonlySet<AlertKind> = new Set<AlertKind>([
+  'PORTFOLIO_DAILY_LOSS',
+  'POSITION_STOP_LOSS',
+]);
+
+/** `POST /alerts` body — the API's strict discriminated union: only the target fields its type allows. */
+export function toApiAlertInput(i: AlertInput): Record<string, unknown> {
+  return {
+    type: i.type,
+    ...(SYMBOL_ALERTS.has(i.type) && i.symbol ? { symbol: i.symbol } : {}),
+    ...(PORTFOLIO_ALERTS.has(i.type) && i.portfolioId ? { portfolioId: i.portfolioId } : {}),
+    params: { ...i.params },
+    channels: [...i.channels],
+    cooldownMinutes: i.cooldownMinutes,
+    triggerOnce: i.triggerOnce,
+    isActive: i.active,
+  };
+}
+
+/** `PATCH /alerts/:id` body (only the fields given). */
+export function toApiAlertUpdate(u: AlertUpdate): Record<string, unknown> {
+  return {
+    ...(u.params ? { params: { ...u.params } } : {}),
+    ...(u.channels ? { channels: [...u.channels] } : {}),
+    ...(u.cooldownMinutes !== undefined ? { cooldownMinutes: u.cooldownMinutes } : {}),
+    ...(u.triggerOnce !== undefined ? { triggerOnce: u.triggerOnce } : {}),
+    ...(u.active !== undefined ? { isActive: u.active } : {}),
+  };
+}
+
+export interface ApiAlertEvaluation {
+  evaluatedAt: string;
+  evaluated: number;
+  fired: { alertId: string; type: string; observed: string; notificationsCreated: number }[];
+  skipped: Record<string, number>;
+}
+
+export function mapAlertEvaluation(e: ApiAlertEvaluation): AlertEvaluation {
+  return {
+    evaluatedAt: e.evaluatedAt,
+    evaluated: e.evaluated,
+    fired: e.fired.map((f) => ({ ...f })),
+    skipped: { ...e.skipped },
   };
 }

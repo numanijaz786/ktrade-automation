@@ -15,6 +15,8 @@ import {
 } from '@tanstack/react-query';
 import { useApiClient } from './client';
 import type {
+  AlertInput,
+  AlertUpdate,
   BacktestCompareRequest,
   BacktestRequest,
   ChannelConfig,
@@ -25,6 +27,7 @@ import type {
   OrderFilters,
   OrderPreviewRequest,
   PerformancePeriod,
+  PerformanceRange,
   Quote,
   QuoteTick,
   RiskLimits,
@@ -45,6 +48,7 @@ export const qk = {
   portfolios: ['portfolios'] as const,
   summary: (pf: string) => ['dashboard', 'summary', pf] as const,
   charts: (pf: string, r: ChartRange) => ['dashboard', 'charts', pf, r] as const,
+  portfolioPerformance: (pf: string, r: PerformanceRange) => ['dashboard', 'performance', pf, r] as const,
   holdings: (pf: string) => ['portfolio', pf, 'holdings'] as const,
   holding: (pf: string, s: string) => ['portfolio', pf, 'holding', s] as const,
   transactions: (pf: string, limit: number) => ['portfolio', pf, 'transactions', limit] as const,
@@ -70,7 +74,8 @@ export const qk = {
   realized: (pf: string) => ['analytics', 'realized', pf] as const,
   feesTaxes: (pf: string) => ['analytics', 'feesTaxes', pf] as const,
   reports: ['reports'] as const,
-  notifications: (unread: boolean) => ['notifications', unread] as const,
+  notifications: (unread: boolean, limit: number) => ['notifications', 'list', unread, limit] as const,
+  notificationFeed: (unread: boolean) => ['notifications', 'feed', unread] as const,
   alerts: ['alerts'] as const,
   assistant: ['assistant'] as const,
   connections: ['broker', 'connections'] as const,
@@ -170,6 +175,25 @@ export function useDashboardCharts(pf: string | undefined, range: ChartRange) {
     queryKey: qk.charts(pf ?? '', range),
     queryFn: () => api.dashboard.charts(pf!, range),
     enabled: !!pf,
+  });
+}
+
+export function usePortfolioPerformance(pf: string | undefined, range: PerformanceRange) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: qk.portfolioPerformance(pf ?? '', range),
+    queryFn: () => api.dashboard.performance(pf!, range),
+    enabled: !!pf,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useBackfillSnapshots() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pf: string) => api.dashboard.backfillSnapshots(pf),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dashboard'] }),
   });
 }
 
@@ -626,9 +650,27 @@ export function useCreateReport() {
 
 // ─── notifications & assistant ─────────────────────────────────────────────
 
-export function useNotifications(unread = false) {
+/** The unread badge polls every 30 s against the real API (no push channel yet); demo data never changes. */
+export const NOTIFICATION_POLL_MS = 30_000;
+
+export function useNotifications(unread = false, limit = 20) {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.notifications(unread), queryFn: () => api.notifications.list({ unread }) });
+  return useQuery({
+    queryKey: qk.notifications(unread, limit),
+    queryFn: () => api.notifications.list({ unread, limit }),
+    refetchInterval: api.kind === 'http' ? NOTIFICATION_POLL_MS : false,
+  });
+}
+
+/** The full inbox, cursor-paged. */
+export function useNotificationFeed(unread = false) {
+  const api = useApiClient();
+  return useInfiniteQuery({
+    queryKey: qk.notificationFeed(unread),
+    queryFn: ({ pageParam }) => api.notifications.list({ unread, limit: 50, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
 }
 
 export function useNotificationMutations() {
@@ -643,16 +685,28 @@ export function useNotificationMutations() {
 
 export function useAlerts() {
   const api = useApiClient();
-  return useQuery({ queryKey: qk.alerts, queryFn: () => api.notifications.alerts() });
+  return useQuery({ queryKey: qk.alerts, queryFn: () => api.alerts.list() });
 }
 
-export function useSetAlertActive() {
+export function useAlertMutations() {
   const api = useApiClient();
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { id: string; active: boolean }) => api.notifications.setAlertActive(v.id, v.active),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.alerts }),
-  });
+  const done = () => qc.invalidateQueries({ queryKey: qk.alerts });
+  return {
+    create: useMutation({ mutationFn: (input: AlertInput) => api.alerts.create(input), onSuccess: done }),
+    update: useMutation({
+      mutationFn: (v: { id: string; patch: AlertUpdate }) => api.alerts.update(v.id, v.patch),
+      onSuccess: done,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => api.alerts.remove(id), onSuccess: done }),
+    evaluate: useMutation({
+      mutationFn: () => api.alerts.evaluate(),
+      onSuccess: () => {
+        void done();
+        void qc.invalidateQueries({ queryKey: ['notifications'] });
+      },
+    }),
+  };
 }
 
 export function useAssistantHistory() {

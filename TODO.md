@@ -105,7 +105,7 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Real-data pages: market overview, explorer, stock details (candles), watchlists, KTrade integration (account + imports)
 - [x] Step-up dialog: password option when TOTP is not enabled
 - [x] Dashboard, holdings, transactions, buy/sell (full approval + manual ticket), orders, strategies, backtests, settings kill switch (ADR-029)
-- [ ] **NEXT: wire dashboard performance chart + today/month P&L to `/portfolios/:id/performance` + summary; notifications inbox + alerts pages**
+- [x] Dashboard performance (TWR, drawdown, monthly, XIRR, basis tooltips, backfill), notifications bell + page, alerts page (all types)
 
 ## Repo hygiene
 

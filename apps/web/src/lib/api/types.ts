@@ -26,6 +26,7 @@ import type {
   ImportRowStatus,
   ImportStatus,
   NotificationChannel,
+  NotificationStatus,
   OrderOrigin,
   OrderSide,
   OrderStatus,
@@ -166,9 +167,9 @@ export interface DashboardSummary {
   cash: { ledger: SourcedValue; broker: SourcedValue | null };
   realizedPnl: AggregateValue;
   unrealizedPnl: AggregateValue;
-  todayPnl: AggregateValue | null;
+  todayPnl: PnlFigure | null;
   todayPnlPct: SourcedValue | null;
-  monthPnl: AggregateValue | null;
+  monthPnl: PnlFigure | null;
   totalReturnPct: SourcedValue | null;
   twrPct: SourcedValue | null;
   xirrPct: SourcedValue | null;
@@ -182,6 +183,84 @@ export interface DashboardSummary {
   sourceBreakdown: SourceBreakdown | null;
   pricesAsOf: Instant | null;
   priceSource: DataSource | null;
+  /** Why snapshot-backed figures (today / month P&L, TWR) are null, e.g. "No portfolio snapshots yet". */
+  snapshotsNote?: string | null;
+}
+
+/**
+ * How a snapshot-backed P&L figure was obtained (ADR-027) — always shown to the user:
+ *  - SNAPSHOT: the stored close snapshot of the last completed session;
+ *  - LIVE_VS_PREVIOUS_SNAPSHOT: current quotes vs the previous close snapshot, net of deposits/withdrawals;
+ *  - SNAPSHOTS: sum of the month's close snapshots;
+ *  - SNAPSHOTS_PLUS_LIVE_TODAY: the month's close snapshots plus today's live figure.
+ */
+export type PnlBasis = 'SNAPSHOT' | 'LIVE_VS_PREVIOUS_SNAPSHOT' | 'SNAPSHOTS' | 'SNAPSHOTS_PLUS_LIVE_TODAY';
+
+export interface PnlFigure extends AggregateValue {
+  basis?: PnlBasis;
+  /** Today: the trading date the figure is for. */
+  tradingDate?: IsoDate;
+  /** Today: the close it is measured against. */
+  previousCloseDate?: IsoDate | null;
+  /** Month: YYYY-MM. */
+  month?: string;
+  /** Month: sessions included. */
+  sessions?: number;
+}
+
+/** `GET /portfolios/:id/performance?range=` */
+export type PerformanceRange = '1M' | '3M' | '6M' | 'YTD' | '1Y' | 'ALL';
+export const PERFORMANCE_RANGES: readonly PerformanceRange[] = ['1M', '3M', '6M', 'YTD', '1Y', 'ALL'];
+
+export interface PerformancePoint {
+  date: IsoDate;
+  totalValue: Decimal;
+  dailyPnl: Decimal;
+  /** TWR index (1 = start); null before the first snapshot with capital. */
+  twrIndex: Decimal | null;
+}
+
+/** A percent figure that may be uncomputable (null — shown as "n/a", never zero). */
+export interface ReturnFigure {
+  valuePct: Decimal | null;
+  source: DataSource;
+}
+
+export interface PortfolioPerformance {
+  portfolioId: string;
+  range: PerformanceRange;
+  from: IsoDate | null;
+  to: IsoDate | null;
+  /** Weakest source of every snapshot in range (and the ledger). */
+  source: DataSource;
+  methodology: string | null;
+  /** Set when there are no snapshots yet. */
+  note: string | null;
+  series: PerformancePoint[];
+  twr: ReturnFigure & { baseDate: IsoDate | null };
+  maxDrawdown:
+    | (ReturnFigure & {
+        valuePct: Decimal | null;
+        peakDate: IsoDate | null;
+        troughDate: IsoDate | null;
+        recoveryDate: IsoDate | null;
+      })
+    | null;
+  monthly: { month: string; pnl: Decimal; days: number; source: DataSource }[];
+  /** Since inception (not range-bound). */
+  simpleReturn: ReturnFigure & { asOf: IsoDate | null };
+  /** Since inception, annualised money-weighted; null when not computable. */
+  xirr: ReturnFigure & { asOf: IsoDate | null };
+}
+
+/** `POST /portfolios/:id/snapshots/backfill` */
+export interface SnapshotBackfillResult {
+  portfolioId: string;
+  from: IsoDate;
+  to: IsoDate;
+  tradingDays: number;
+  /** Symbols without a close on some day — valued at cost (ESTIMATED). */
+  unpricedSymbols: string[];
 }
 
 export type ChartRange = '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
@@ -885,22 +964,82 @@ export interface BacktestComparison {
 
 export interface Notification {
   id: string;
-  type: AlertType;
+  /** Alert type or event type (e.g. ORDER_EXECUTED); null when the API has none. */
+  type: string | null;
   title: string;
   body: string;
   createdAt: Instant;
+  readAt: Instant | null;
   read: boolean;
   channel: NotificationChannel;
+  status: NotificationStatus;
+  alertId: string | null;
+  /** In-app route to the related page (derived; not from the API). */
   link?: string;
 }
 
+export interface NotificationPage extends Paginated<Notification> {
+  unreadCount: number;
+}
+
+export interface NotificationQuery {
+  unread?: boolean;
+  limit?: number;
+  cursor?: string;
+}
+
+/** The alert types the API evaluates (apps/api/src/alerts/alert-rules.ts EVALUABLE_ALERT_TYPES). */
+export const ALERT_KINDS = [
+  'PRICE_ABOVE',
+  'PRICE_BELOW',
+  'PCT_CHANGE_ABOVE',
+  'PCT_CHANGE_BELOW',
+  'VOLUME_SPIKE',
+  'PORTFOLIO_DAILY_LOSS',
+  'POSITION_STOP_LOSS',
+] as const satisfies readonly AlertType[];
+export type AlertKind = (typeof ALERT_KINDS)[number];
+
 export interface Alert {
   id: string;
-  type: AlertType;
+  type: AlertKind;
   symbol: string | null;
+  portfolio: { id: string; name: string } | null;
+  /** Typed per type: {price} | {pct} | {multiple} — decimal strings. */
   params: Record<string, string>;
-  active: boolean;
+  threshold: Decimal | null;
   channels: NotificationChannel[];
+  active: boolean;
+  triggerOnce: boolean;
+  cooldownMinutes: number;
+  lastTriggeredAt: Instant | null;
+  createdAt: Instant;
+  updatedAt: Instant;
+}
+
+export interface AlertInput {
+  type: AlertKind;
+  symbol?: string;
+  portfolioId?: string;
+  params: Record<string, string>;
+  channels: NotificationChannel[];
+  cooldownMinutes: number;
+  triggerOnce: boolean;
+  active: boolean;
+}
+
+/** Type, symbol and portfolio are immutable (delete and re-create instead). */
+export type AlertUpdate = Partial<
+  Pick<AlertInput, 'params' | 'channels' | 'cooldownMinutes' | 'triggerOnce' | 'active'>
+>;
+
+/** `POST /alerts/evaluate` */
+export interface AlertEvaluation {
+  evaluatedAt: Instant;
+  evaluated: number;
+  fired: { alertId: string; type: string; observed: string; notificationsCreated: number }[];
+  /** reason → count (e.g. COOLDOWN, CONDITION_NOT_MET, NO_QUOTE). */
+  skipped: Record<string, number>;
 }
 
 export interface AssistantToolCall {

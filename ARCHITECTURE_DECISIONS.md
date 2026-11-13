@@ -316,7 +316,7 @@ Accepted from the quant engineer's implementation:
 - **Step-up** accepts a password when TOTP isn't enabled. **Tokens and passwords stay in memory only** (verified: no browser-storage writes besides shadcn's sidebar UI-state cookie). `/` → `/dashboard`.
 - **API fix:** a duplicate portfolio name returned 500 (unhandled P2002). It now returns 409 `ALREADY_EXISTS`.
 - **API fix:** a paper preview could fail with `NO_PRICE` on a cold start, because quotes refresh lazily. `TradingService.preview` now refreshes quotes once when a symbol has none (TradingModule imports MarketDataModule; no cycle). Both have a regression test.
-- **Remaining web gaps (TODO):** the dashboard performance chart isn't wired to `GET /portfolios/:id/performance` yet; there's no notifications or alerts UI; custom-rules strategies are view-only; dividends, analytics and reports have no backend yet.
+- **Remaining web gaps (TODO):** ~~performance chart, notifications and alerts UI~~ (done: dashboard performance with basis tooltips and a backfill empty state; notifications bell (30 s polling) and page; alerts page for all 7 types with Evaluate now); custom-rules strategies are view-only; dividends, analytics and reports have no backend yet.
 
 ## ADR-030 · Signal actions and strategy scheduler
 

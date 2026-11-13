@@ -375,7 +375,6 @@ describe('HttpApiClient', () => {
     const calls = [
       c.dividends.list('p'),
       c.analytics.feesTaxes('p'),
-      c.notifications.list(),
       c.assistant.history(),
       c.reports.list(),
       c.settings.feeSchedules(),

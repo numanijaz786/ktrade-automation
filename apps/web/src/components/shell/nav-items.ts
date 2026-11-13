@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Banknote,
   Bell,
+  BellRing,
   BotMessageSquare,
   BriefcaseBusiness,
   CandlestickChart,
@@ -68,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Account',
     items: [
       { href: '/notifications', label: 'Notifications', icon: Bell },
+      { href: '/alerts', label: 'Alerts', icon: BellRing },
       { href: '/integration', label: 'KTrade integration', icon: Cable },
       { href: '/security', label: 'Security', icon: Lock },
       { href: '/settings', label: 'Settings', icon: Settings },

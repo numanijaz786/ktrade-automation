@@ -6,6 +6,20 @@
 import type { ApiClient } from './client';
 import { ApiError, notAvailable } from './errors';
 import {
+  type ApiAlert,
+  type ApiAlertEvaluation,
+  type ApiBackfillResult,
+  type ApiNotification,
+  type ApiNotificationPage,
+  type ApiPerformance,
+  mapAlert,
+  mapAlertEvaluation,
+  mapBackfill,
+  mapNotification,
+  mapNotificationPage,
+  mapPerformance,
+  toApiAlertInput,
+  toApiAlertUpdate,
   type ApiBacktest,
   type ApiBacktestTrades,
   type ApiComparison,
@@ -249,6 +263,14 @@ export class HttpApiClient implements ApiClient {
   dashboard: ApiClient['dashboard'] = {
     summary: async (pf) => mapSummary(await this.get<ApiSummary>('dashboard/summary', { portfolioId: pf })),
     charts: () => rejectNA(),
+    performance: async (pf, range) =>
+      mapPerformance(await this.get<ApiPerformance>(`portfolios/${seg(pf)}/performance`, { range })),
+    backfillSnapshots: async (pf) =>
+      mapBackfill(
+        await this.request<ApiBackfillResult>('POST', `portfolios/${seg(pf)}/snapshots/backfill`, {
+          body: {},
+        }),
+      ),
   };
 
   portfolios: ApiClient['portfolios'] = {
@@ -528,6 +550,33 @@ export class HttpApiClient implements ApiClient {
       ),
   };
 
+  notifications: ApiClient['notifications'] = {
+    list: async (q = {}) =>
+      mapNotificationPage(
+        await this.get<ApiNotificationPage>('notifications', {
+          unread: q.unread ? 'true' : undefined,
+          limit: q.limit,
+          cursor: q.cursor,
+        }),
+      ),
+    markRead: async (id) =>
+      mapNotification(await this.request<ApiNotification>('POST', `notifications/${seg(id)}/read`)),
+    markAllRead: () => this.request<{ updated: number }>('POST', 'notifications/read-all'),
+  };
+
+  alerts: ApiClient['alerts'] = {
+    list: async () => (await this.get<ApiAlert[]>('alerts')).map(mapAlert),
+    create: async (input) =>
+      mapAlert(await this.request<ApiAlert>('POST', 'alerts', { body: toApiAlertInput(input) })),
+    update: async (id, patch) =>
+      mapAlert(await this.request<ApiAlert>('PATCH', `alerts/${seg(id)}`, { body: toApiAlertUpdate(patch) })),
+    remove: async (id) => {
+      await this.request<void>('DELETE', `alerts/${seg(id)}`);
+    },
+    evaluate: async () =>
+      mapAlertEvaluation(await this.request<ApiAlertEvaluation>('POST', 'alerts/evaluate')),
+  };
+
   // ─── no backend yet: NOT_AVAILABLE (never demo data) ────────────────────
 
   dividends: ApiClient['dividends'] = { list: () => rejectNA() };
@@ -539,14 +588,6 @@ export class HttpApiClient implements ApiClient {
   };
 
   reports: ApiClient['reports'] = { create: () => rejectNA(), list: () => rejectNA() };
-
-  notifications: ApiClient['notifications'] = {
-    list: () => rejectNA(),
-    markRead: () => rejectNA(),
-    markAllRead: () => rejectNA(),
-    alerts: () => rejectNA(),
-    setAlertActive: () => rejectNA(),
-  };
 
   assistant: ApiClient['assistant'] = { history: () => rejectNA(), send: () => rejectNA() };
 

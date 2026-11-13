@@ -66,6 +66,8 @@ import type { ApiClient } from './client';
 import { ApiError } from './errors';
 import type {
   Alert,
+  AlertEvaluation,
+  AlertKind,
   AssistantMessage,
   Backtest,
   BacktestMetrics,
@@ -88,8 +90,10 @@ import type {
   Order,
   OrderEvent,
   OrderPreviewRequest,
+  PerformanceRange,
   PerformanceRow,
   Portfolio,
+  PortfolioPerformance,
   Quote,
   QuoteTick,
   Report,
@@ -1417,14 +1421,27 @@ export class DemoApiClient implements ApiClient {
           },
           realizedPnl: { value: realized.toFixed(2), source: 'SIMULATED' },
           unrealizedPnl: { value: unreal.toFixed(2), source: src },
-          todayPnl: { value: todayPnl.toFixed(2), source: src },
+          todayPnl: {
+            value: todayPnl.toFixed(2),
+            source: src,
+            basis: 'LIVE_VS_PREVIOUS_SNAPSHOT',
+            tradingDate: DEMO_TODAY,
+            previousCloseDate: points.length > 1 ? points[points.length - 2].date : null,
+            note: 'Demo: current simulated quotes vs the previous simulated close',
+          },
           todayPnlPct: {
             value: account.sub(todayPnl).isZero()
               ? '0.00'
               : todayPnl.div(account.sub(todayPnl)).mul(100).toFixed(2),
             source: src,
           },
-          monthPnl: { value: monthPnl.toFixed(2), source: src },
+          monthPnl: {
+            value: monthPnl.toFixed(2),
+            source: src,
+            basis: 'SNAPSHOTS_PLUS_LIVE_TODAY',
+            month: monthStart,
+            sessions: rets.filter((r) => r.date.startsWith(monthStart)).length,
+          },
           totalReturnPct: {
             value: state.deposits.isZero()
               ? '0.00'
@@ -1492,7 +1509,135 @@ export class DemoApiClient implements ApiClient {
           distribution: list.map((h) => ({ symbol: h.symbol, value: h.marketValue, weight: h.weight })),
         };
       }),
+    performance: (pfId, range) => this.run((s) => this.performanceOf(s, pfId, range)),
+    backfillSnapshots: (pfId) =>
+      this.run((s) => {
+        const points = this.series(s, pfId);
+        if (!points.length)
+          throw new ApiError(
+            'INVALID_STATE',
+            409,
+            'Nothing to backfill',
+            'This portfolio has no activity yet.',
+          );
+        return {
+          portfolioId: pfId,
+          from: points[0].date,
+          to: points[points.length - 1].date,
+          tradingDays: points.length,
+          unpricedSymbols: [],
+        };
+      }),
   };
+
+  /** Mirrors the API's PerformanceService over the demo's daily series. Every figure is SIMULATED. */
+  private performanceOf(s: State, pfId: string, range: PerformanceRange): PortfolioPerformance {
+    this.portfolio(s, pfId);
+    const all = this.series(s, pfId);
+    const source = 'SIMULATED' as const;
+    if (!all.length)
+      return {
+        portfolioId: pfId,
+        range,
+        from: null,
+        to: null,
+        source,
+        methodology: null,
+        note: 'No snapshots yet — run the backfill',
+        series: [],
+        twr: { valuePct: null, baseDate: null, source },
+        maxDrawdown: null,
+        monthly: [],
+        simpleReturn: { valuePct: null, asOf: null, source },
+        xirr: { valuePct: null, asOf: null, source },
+      };
+    const end = all[all.length - 1];
+    const baseDate = rangeBaseDate(range, end.date);
+    const inRange = baseDate === null ? all : all.filter((p) => p.date > baseDate);
+    const base = baseDate === null ? null : ([...all].reverse().find((p) => p.date <= baseDate) ?? null);
+    type Drawdown = { value: Dec; peakDate: string; troughDate: string; recoveryDate: string | null };
+    let prev: DayPoint | null = base;
+    let index: Dec | null = null;
+    let twrBase: string | null = null;
+    let peak = { value: Dec.of(1), date: '' };
+    let worst: Drawdown | null = null;
+    const months = new Map<string, { pnl: Dec; days: number }>();
+    const series: PortfolioPerformance['series'] = [];
+    for (const p of inRange) {
+      const dailyPnl = prev ? p.value.sub(prev.value).sub(p.flow) : Dec.zero();
+      // TWR starts at the first point with capital; external flows are taken at end of day.
+      if (index === null && prev && prev.value.gt(0)) {
+        index = Dec.of(1);
+        twrBase = prev.date;
+        peak = { value: index, date: prev.date };
+      }
+      if (index !== null && prev && prev.value.gt(0)) {
+        index = index.mul(Dec.of(1).add(dailyPnl.div(prev.value)));
+        if (index.gte(peak.value)) {
+          if (worst && worst.recoveryDate === null && worst.peakDate === peak.date)
+            worst.recoveryDate = p.date;
+          peak = { value: index, date: p.date };
+        } else {
+          const draw = peak.value.sub(index).div(peak.value);
+          if (!worst || draw.gt(worst.value))
+            worst = { value: draw, peakDate: peak.date, troughDate: p.date, recoveryDate: null };
+        }
+      }
+      const m = months.get(p.date.slice(0, 7)) ?? { pnl: Dec.zero(), days: 0 };
+      months.set(p.date.slice(0, 7), { pnl: m.pnl.add(dailyPnl), days: m.days + 1 });
+      series.push({
+        date: p.date,
+        totalValue: p.value.toFixed(4),
+        dailyPnl: dailyPnl.toFixed(4),
+        twrIndex: index ? index.toFixed(10) : null,
+      });
+      prev = p;
+    }
+    const finalIndex: Dec | null = index;
+    const finalDd: Drawdown | null = worst;
+    const hasFlows = all.some((p) => !p.flow.isZero());
+    return {
+      portfolioId: pfId,
+      range,
+      from: inRange[0]?.date ?? null,
+      to: end.date,
+      source,
+      methodology:
+        'Demo: daily simulated closes; deposits/withdrawals at end of day; drawdown on the TWR index.',
+      note: null,
+      series,
+      twr: {
+        valuePct: finalIndex ? finalIndex.sub(1).mul(100).toFixed(4) : null,
+        baseDate: twrBase,
+        source,
+      },
+      maxDrawdown: finalDd
+        ? {
+            valuePct: finalDd.value.mul(100).toFixed(4),
+            peakDate: finalDd.peakDate,
+            troughDate: finalDd.troughDate,
+            recoveryDate: finalDd.recoveryDate,
+            source,
+          }
+        : finalIndex
+          ? { valuePct: '0.0000', peakDate: null, troughDate: null, recoveryDate: null, source }
+          : null,
+      monthly: [...months.entries()].map(([month, v]) => ({
+        month,
+        pnl: v.pnl.toFixed(4),
+        days: v.days,
+        source,
+      })),
+      simpleReturn: {
+        valuePct: end.deposits.gt(0)
+          ? end.value.sub(end.deposits).div(end.deposits).mul(100).toFixed(4)
+          : null,
+        asOf: end.date,
+        source,
+      },
+      xirr: { valuePct: hasFlows ? this.xirr(all, end.value) : null, asOf: end.date, source },
+    };
+  }
 
   private breakdown(list: DemoHolding[]): Partial<Record<DataSource, string>> {
     const total = Dec.sum(list.map((h) => h.marketValue));
@@ -1768,8 +1913,11 @@ export class DemoApiClient implements ApiClient {
           title: `${o.symbol} fill recorded`,
           body: `${fill.quantity} shares @ Rs ${fill.price} (user-reported).`,
           createdAt: this.iso(),
+          readAt: null,
           read: false,
           channel: 'IN_APP',
+          status: 'SENT',
+          alertId: null,
           link: '/orders',
         });
         return o;
@@ -2542,23 +2690,153 @@ export class DemoApiClient implements ApiClient {
   };
 
   notifications: ApiClient['notifications'] = {
-    list: (q = {}) => this.run((s) => s.notifications.filter((n) => !q.unread || !n.read)),
+    list: (q = {}) =>
+      this.run((s) => {
+        const all = s.notifications.filter((n) => !q.unread || !n.read);
+        const start = q.cursor ? all.findIndex((n) => n.id === q.cursor) + 1 : 0;
+        const limit = q.limit ?? 50;
+        const data = all.slice(start, start + limit);
+        return {
+          data,
+          nextCursor: start + limit < all.length ? (data.at(-1)?.id ?? null) : null,
+          unreadCount: s.notifications.filter((n) => !n.read).length,
+        };
+      }),
     markRead: (id) =>
       this.run((s) => {
         const n = s.notifications.find((x) => x.id === id);
-        if (n) n.read = true;
+        if (!n) throw new ApiError('NOT_FOUND', 404, 'Notification not found');
+        if (!n.read) {
+          n.read = true;
+          n.readAt = this.iso();
+          n.status = 'READ';
+        }
+        return n;
       }),
     markAllRead: () =>
       this.run((s) => {
-        s.notifications.forEach((n) => (n.read = true));
+        let updated = 0;
+        for (const n of s.notifications)
+          if (!n.read) {
+            n.read = true;
+            n.readAt = this.iso();
+            n.status = 'READ';
+            updated += 1;
+          }
+        return { updated };
       }),
-    alerts: () => this.run((s) => s.alerts),
-    setAlertActive: (id, active) =>
+  };
+
+  alerts: ApiClient['alerts'] = {
+    list: () => this.run((s) => s.alerts),
+    create: (input) =>
+      this.run((s) => {
+        const needsSymbol = input.type !== 'PORTFOLIO_DAILY_LOSS';
+        const needsPortfolio = input.type === 'PORTFOLIO_DAILY_LOSS' || input.type === 'POSITION_STOP_LOSS';
+        const symbol = needsSymbol ? (input.symbol ?? '').trim().toUpperCase() : null;
+        if (symbol !== null && !s.quotes.has(symbol))
+          throw new ApiError('UNKNOWN_SYMBOL', 404, 'Unknown symbol', symbol || 'Symbol is required');
+        const pf = needsPortfolio ? this.portfolio(s, input.portfolioId ?? '') : null;
+        const now = this.iso();
+        const a: Alert = {
+          id: this.id('al'),
+          type: input.type,
+          symbol,
+          portfolio: pf ? { id: pf.id, name: pf.name } : null,
+          params: { ...input.params },
+          threshold: alertThreshold(input.type, input.params),
+          channels: [...new Set(input.channels)],
+          active: input.active,
+          triggerOnce: input.triggerOnce,
+          cooldownMinutes: input.cooldownMinutes,
+          lastTriggeredAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        s.alerts.unshift(a);
+        return a;
+      }),
+    update: (id, patch) =>
       this.run((s) => {
         const a = s.alerts.find((x) => x.id === id);
         if (!a) throw new ApiError('NOT_FOUND', 404, 'Alert not found');
-        a.active = active;
+        const rearm =
+          (patch.active === true && !a.active) || patch.params !== undefined || patch.triggerOnce === false;
+        if (patch.params) {
+          a.params = { ...patch.params };
+          a.threshold = alertThreshold(a.type, patch.params);
+        }
+        if (patch.channels) a.channels = [...new Set(patch.channels)];
+        if (patch.cooldownMinutes !== undefined) a.cooldownMinutes = patch.cooldownMinutes;
+        if (patch.triggerOnce !== undefined) a.triggerOnce = patch.triggerOnce;
+        if (patch.active !== undefined) a.active = patch.active;
+        if (rearm) a.lastTriggeredAt = null;
+        a.updatedAt = this.iso();
         return a;
+      }),
+    remove: (id) =>
+      this.run((s) => {
+        const i = s.alerts.findIndex((x) => x.id === id);
+        if (i < 0) throw new ApiError('NOT_FOUND', 404, 'Alert not found');
+        s.alerts.splice(i, 1);
+      }),
+    // Demo: price/percent alerts against the simulated quotes; portfolio and volume alerts are skipped.
+    evaluate: () =>
+      this.run((s): AlertEvaluation => {
+        const now = this.iso();
+        const active = s.alerts.filter((a) => a.active);
+        const out: AlertEvaluation = { evaluatedAt: now, evaluated: active.length, fired: [], skipped: {} };
+        const skip = (r: string) => (out.skipped[r] = (out.skipped[r] ?? 0) + 1);
+        for (const a of active) {
+          if (
+            a.lastTriggeredAt &&
+            Date.parse(now) - Date.parse(a.lastTriggeredAt) < a.cooldownMinutes * 60_000
+          ) {
+            skip('COOLDOWN');
+            continue;
+          }
+          if (!a.symbol || !a.threshold || !s.quotes.has(a.symbol)) {
+            skip('NO_INPUT');
+            continue;
+          }
+          const q = this.quote(s, a.symbol);
+          const observed = a.type.startsWith('PRICE_') ? q.last : q.changePct;
+          const hit =
+            a.type === 'PRICE_ABOVE'
+              ? Dec.of(q.last).gte(a.threshold)
+              : a.type === 'PRICE_BELOW'
+                ? Dec.of(q.last).lte(a.threshold)
+                : a.type === 'PCT_CHANGE_ABOVE'
+                  ? Dec.of(q.changePct).gte(a.threshold)
+                  : a.type === 'PCT_CHANGE_BELOW'
+                    ? Dec.of(q.changePct).lte(Dec.of(a.threshold).neg())
+                    : null;
+          if (hit === null) {
+            skip('NO_INPUT');
+            continue;
+          }
+          if (!hit) {
+            skip('CONDITION_NOT_MET');
+            continue;
+          }
+          a.lastTriggeredAt = now;
+          if (a.triggerOnce) a.active = false;
+          s.notifications.unshift({
+            id: this.id('n'),
+            type: a.type,
+            title: `${a.symbol}: alert triggered`,
+            body: `${a.symbol} ${a.type.startsWith('PRICE_') ? `last ${observed}` : `change ${observed}%`} (simulated prices).`,
+            createdAt: now,
+            readAt: null,
+            read: false,
+            channel: 'IN_APP',
+            status: 'SENT',
+            alertId: a.id,
+            link: '/alerts',
+          });
+          out.fired.push({ alertId: a.id, type: a.type, observed, notificationsCreated: 1 });
+        }
+        return out;
       }),
   };
 
@@ -2941,4 +3219,37 @@ export function getDemoClient(): DemoApiClient {
   if (typeof window === 'undefined') return new DemoApiClient();
   browserClient ??= new DemoApiClient();
   return browserClient;
+}
+
+/** The single numeric parameter of an alert, mirrored into `threshold` (as the API does). */
+function alertThreshold(type: AlertKind, params: Record<string, string>): string | null {
+  if (type === 'PRICE_ABOVE' || type === 'PRICE_BELOW') return params.price ?? null;
+  if (type === 'VOLUME_SPIKE') return params.multiple ?? null;
+  return params.pct ?? null;
+}
+
+function shiftMonths(date: string, months: number): string {
+  const [y, m, day] = date.split('-').map((p) => Number.parseInt(p, 10));
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+/** The close a range is measured from (null = since inception), as apps/api snapshot-math. */
+function rangeBaseDate(range: PerformanceRange, end: string): string | null {
+  switch (range) {
+    case '1M':
+      return shiftMonths(end, -1);
+    case '3M':
+      return shiftMonths(end, -3);
+    case '6M':
+      return shiftMonths(end, -6);
+    case '1Y':
+      return shiftMonths(end, -12);
+    case 'YTD':
+      return `${Number.parseInt(end.slice(0, 4), 10) - 1}-12-31`;
+    default:
+      return null;
+  }
 }

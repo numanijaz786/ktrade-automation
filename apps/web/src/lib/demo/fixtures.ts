@@ -112,8 +112,11 @@ export function seedWatchlists(): { id: string; name: string; createdAt: string;
   ];
 }
 
+type SeedNotification = Omit<Notification, 'readAt' | 'status' | 'alertId'> & { alertId?: string };
+
+/** In-app inbox seeds (EMAIL / TELEGRAM are not configured, so every row is IN_APP). */
 export function seedNotifications(): Notification[] {
-  return [
+  const seeds: SeedNotification[] = [
     {
       id: 'n-1',
       type: 'STRATEGY_SIGNAL',
@@ -152,7 +155,8 @@ export function seedNotifications(): Notification[] {
       createdAt: at(2, '08:12:00'),
       read: true,
       channel: 'IN_APP',
-      link: '/market/HUBC',
+      alertId: 'al-1',
+      link: '/alerts',
     },
     {
       id: 'n-5',
@@ -161,7 +165,7 @@ export function seedNotifications(): Notification[] {
       body: 'Your user-reported fill matched contract note CN-2026-10-30-0042 and is now broker-confirmed.',
       createdAt: at(9, '04:20:00'),
       read: true,
-      channel: 'EMAIL',
+      channel: 'IN_APP',
       link: '/orders',
     },
     {
@@ -181,7 +185,7 @@ export function seedNotifications(): Notification[] {
       body: 'Daily loss alert threshold is 1.5%. New buys are still allowed (block at 3%).',
       createdAt: at(6, '10:30:00'),
       read: true,
-      channel: 'TELEGRAM',
+      channel: 'IN_APP',
     },
     {
       id: 'n-8',
@@ -194,41 +198,65 @@ export function seedNotifications(): Notification[] {
       link: '/dividends',
     },
   ];
+  return seeds.map((n) => ({
+    ...n,
+    alertId: n.alertId ?? null,
+    readAt: n.read ? n.createdAt : null,
+    status: n.read ? ('READ' as const) : ('SENT' as const),
+  }));
 }
 
 export function seedAlerts(): Alert[] {
+  const created = `${daysAgo(20)}T04:00:00Z`;
+  const base = {
+    channels: ['IN_APP' as const],
+    triggerOnce: false,
+    cooldownMinutes: 60,
+    lastTriggeredAt: null,
+    createdAt: created,
+    updatedAt: created,
+    portfolio: null,
+  };
   return [
     {
+      ...base,
       id: 'al-1',
       type: 'PRICE_ABOVE',
       symbol: 'HUBC',
       params: { price: '150.00' },
+      threshold: '150.00',
       active: true,
-      channels: ['IN_APP', 'TELEGRAM'],
+      lastTriggeredAt: at(2, '08:12:00'),
     },
     {
+      ...base,
       id: 'al-2',
       type: 'PRICE_BELOW',
       symbol: 'LUCK',
       params: { price: '360.00' },
+      threshold: '360.00',
       active: true,
-      channels: ['IN_APP'],
+      triggerOnce: true,
     },
     {
+      ...base,
       id: 'al-3',
       type: 'PORTFOLIO_DAILY_LOSS',
       symbol: null,
+      portfolio: { id: LIVE_PORTFOLIO_ID, name: 'KTrade account (demo)' },
       params: { pct: '1.5' },
+      threshold: '1.5',
       active: true,
-      channels: ['IN_APP', 'EMAIL'],
+      cooldownMinutes: 1440,
     },
     {
+      ...base,
       id: 'al-4',
       type: 'VOLUME_SPIKE',
       symbol: 'TRG',
       params: { multiple: '2.0' },
+      threshold: '2.0',
       active: false,
-      channels: ['IN_APP'],
     },
   ];
 }

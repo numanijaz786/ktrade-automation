@@ -46,9 +46,9 @@ function NavMenu({ pathname }: { pathname: string | null }) {
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
-                    {item.href === '/notifications' && !!unread?.length && (
-                      <SidebarMenuBadge aria-label={`${unread.length} unread`}>
-                        {unread.length}
+                    {item.href === '/notifications' && !!unread?.unreadCount && (
+                      <SidebarMenuBadge aria-label={`${unread.unreadCount} unread`}>
+                        {unread.unreadCount}
                       </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>

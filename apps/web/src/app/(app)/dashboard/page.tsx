@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { AlertTriangle, FlaskConical, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, Section } from '@/components/page-header';
-import { LineChart } from '@/components/line-chart';
 import { PnlText } from '@/components/money';
 import { ProvenanceBadge } from '@/components/provenance-badge';
 import { StatTile } from '@/components/stat-tile';
@@ -26,17 +25,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { errorMessage } from '@/lib/api/errors';
-import {
-  useCreatePaperPortfolio,
-  useDashboardCharts,
-  useDashboardSummary,
-  useHoldings,
-  useOrders,
-} from '@/lib/api/hooks';
+import { useCreatePaperPortfolio, useDashboardSummary, useHoldings, useOrders } from '@/lib/api/hooks';
 import type { DashboardSummary, Holding, SourcedValue } from '@/lib/api/types';
 import { Dec } from '@/lib/decimal';
 import { formatDateTime, formatPercent, formatPKR, formatQty } from '@/lib/format';
 import { useActivePortfolio } from '@/lib/portfolio-context';
+import { BasisHint, PerformanceSection } from './performance';
 
 export default function DashboardPage() {
   const { portfolioId, portfolio, portfolios, setPortfolioId } = useActivePortfolio();
@@ -82,6 +76,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
       <QueryState query={summary} rows={4}>
         {(s) => <Kpis s={s} />}
       </QueryState>
+      <PerformanceSection portfolioId={portfolioId} />
       <div className="grid gap-6 xl:grid-cols-2">
         <Section title="Allocation" description="Weight of each holding in priced market value.">
           <Card>
@@ -96,9 +91,8 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
             </CardContent>
           </Card>
         </Section>
-        <Performance portfolioId={portfolioId} />
+        <RecentOrders portfolioId={portfolioId} />
       </div>
-      <RecentOrders portfolioId={portfolioId} />
     </>
   );
 }
@@ -184,13 +178,15 @@ function Kpis({ s }: { s: DashboardSummary }) {
           label="Today’s P&L"
           value={sourced(s.todayPnl, true)}
           source={s.todayPnl?.source}
-          hint={s.todayPnl ? undefined : 'Needs daily snapshots'}
+          note={s.todayPnl?.note}
+          delta={s.todayPnlPct ? <PnlText value={s.todayPnlPct.value} percent showIcon={false} /> : undefined}
+          hint={s.todayPnl ? <BasisHint figure={s.todayPnl} /> : (s.snapshotsNote ?? 'Needs daily snapshots')}
         />
         <StatTile
           label="This month’s P&L"
           value={sourced(s.monthPnl, true)}
           source={s.monthPnl?.source}
-          hint={s.monthPnl ? undefined : 'Needs daily snapshots'}
+          hint={s.monthPnl ? <BasisHint figure={s.monthPnl} /> : (s.snapshotsNote ?? 'Needs daily snapshots')}
         />
         <StatTile
           label="Dividends received"
@@ -282,36 +278,6 @@ function Allocation({ holdings }: { holdings: Holding[] }) {
           ` · ${holdings.length - priced.length} unpriced holding(s) excluded`}
       </figcaption>
     </figure>
-  );
-}
-
-function Performance({ portfolioId }: { portfolioId: string }) {
-  const charts = useDashboardCharts(portfolioId, '3M');
-  return (
-    <Section title="Performance" description="Portfolio value over the last 3 months.">
-      <Card>
-        <CardContent className="pt-4">
-          {charts.isPending ? (
-            <LoadingBlock rows={5} />
-          ) : charts.isError ? (
-            <ErrorState error={charts.error} onRetry={() => void charts.refetch()} />
-          ) : (
-            <div className="space-y-2">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                Source: <ProvenanceBadge source={charts.data.source} />
-              </p>
-              <LineChart
-                label="Portfolio value"
-                seriesName="Value"
-                series={charts.data.performance.map((p) => ({ t: p.date, value: p.value }))}
-                formatValue={(v) => formatPKR(v)}
-                height={240}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </Section>
   );
 }
 
