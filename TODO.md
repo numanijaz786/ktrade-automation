@@ -78,7 +78,7 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Manual evaluation → signals (deduped) + execution log; PAPER autoExecute → system paper approval (PAPER-only, risk-checked); LIVE → signal only
 - [x] Backtests (real KTrade fees, provenance, disclaimer) + compare; Sortino, annualised return, risk/reward
 - [x] Integration tests (13)
-- [ ] Scheduled evaluation (BullMQ) at bar close; signals → `prepare-order` / `dismiss`
+- [x] Scheduled evaluation at bar close (STRATEGY_SCHEDULER, try-lock + run log, LIVE never orders) + `prepare-order` (preview only) / `dismiss` / expiry (ADR-030)
 - [x] Frontend: strategies, backtesting, paper trading on the real API
 - [ ] Open items from ADR-020/025: VWAP, walk-forward, regime / multi-timeframe filters, STOP orders in paperFill, mirror mode
 

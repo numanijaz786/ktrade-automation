@@ -317,3 +317,12 @@ Accepted from the quant engineer's implementation:
 - **API fix:** a duplicate portfolio name returned 500 (unhandled P2002). It now returns 409 `ALREADY_EXISTS`.
 - **API fix:** a paper preview could fail with `NO_PRICE` on a cold start, because quotes refresh lazily. `TradingService.preview` now refreshes quotes once when a symbol has none (TradingModule imports MarketDataModule; no cycle). Both have a regression test.
 - **Remaining web gaps (TODO):** the dashboard performance chart isn't wired to `GET /portfolios/:id/performance` yet; there's no notifications or alerts UI; custom-rules strategies are view-only; dividends, analytics and reports have no backend yet.
+
+## ADR-030 · Signal actions and strategy scheduler
+
+- **`POST /signals/:id/prepare-order`** turns a NEW signal into an order **preview only** (origin STRATEGY). It **never approves** (verified: no approval call on that path). The owner approves with step-up as usual; LIVE becomes the manual KTrade ticket. Idempotency key `strategy-signal-<id>` is shared with the paper auto-execute path, so a signal can never produce two orders, even under concurrent requests. PAPER uses MARKET; LIVE uses LIMIT at the signal price (live portfolios refuse market orders by default). A risk rejection marks the signal `BLOCKED_BY_RISK`.
+- **`POST /signals/:id/dismiss`**: NEW → DISMISSED. A NEW D1 signal **expires** at the close of the next trading session after its bar (holiday-aware); acting on it then returns 409.
+- **`STRATEGY_SCHEDULER`** (default off) checks every 5 min on trading days at or after 15:35 PKT and evaluates each active D1 strategy once per completed bar through the existing `evaluate` path (audit actor SYSTEM).
+  - **Concurrency:** no overlapping ticks in-process. A bar counts as done when a successful run log exists; this is checked before and after a per strategy+bar Postgres **try**-lock (skip, never wait). The signal unique key and order idempotency key are the backstop. A bar isn't retried after 3 failures.
+  - LIVE strategies only record signals and notifications, **never orders**. PAPER + autoExecute behaves as before (system paper approval, PAPER-only).
+- **Not yet:** intraday strategies aren't scheduled.

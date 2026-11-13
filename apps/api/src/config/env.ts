@@ -64,6 +64,11 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /** Evaluate ACTIVE strategies once per completed bar after 15:35 PKT on trading days. Off by default. */
+  STRATEGY_SCHEDULER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('true')

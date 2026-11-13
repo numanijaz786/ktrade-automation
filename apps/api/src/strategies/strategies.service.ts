@@ -29,6 +29,7 @@ import { CLOCK, type Clock } from '../common/clock.js';
 import { Prisma, type StrategyParameter, type TradingStrategy } from '../generated/prisma/client.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { pktDateOf } from '../market-data/calendar.js';
+import { MarketCalendarService } from '../market-data/market-calendar.service.js';
 import { MarketDataService } from '../market-data/market-data.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -44,6 +45,7 @@ import type {
   UpdateStrategyInput,
   ValidateStrategyInput,
 } from './strategies.schemas.js';
+import { signalExpiresAt } from './signal-expiry.js';
 import { EVALUATION_LOOKBACK_BARS, StrategyDataService } from './strategy-data.service.js';
 
 type StrategyRow = TradingStrategy & { parameters: StrategyParameter[]; stock: { symbol: string } };
@@ -72,6 +74,14 @@ const DRY_RUN_CAPITAL = '1000000';
 export const LIVE_AUTO_EXECUTION_FORBIDDEN = 'LIVE_AUTO_EXECUTION_FORBIDDEN';
 
 const notFound = () => new NotFoundException({ message: 'Strategy not found', code: 'NOT_FOUND' });
+const signalNotFound = () => new NotFoundException({ message: 'Signal not found', code: 'NOT_FOUND' });
+const signalNotActionable = (status: string) =>
+  new ConflictException({
+    message: `Signal is ${status}; only NEW signals can be acted on`,
+    code: status === 'EXPIRED' ? 'SIGNAL_EXPIRED' : 'SIGNAL_NOT_ACTIONABLE',
+  });
+/** Deterministic per signal; the PAPER auto-execution path uses the same key, so a signal never gets two orders. */
+export const signalIdempotencyKey = (signalId: string) => `strategy-signal-${signalId}`;
 const liveAutoForbidden = () =>
   new UnprocessableEntityException({
     message:
@@ -119,6 +129,7 @@ export class StrategiesService {
     private readonly audit: AuditService,
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly notifications: NotificationsService,
+    private readonly calendar: MarketCalendarService,
   ) {}
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -427,7 +438,8 @@ export class StrategiesService {
 
   // ── Evaluation (manual trigger; the scheduler will call the same method) ────
 
-  async evaluate(userId: string, id: string, meta: RequestMeta) {
+  /** `actor` is USER for the HTTP trigger and SYSTEM for the StrategyScheduler (audit attribution only). */
+  async evaluate(userId: string, id: string, meta: RequestMeta, actor: 'USER' | 'SYSTEM' = 'USER') {
     const s = await this.owned(userId, id);
     if (!s.isActive)
       throw new ConflictException({
@@ -453,11 +465,16 @@ export class StrategiesService {
       await this.prisma.tradingStrategy.update({ where: { id: s.id }, data: { lastEvaluatedAt: now } });
       await this.audit.record({
         action: 'strategy.evaluated',
-        actorType: 'USER',
+        actorType: actor,
         actorUserId: userId,
         entityType: 'strategy',
         entityId: s.id,
-        metadata: { executionId: execution.id, mode: s.mode, ...result.details },
+        metadata: {
+          executionId: execution.id,
+          mode: s.mode,
+          trigger: actor === 'SYSTEM' ? 'scheduler' : 'manual',
+          ...result.details,
+        },
         ...meta,
       });
       return {
@@ -694,7 +711,7 @@ export class StrategiesService {
         origin: 'STRATEGY',
         strategyId: s.id,
       },
-      `strategy-signal-${signalId}`,
+      signalIdempotencyKey(signalId),
       meta,
       'STRATEGY',
     );
@@ -742,6 +759,7 @@ export class StrategiesService {
 
   async signals(userId: string, q: { strategyId?: string; status?: SignalStatus; limit: number }) {
     if (q.strategyId) await this.owned(userId, q.strategyId);
+    await this.expireStaleSignals(userId);
     const rows = await this.prisma.strategySignal.findMany({
       where: {
         strategy: { userId },
@@ -756,12 +774,185 @@ export class StrategiesService {
   }
 
   async signalById(userId: string, id: string) {
+    await this.expireStaleSignals(userId, id);
     const r = await this.prisma.strategySignal.findFirst({
       where: { id, strategy: { userId } },
       include: { stock: { select: { symbol: true } }, strategy: { select: { name: true } } },
     });
-    if (!r) throw new NotFoundException({ message: 'Signal not found', code: 'NOT_FOUND' });
+    if (!r) throw signalNotFound();
     return { ...this.signalRowView(r), trace: r.indicators };
+  }
+
+  /**
+   * NEW signals past their interval horizon (D1: the close of the next trading session after the signal's bar)
+   * become EXPIRED. Runs when signals are read or acted on (scoped to the user, optionally to one signal) and on
+   * every scheduler tick. The update is conditional on status = NEW, so it never overrides a concurrent
+   * prepare-order or dismiss. Returns how many signals were expired.
+   */
+  async expireStaleSignals(userId?: string, signalId?: string): Promise<number> {
+    const rows = await this.prisma.strategySignal.findMany({
+      where: {
+        status: 'NEW',
+        ...(userId ? { strategy: { userId } } : {}),
+        ...(signalId ? { id: signalId } : {}),
+      },
+      select: { id: true, barTs: true, strategy: { select: { userId: true, interval: true } } },
+    });
+    if (rows.length === 0) return 0;
+    const now = this.clock.now();
+    const cal = await this.calendar.refresh();
+    let expired = 0;
+    for (const r of rows) {
+      const expiresAt = signalExpiresAt(r.strategy.interval, r.barTs, cal);
+      if (now.getTime() < expiresAt.getTime()) continue;
+      await this.prisma.$transaction(async (tx) => {
+        const { count } = await tx.strategySignal.updateMany({
+          where: { id: r.id, status: 'NEW' },
+          data: { status: 'EXPIRED' },
+        });
+        if (count !== 1) return;
+        expired++;
+        await this.audit.record(
+          {
+            action: 'strategy.signal_expired',
+            actorType: 'SYSTEM',
+            actorUserId: r.strategy.userId,
+            entityType: 'strategy_signal',
+            entityId: r.id,
+            metadata: { barTs: r.barTs.toISOString(), expiresAt: expiresAt.toISOString() },
+          },
+          tx,
+        );
+      });
+    }
+    return expired;
+  }
+
+  /**
+   * Turn a NEW signal into an order PREVIEW (origin STRATEGY) through the normal order pipeline. It never
+   * approves: the owner approves with step-up (LIVE → manual KTrade ticket). Idempotent: the idempotency key is
+   * derived from the signal id, so repeats (and concurrent calls) return the same order. A preview rejected by
+   * risk marks the signal BLOCKED_BY_RISK; otherwise it becomes ORDER_PREPARED. Both link `orderId`.
+   */
+  async prepareOrder(userId: string, signalId: string, meta: RequestMeta) {
+    await this.expireStaleSignals(userId, signalId);
+    const sig = await this.prisma.strategySignal.findFirst({
+      where: { id: signalId, strategy: { userId } },
+      include: { strategy: { include: { stock: { select: { symbol: true } } } } },
+    });
+    if (!sig) throw signalNotFound();
+    const alreadyPrepared =
+      (sig.status === 'ORDER_PREPARED' || sig.status === 'BLOCKED_BY_RISK') && sig.orderId !== null;
+    if (sig.status !== 'NEW' && !alreadyPrepared) throw signalNotActionable(sig.status);
+
+    const qty = sig.suggestedQty ? dec(sig.suggestedQty).floor() : ZERO;
+    if (!alreadyPrepared && !qty.gt(0))
+      throw new ConflictException({
+        message: 'Signal has no positive suggested quantity; place the order manually',
+        code: 'SIGNAL_NOT_ACTIONABLE',
+      });
+    // PAPER: a market order, as auto-execution does. LIVE: a limit at the signal price, because live portfolios
+    // refuse market orders by default and the owner places it personally from the manual ticket.
+    const pricing =
+      sig.mode === 'LIVE'
+        ? { type: 'LIMIT' as const, limitPrice: round(dec(sig.price), 2).toFixed(2) }
+        : { type: 'MARKET' as const };
+    const request = () =>
+      this.trading.preview(
+        userId,
+        {
+          portfolioId: sig.strategy.portfolioId,
+          symbol: sig.strategy.stock.symbol,
+          side: sig.side,
+          quantity: qty.toFixed(0),
+          origin: 'STRATEGY',
+          strategyId: sig.strategyId,
+          ...pricing,
+        },
+        signalIdempotencyKey(sig.id),
+        meta,
+        'USER',
+      );
+    let order: Awaited<ReturnType<typeof request>>;
+    try {
+      order = await request();
+    } catch (err) {
+      // A concurrent prepare created the order first (unique userId + idempotencyKey): replay it.
+      if (!isUniqueViolation(err)) throw err;
+      order = await request();
+    }
+
+    if (!alreadyPrepared) {
+      const status: SignalStatus = order.status === 'REJECTED_BY_RISK' ? 'BLOCKED_BY_RISK' : 'ORDER_PREPARED';
+      await this.prisma.$transaction(async (tx) => {
+        const { count } = await tx.strategySignal.updateMany({
+          where: { id: sig.id, status: 'NEW' },
+          data: { status, orderId: order.id },
+        });
+        if (count !== 1) {
+          const current = await tx.strategySignal.findUniqueOrThrow({ where: { id: sig.id } });
+          if (current.orderId === order.id) return; // a concurrent prepare already linked this same order
+          throw signalNotActionable(current.status);
+        }
+        await this.audit.record(
+          {
+            action:
+              status === 'BLOCKED_BY_RISK'
+                ? 'strategy.signal_blocked_by_risk'
+                : 'strategy.signal_order_prepared',
+            actorType: 'USER',
+            actorUserId: userId,
+            entityType: 'strategy_signal',
+            entityId: sig.id,
+            metadata: {
+              strategyId: sig.strategyId,
+              orderId: order.id,
+              orderStatus: order.status,
+              mode: sig.mode,
+            },
+            ...meta,
+          },
+          tx,
+        );
+      });
+    }
+    return { signal: await this.signalById(userId, sig.id), order };
+  }
+
+  /** NEW → DISMISSED. Dismissing an already dismissed signal returns it unchanged. */
+  async dismissSignal(userId: string, signalId: string, meta: RequestMeta) {
+    await this.expireStaleSignals(userId, signalId);
+    const sig = await this.prisma.strategySignal.findFirst({
+      where: { id: signalId, strategy: { userId } },
+      select: { id: true, status: true, strategyId: true, mode: true },
+    });
+    if (!sig) throw signalNotFound();
+    if (sig.status === 'DISMISSED') return this.signalById(userId, sig.id);
+    if (sig.status !== 'NEW') throw signalNotActionable(sig.status);
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.strategySignal.updateMany({
+        where: { id: sig.id, status: 'NEW' },
+        data: { status: 'DISMISSED' },
+      });
+      if (count !== 1) {
+        const current = await tx.strategySignal.findUniqueOrThrow({ where: { id: sig.id } });
+        if (current.status === 'DISMISSED') return;
+        throw signalNotActionable(current.status);
+      }
+      await this.audit.record(
+        {
+          action: 'strategy.signal_dismissed',
+          actorType: 'USER',
+          actorUserId: userId,
+          entityType: 'strategy_signal',
+          entityId: sig.id,
+          metadata: { strategyId: sig.strategyId, mode: sig.mode },
+          ...meta,
+        },
+        tx,
+      );
+    });
+    return this.signalById(userId, sig.id);
   }
 
   async executions(userId: string, id: string) {

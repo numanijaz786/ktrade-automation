@@ -206,6 +206,33 @@ export class SignalsController {
   get(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.strategies.signalById(user.id, id);
   }
+
+  @Post(':id/prepare-order')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Turn a NEW signal into an order PREVIEW (origin STRATEGY; idempotent per signal). Never approves: approve it with step-up as usual (LIVE → manual KTrade ticket). A risk rejection marks the signal BLOCKED_BY_RISK.',
+  })
+  prepareOrder(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ReqMeta() meta: RequestMeta,
+  ) {
+    return this.strategies.prepareOrder(user.id, id, meta);
+  }
+
+  @Post(':id/dismiss')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Dismiss a NEW signal' })
+  dismiss(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ReqMeta() meta: RequestMeta,
+  ) {
+    return this.strategies.dismissSignal(user.id, id, meta);
+  }
 }
 
 @ApiTags('backtests')
