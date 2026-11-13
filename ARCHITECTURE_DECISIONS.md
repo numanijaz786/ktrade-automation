@@ -208,3 +208,20 @@ Accepted from the quant engineer's implementation:
 - **Broker accounts:** `POST /broker/accounts` creates the KTrade account anchor, its LIVE portfolio (conservative limits, market orders off) and connection rows: MANUAL_IMPORT CONNECTED; KTRADE_OFFICIAL_API DISABLED; KTRADE_BROWSER PENDING_AUTHORIZATION. All capabilities are off and no credentials are accepted.
 - **Frontend:** the web `ApiClient` import contract now mirrors the API. The demo client enforces the same rules, so demo and real behaviour don't diverge. The KTrade integration page shows connections plus the full import review UI.
 - **Fix:** the demo kill switch defaulted to ON, contradicting the real default (OFF). Corrected, and tests updated to enable live trading explicitly.
+
+## ADR-023 · Market-data review and reference-data seed (Phase 7, part 1)
+
+- **Review of the agent-written market-data code: accepted.**
+  - Prices use finance-core decimals.
+  - The PRNG is SHA-256 in counter mode (reproducible on every platform, no float involvement). `Math.*` appears only on timestamps and indices.
+  - It respects the PSX 0.01 tick and the trading calendar.
+  - No scraping, no network access. The Capital Stake adapter is an honest disabled stub (no guessed endpoints).
+- **`pnpm --filter @ktrade/api db:seed`** (idempotent):
+  - 30 PSX stocks with their SIMULATED D1 history (2 years by default, `--years N`);
+  - KTrade's published fee schedule as an effective-dated `fee_schedules` row.
+
+  A re-run inserts nothing. Simulated bars **never overwrite** non-simulated rows (`overwritableProviderKeys`). The `stock_prices_ohlc_valid` CHECK constraint validated every generated bar (15,660 in dev).
+
+- **Tax rates are NOT seeded.** This supersedes the "placeholders `verified=false`" wording in docs/05/06/09. Invented numbers, even flagged, could reach a calculation. The tax lookup fails loudly ("not configured") until the owner enters confirmed rates.
+- **Pinned equivalence:** the DB-stored fee schedule must compute exactly the same fees as `ktradeDefaultSchedule()` (`test/seed.int.test.ts`), because FeeService prefers the DB schedule once seeded.
+- **Lesson repeated** (cf. ADR-019): scripts must not import modules that load Nest `ConfigModule` (it validates the full API env at import). Constants used by scripts live in dependency-free modules (`ledger/fee-defaults.ts`, `auth/password-policy.ts`).

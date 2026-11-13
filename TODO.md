@@ -29,7 +29,8 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Integration tests (12) on real Postgres
 - [ ] Credential-vault service + `/integrations/credentials` endpoints (write-only secrets)
 - [ ] `POST /security/destroy-all` (sessions + vault crypto-shred)
-- [ ] Seed script (`pnpm db:seed`): owner-less demo data, KTrade fee schedule, placeholder tax rates (`verified=false`), PSX holidays
+- [x] Seed script (`pnpm db:seed`): PSX stocks + SIMULATED history + KTrade fee schedule (idempotent). Tax rates deliberately NOT seeded (ADR-023)
+- [ ] PSX holiday calendar seed (needs an authoritative holiday list; the owner can enter it via settings)
 
 ## Phase 5: Broker abstraction & imports
 
@@ -52,13 +53,12 @@ Work top to bottom; the first unchecked item is the next task.
 - [ ] Corporate actions endpoints (bonus/split/rights apply)
 - [ ] Holding detail (lots, history) endpoint
 
-## Phase 7: Market data ← **CURRENT** (unblocks real imports: the `stocks` table is empty on a fresh DB)
+## Phase 7: Market data ← **CURRENT**
 
-- [ ] **NEXT: review the agent-written market-data files, then add the stock-list seed (`seed/stocks.ts` → idempotent upsert) and `pnpm db:seed`** so real CSV imports recognise PSX symbols
-- [~] Providers written by an agent (simulated, CSV-EOD, Capital Stake disabled stub), calendar, movers, staleness, registry, seed stock list. **Review first**; they compile and lint clean but have no tests yet
-- [ ] MarketDataService + controller (`/market/*`, `/watchlists`), module, wiring
-- [ ] `seedMarketData` (≈30 PSX symbols, 2 years of SIMULATED D1 bars) + quote ticker (`MARKET_DATA_TICKER`)
-- [ ] Unit + integration tests
+- [x] Review of agent-written market-data code: accepted (ADR-023)
+- [x] `seedMarketData` (30 PSX symbols, SIMULATED D1 history, never overwrites real rows) + seed integration tests (4)
+- [ ] **NEXT: unit tests for the agent-written providers** (simulated determinism + OHLC/tick invariants, CSV-EOD parser errors, calendar/holidays, staleness, movers ordering, Capital Stake stub refuses)
+- [ ] MarketDataService + controller (`/market/providers|stocks|quotes|candles|movers|prices/import`, `/watchlists`), module, wiring, quote ticker (`MARKET_DATA_TICKER`), integration test
 - [ ] WebSocket gateway (`quote`, `order.updated`, `notification`)
 - [ ] ⛔ Live/delayed data: owner chooses and pays for a licensed vendor
 

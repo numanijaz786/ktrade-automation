@@ -4,3 +4,4 @@ dist
 coverage
 generated
 *.prisma
+next-env.d.ts

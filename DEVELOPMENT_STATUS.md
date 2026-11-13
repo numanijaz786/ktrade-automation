@@ -4,15 +4,15 @@ _Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_D
 
 ## 1. Where we are
 
-|                    |                                                                                                                                                                                                                                                                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Overall**        | Phases 1–5 done (except reconciliation and the KTrade parsers, both blocked on samples). Phase 6 + 8 core done. Phase 7 partial. Phases 9–12 not started (their pure logic exists in `finance-core`).                                                                                                                          |
-| **Just completed** | **Phase 5 statement import pipeline**, API + frontend (ADR-022).                                                                                                                                                                                                                                                               |
-| **Next task**      | **Phase 7:** review the agent-written `apps/api/src/market-data/*`, then seed the PSX stock list (`seed/stocks.ts` → idempotent upsert, `pnpm db:seed`). **Why first:** imports reject unknown symbols, and the `stocks` table is empty on a fresh database. Then finish MarketDataService, controller and module, with tests. |
-| **Also pending**   | Repo-wide Prettier formatting as a separate style-only commit; CI `format:check` currently fails on 170 files.                                                                                                                                                                                                                 |
-| **Build health**   | ✅ `pnpm turbo run build typecheck lint test`: 20/20 tasks (incl. web production build). ✅ API: 59 tests across 8 files (unit + e2e + 3 Testcontainers suites). ✅ Web: 28 tests. ✅ Compiled-API smoke test (ready 200, auth 401, 2.5 MB body parsed / 4 MB → 413, Swagger lists import routes).                             |
-| **Migrations**     | 3 migrations (`init`, `auth_totp_and_hardening`, `import_target_portfolio`), all applied to the dev DB, no drift.                                                                                                                                                                                                              |
-| **Git**            | `main` tracks https://github.com/numanijaz786/ktrade-automation. See `git log` for the latest commits. Push only when the owner asks.                                                                                                                                                                                          |
+|                    |                                                                                                                                                                                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overall**        | Phases 1–5 done (except reconciliation and the KTrade parsers, both blocked on samples). Phase 6 + 8 core done. Phase 7 partial. Phases 9–12 not started (their pure logic exists in `finance-core`).                                                                                              |
+| **Just completed** | Phase 5 statement import pipeline (ADR-022); repo-wide Prettier; Phase 7 part 1: market-data review + `pnpm db:seed` (ADR-023).                                                                                                                                                                    |
+| **Next task**      | **Phase 7 part 2:** unit tests for the reviewed market-data providers, then MarketDataService + controller + module (`/market/*`, `/watchlists`) with an integration test. See TODO.md.                                                                                                            |
+| **Also done**      | Repo-wide Prettier formatting (style-only commit `d961174`); CI `format:check` passes.                                                                                                                                                                                                             |
+| **Build health**   | ✅ `pnpm turbo run build typecheck lint test`: 20/20 tasks (incl. web production build). ✅ API: 59 tests across 8 files (unit + e2e + 3 Testcontainers suites). ✅ Web: 28 tests. ✅ Compiled-API smoke test (ready 200, auth 401, 2.5 MB body parsed / 4 MB → 413, Swagger lists import routes). |
+| **Migrations**     | 3 migrations (`init`, `auth_totp_and_hardening`, `import_target_portfolio`), all applied to the dev DB, no drift.                                                                                                                                                                                  |
+| **Git**            | `main` tracks https://github.com/numanijaz786/ktrade-automation. See `git log` for the latest commits. Push only when the owner asks.                                                                                                                                                              |
 
 ## 2. Completed work (cumulative)
 
@@ -60,30 +60,30 @@ _Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_D
 
 ## 3. Tests at last run
 
-| Suite                                              | Result                                                                           |
-| -------------------------------------------------- | -------------------------------------------------------------------------------- |
-| finance-core / shared / broker-sdk                 | 184 / 13 / 8 ✅                                                                  |
-| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 59 / 59 ✅ (auth 12, trading 7, imports 8, parser 5, TOTP 13, envelope 5, e2e 9) |
-| Web                                                | 28 / 28 ✅, `next build` ✅                                                      |
+| Suite                                              | Result                                                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| finance-core / shared / broker-sdk                 | 184 / 13 / 8 ✅                                                                          |
+| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 63 / 63 ✅ (auth 12, trading 7, imports 8, seed 4, parser 5, TOTP 13, envelope 5, e2e 9) |
+| Web                                                | 28 / 28 ✅, `next build` ✅                                                              |
 
 ## 4. Known issues / blockers
 
-| Item                                                                              | Type              | Action                                          |
-| --------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------- |
-| KTrade has no API; browser automation not authorized                              | ⛔ External       | Owner sends the permission request (docs/03 §6) |
-| Live PSX prices need a licensed vendor (paid)                                     | ⛔ Owner decision | Simulated provider until then                   |
-| KTrade contract-note / statement / CDC parsers                                    | ⛔ Input          | Need redacted samples                           |
-| Tax rates                                                                         | ⛔ Input          | Placeholders `verified=false`                   |
-| `stocks` table empty on a fresh DB → imports flag every symbol unknown            | Next task         | Seed the stock list (Phase 7)                   |
-| `data-table.tsx` lint warning (React Compiler skips TanStack Table)               | Info              | Known library incompatibility; harmless         |
-| Node 24.13 → jsdom pinned to 27                                                   | Minor             | Upgrade Node 24 LTS (ADR-015)                   |
-| Dev containers left running; one `test.append_only_probe` audit row in the dev DB | Info              | `pnpm db:down` to stop                          |
+| Item                                                                              | Type              | Action                                                    |
+| --------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------- |
+| KTrade has no API; browser automation not authorized                              | ⛔ External       | Owner sends the permission request (docs/03 §6)           |
+| Live PSX prices need a licensed vendor (paid)                                     | ⛔ Owner decision | Simulated provider until then                             |
+| KTrade contract-note / statement / CDC parsers                                    | ⛔ Input          | Need redacted samples                                     |
+| Tax rates                                                                         | ⛔ Input          | Placeholders `verified=false`                             |
+| Fresh DB has no stocks until seeded                                               | Info              | Run `pnpm --filter @ktrade/api db:seed` after `db:deploy` |
+| `data-table.tsx` lint warning (React Compiler skips TanStack Table)               | Info              | Known library incompatibility; harmless                   |
+| Node 24.13 → jsdom pinned to 27                                                   | Minor             | Upgrade Node 24 LTS (ADR-015)                             |
+| Dev containers left running; one `test.append_only_probe` audit row in the dev DB | Info              | `pnpm db:down` to stop                                    |
 
 ## 5. Resume commands
 
 ```bash
 pnpm db:up
-cd apps/api && pnpm exec prisma generate && pnpm db:deploy && cd ../..
+cd apps/api && pnpm exec prisma generate && pnpm db:deploy && pnpm build && pnpm db:seed && cd ../..
 pnpm turbo run build typecheck lint test
 cd apps/api && RUN_INTEGRATION=1 pnpm test   # Docker required
 ```

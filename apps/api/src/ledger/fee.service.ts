@@ -12,7 +12,8 @@ import type { OrderSide } from '@ktrade/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 /** KTrade's published schedule (Commission Structure PDF) — the fallback when none is configured in the DB. */
-export const DEFAULT_SCHEDULE_EFFECTIVE_FROM = '2025-01-01';
+export { DEFAULT_SCHEDULE_EFFECTIVE_FROM } from './fee-defaults.js';
+import { DEFAULT_SCHEDULE_EFFECTIVE_FROM } from './fee-defaults.js';
 
 /** Estimates fees with the effective-dated schedule from the DB (or KTrade's published default). */
 @Injectable()
