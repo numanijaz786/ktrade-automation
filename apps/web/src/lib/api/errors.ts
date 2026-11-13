@@ -12,7 +12,18 @@ export type ApiErrorCode =
   | 'INVALID_CREDENTIALS'
   | 'INVALID_STATE'
   | 'NOT_FOUND'
-  | 'VALIDATION_FAILED';
+  | 'VALIDATION_FAILED'
+  // statement imports (apps/api/src/imports)
+  | 'IMPORT_HAS_INVALID_ROWS'
+  | 'IMPORT_OVERSELL'
+  | 'IMPORT_ROW_REJECTED'
+  | 'IMPORT_REQUIRES_LIVE_PORTFOLIO'
+  | 'INVALID_IMPORT_STATE'
+  | 'NOTHING_TO_COMMIT'
+  | 'ROW_NOT_INCLUDABLE'
+  | 'UNSUPPORTED_FILE'
+  | 'PARSE_FAILED'
+  | 'EMPTY_FILE';
 
 /** Client-side representation of an RFC 9457 problem document. */
 export class ApiError extends Error {

@@ -24,6 +24,7 @@ import type {
   UserSettings,
 } from './types';
 import type { ImportKind } from '@ktrade/shared';
+import type { ImportRowAction } from './types';
 
 export const qk = {
   dataMode: ['system', 'dataMode'] as const,
@@ -450,7 +451,8 @@ export function useImportMutations() {
   const qc = useQueryClient();
   const done = () => qc.invalidateQueries({ queryKey: ['broker'] });
   return {
-    upload: useMutation({ mutationFn: (v: { fileName: string; size: number; kind?: ImportKind }) => api.broker.upload(v), onSuccess: done }),
+    upload: useMutation({ mutationFn: (v: { portfolioId: string; fileName: string; content: string; kind?: ImportKind }) => api.broker.upload(v), onSuccess: done }),
+    updateRow: useMutation({ mutationFn: (v: { importId: string; rowId: string; action: ImportRowAction }) => api.broker.updateImportRow(v.importId, v.rowId, v.action), onSuccess: done }),
     commit: useMutation({ mutationFn: (id: string) => api.broker.commitImport(id), onSuccess: done }),
     reject: useMutation({ mutationFn: (id: string) => api.broker.rejectImport(id), onSuccess: done }),
   };

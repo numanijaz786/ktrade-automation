@@ -9,6 +9,7 @@ import { ProblemDetailsFilter } from './common/filters/problem-details.filter.js
 import { LoggerModule } from './common/logging/logger.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { HealthController } from './health/health.controller.js';
+import { ImportsModule } from './imports/imports.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { TradingModule } from './trading/trading.module.js';
@@ -25,6 +26,7 @@ import { TradingModule } from './trading/trading.module.js';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     AuthModule,
     TradingModule,
+    ImportsModule,
   ],
   controllers: [HealthController],
   providers: [

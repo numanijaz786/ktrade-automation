@@ -28,12 +28,14 @@ Work top to bottom; the first unchecked item is the next task.
 - [ ] `POST /security/destroy-all` (sessions + vault crypto-shred)
 - [ ] Seed script (`pnpm db:seed`): owner-less demo data, KTrade fee schedule, placeholder tax rates (`verified=false`), PSX holidays
 
-## Phase 5: Broker abstraction & imports  ← **CURRENT**
+## Phase 5: Broker abstraction & imports
 - [x] Parser interface + generic transactions CSV parser (+5 tests)
-- [ ] **NEXT: `imports.service.ts`**: upload (sha256 dedupe → 409), parse → `imported_rows` with fingerprints, unknown-symbol/duplicate detection, review, commit in one DB transaction via `LedgerService.postTrade` (estimate fees when absent), reject; audit
-- [ ] `imports.controller.ts` (`POST /imports`, `GET /imports`, `/imports/:id`, `/imports/:id/rows`, `PATCH rows`, `POST commit/reject`), `parser-registry.ts`, `imports.module.ts`, wire into `app.module.ts`
-- [ ] `test/imports.int.test.ts` (import → commit → holdings; duplicate file; invalid rows; oversell aborts whole commit)
-- [ ] Reconciliation: match confirmed rows to USER_REPORTED fills → upgrade to BROKER_CONFIRMED (docs/06 §8)
+- [x] `imports.service.ts`: upload, sha256 dedupe (+ race-safe), parse, unknown-symbol / duplicate (prior import + ledger + in-file ref) detection, review (skip/include), atomic commit via `LedgerService` (one rebuild per symbol), fee estimates labelled ESTIMATED, reject, audit
+- [x] `imports.controller.ts`, `parser-registry.ts`, `imports.module.ts`, wired; migration 3 (`imported_statements.portfolioId`)
+- [x] `POST/GET /broker/accounts` (KTrade account + LIVE portfolio, adapters disabled)
+- [x] `test/imports.int.test.ts` (8): success + docs/06 accuracy, duplicate file, duplicate trades, invalid rows, review, full rollback on oversell, validation, audit
+- [x] Frontend: ApiClient import contract aligned with the API, demo client mirrors the rules, KTrade integration page (connections + import review UI), demo test
+- [ ] Reconciliation: match BROKER_CONFIRMED rows to USER_REPORTED fills → upgrade (docs/06 §8). Needs a broker-confirmed parser first
 - [ ] ⛔ KTrade contract-note / ledger / CDC parsers: needs redacted samples
 - [ ] Mailbox ingestion (OAuth read-only), after the contract-note parser exists
 - [ ] Paper broker adapter as a `BrokerAdapter` + adapter contract-test suite
@@ -45,7 +47,8 @@ Work top to bottom; the first unchecked item is the next task.
 - [ ] Corporate actions endpoints (bonus/split/rights apply)
 - [ ] Holding detail (lots, history) endpoint
 
-## Phase 7: Market data
+## Phase 7: Market data  ← **CURRENT** (unblocks real imports: the `stocks` table is empty on a fresh DB)
+- [ ] **NEXT: review the agent-written market-data files, then add the stock-list seed (`seed/stocks.ts` → idempotent upsert) and `pnpm db:seed`** so real CSV imports recognise PSX symbols
 - [~] Providers written by an agent (simulated, CSV-EOD, Capital Stake disabled stub), calendar, movers, staleness, registry, seed stock list. **Review first**; they compile and lint clean but have no tests yet
 - [ ] MarketDataService + controller (`/market/*`, `/watchlists`), module, wiring
 - [ ] `seedMarketData` (≈30 PSX symbols, 2 years of SIMULATED D1 bars) + quote ticker (`MARKET_DATA_TICKER`)
@@ -79,6 +82,9 @@ Work top to bottom; the first unchecked item is the next task.
 - [ ] 19 pages (priority: Dashboard, Holdings, Buy/Sell flow, Market Watch, Stock Details, Strategies, Backtesting, KTrade Integration; then the rest)
 - [ ] Replace `lib/decimal.ts`, `lib/fees.ts`, `lib/indicators.ts` with `@ktrade/finance-core` (remove duplication)
 - [ ] `HttpApiClient` + Next BFF route handlers (httpOnly cookies, CSRF), auth pages wired to the real API
+
+## Repo hygiene
+- [ ] Apply Prettier repo-wide (170 files were unformatted, so CI `format:check` would fail); separate style-only commit
 
 ## Phase 12: Hardening & delivery
 - [ ] Production Dockerfiles + compose (api, worker, web, nginx TLS, migrate job)

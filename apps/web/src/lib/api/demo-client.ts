@@ -14,7 +14,8 @@ import { estimateFees } from '../fees';
 import { DEMO_DAYS, avgCost, daysAgo, entryDate, makeTrade, positionSource, replay, seedLivePortfolio, seedPaperPortfolio, type LedgerEntry, type LedgerState } from '../demo/ledger';
 import { allBars, barsFor, DEMO_TODAY, mulberry32, paisaToString, gaussian, type RawBar } from '../demo/prices';
 import { BACKTEST_DISCLAIMER, defaultParams, runBacktest, runStrategy, scoreAt, STRATEGY_TEMPLATES } from '../demo/strategy-engine';
-import { DEMO_UNIVERSE, findSeed } from '../demo/universe';
+import { DEMO_SYMBOLS, DEMO_UNIVERSE, findSeed } from '../demo/universe';
+import { countRows, demoRowKey, parseDemoCsv } from '../demo/csv';
 import {
   LIVE_PORTFOLIO_ID,
   PAPER_PORTFOLIO_ID,
@@ -40,7 +41,6 @@ import type {
   Backtest,
   BrokerConnection,
   ChannelConfig,
-  ChartRange,
   DashboardCharts,
   DashboardSummary,
   Discrepancy,
@@ -55,7 +55,6 @@ import type {
   Order,
   OrderEvent,
   OrderPreviewRequest,
-  PerformancePeriod,
   PerformanceRow,
   Portfolio,
   Quote,
@@ -108,6 +107,8 @@ interface State {
   assistant: AssistantMessage[];
   imports: ImportBatch[];
   importRows: Map<string, ImportRow[]>;
+  /** file content → file name, for duplicate-file detection (the real API uses SHA-256) */
+  importContents: Map<string, string>;
   mailbox: MailboxStatus;
   discrepancies: Discrepancy[];
   connections: BrokerConnection[];
@@ -220,10 +221,11 @@ export class DemoApiClient implements ApiClient {
       assistant: [],
       imports: imports.batches,
       importRows: imports.rows,
+      importContents: new Map(),
       mailbox: seedMailbox(),
       discrepancies: seedDiscrepancies(),
       connections: seedConnections(),
-      killSwitch: { liveTradingEnabled: true, reason: 'Default: live order preparation allowed (execution is manual)', updatedAt: `${daysAgo(30)}T04:00:00Z` },
+      killSwitch: { liveTradingEnabled: false, reason: 'Default: OFF — enable with step-up to prepare live orders (execution stays manual)', updatedAt: `${daysAgo(30)}T04:00:00Z` },
       riskLimits: new Map(
         [LIVE_PORTFOLIO_ID, PAPER_PORTFOLIO_ID].map((id) => [
           id,
@@ -1300,36 +1302,75 @@ export class DemoApiClient implements ApiClient {
     connections: () => this.run((s) => s.connections),
     imports: () => this.run((s) => s.imports),
     importRows: (id) => this.run((s) => s.importRows.get(id) ?? []),
-    upload: ({ fileName, kind, size }) =>
+    // Mirrors the real pipeline's rules (apps/api/src/imports): file-hash dedupe, row validation, duplicate
+    // detection against committed rows, INVALID rows block commit, skip/include review. Demo only: committed rows
+    // are not posted into the demo ledger.
+    upload: ({ portfolioId, fileName, content, kind }) =>
       this.run((s) => {
-        if (s.imports.some((b) => b.fileName === fileName)) throw new ApiError('DUPLICATE_IMPORT', 409, 'Duplicate import', `${fileName} was already imported (same file hash).`);
-        if (size > 20 * 1024 * 1024) throw new ApiError('VALIDATION_FAILED', 422, 'File too large', 'Max 20 MB');
+        const target = s.portfolios.find((p) => p.id === portfolioId);
+        if (!target || target.kind !== 'LIVE') throw new ApiError('IMPORT_REQUIRES_LIVE_PORTFOLIO', 422, 'Live portfolio required', 'Statements can only be imported into a LIVE broker portfolio');
+        if (new Blob([content]).size > 2 * 1024 * 1024) throw new ApiError('VALIDATION_FAILED', 422, 'File too large', 'Max 2 MB');
+        if (s.importContents.has(content)) throw new ApiError('DUPLICATE_IMPORT', 409, 'Duplicate import', `This exact file was already imported (${s.importContents.get(content)}).`);
+        if (!/\.csv$/i.test(fileName) && kind !== 'GENERIC_TRANSACTIONS_CSV') throw new ApiError('UNSUPPORTED_FILE', 422, 'Unsupported file', 'Upload a CSV with date, symbol, side, quantity, price columns.');
+        const parsed = parseDemoCsv(content);
+        if (!parsed.ok) throw new ApiError('PARSE_FAILED', 422, 'Could not parse file', parsed.error);
+        if (parsed.rows.length === 0) throw new ApiError('EMPTY_FILE', 422, 'Empty file', 'The file contains no data rows.');
         const id = this.id('imp');
-        const detected = kind ?? (/contract/i.test(fileName) ? 'CONTRACT_NOTE' : /cdc/i.test(fileName) ? 'CDC_STATEMENT' : /\.csv$/i.test(fileName) ? 'GENERIC_TRANSACTIONS_CSV' : 'LEDGER_STATEMENT');
-        const rows: ImportRow[] = ['OGDC', 'HUBC'].map((sym, i) => ({ id: `${id}-r${i + 1}`, rowNo: i + 1, status: 'VALID', tradeDate: daysAgo(2 + i), symbol: sym, side: 'BUY', quantity: '25', price: paisaToString(s.quotes.get(sym)!.prevClose), contractRef: `DEMO-${i + 1}`, message: 'Demo parser output (file contents are not read in demo mode)' }));
+        const committedKeys = new Set([...s.importRows.values()].flat().filter((r) => r.status === 'COMMITTED').map(demoRowKey));
+        const rows: ImportRow[] = parsed.rows.map((r, i) => {
+          const errors = [...r.errors];
+          if (r.symbol && !DEMO_SYMBOLS.includes(r.symbol)) errors.push(`unknown symbol ${r.symbol} (not in the PSX stock list)`);
+          const warnings: string[] = [];
+          let status: ImportRow['status'] = errors.length ? 'INVALID' : 'VALID';
+          let duplicateOf: ImportRow['duplicateOf'] = null;
+          const row: ImportRow = { id: `${id}-r${i + 1}`, rowNo: r.rowNo, status, tradeDate: r.tradeDate, symbol: r.symbol, side: r.side, quantity: r.quantity, price: r.price, contractRef: r.contractRef, fees: r.fees, feeSource: r.fees.length ? 'FILE' : 'ESTIMATED_ON_COMMIT', duplicateOf, errors, warnings, message: null };
+          if (status === 'VALID' && committedKeys.has(demoRowKey(row))) {
+            status = 'DUPLICATE';
+            duplicateOf = { kind: 'IMPORT_ROW', id: '', detail: 'already imported in an earlier file' };
+            warnings.push(`${duplicateOf.detail} — skipped unless you include it`);
+          }
+          if (status !== 'INVALID' && !r.fees.length) warnings.push('no charges in file — fees will be ESTIMATED from the fee schedule');
+          return { ...row, status, duplicateOf, message: [...errors, ...warnings].join('; ') || null };
+        });
         s.importRows.set(id, rows);
-        const b: ImportBatch = { id, kind: detected, channel: 'UPLOAD', fileName, status: 'AWAITING_REVIEW', uploadedAt: this.iso(), rowCounts: { VALID: rows.length } };
+        s.importContents.set(content, fileName);
+        const dates = rows.flatMap((r) => (r.tradeDate ? [r.tradeDate] : [])).sort();
+        const b: ImportBatch = { id, portfolioId, kind: 'GENERIC_TRANSACTIONS_CSV', channel: 'UPLOAD', fileName, sizeBytes: new Blob([content]).size, parserKey: 'generic.transactions.csv', source: 'USER_REPORTED', status: 'AWAITING_REVIEW', uploadedAt: this.iso(), committedAt: null, periodFrom: dates[0] ?? null, periodTo: dates.at(-1) ?? null, rowCounts: countRows(rows) };
         s.imports.unshift(b);
         return b;
+      }),
+    updateImportRow: (importId, rowId, action) =>
+      this.run((s) => {
+        const b = s.imports.find((x) => x.id === importId);
+        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
+        const row = (s.importRows.get(importId) ?? []).find((r) => r.id === rowId);
+        if (!row) throw new ApiError('NOT_FOUND', 404, 'Row not found');
+        if (action === 'skip') row.status = 'SKIPPED';
+        else if (row.status === 'DUPLICATE' || (row.status === 'SKIPPED' && row.errors.length === 0)) row.status = 'VALID';
+        else throw new ApiError('ROW_NOT_INCLUDABLE', 409, 'Row cannot be included', `A ${row.status} row cannot be included — fix the file and re-upload.`);
+        b.rowCounts = countRows(s.importRows.get(importId) ?? []);
+        return row;
       }),
     commitImport: (id) =>
       this.run((s) => {
         const b = s.imports.find((x) => x.id === id);
-        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_STATE', 409, 'Import is not awaiting review');
-        b.status = 'COMMITTED';
+        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
         const rows = s.importRows.get(id) ?? [];
-        const committed = rows.filter((r) => r.status === 'VALID').length;
+        const invalid = rows.filter((r) => r.status === 'INVALID');
+        if (invalid.length) throw new ApiError('IMPORT_HAS_INVALID_ROWS', 409, 'Invalid rows remain', `Skip or fix ${invalid.length} invalid row(s) first (rows ${invalid.map((r) => r.rowNo).join(', ')}) — nothing is dropped silently.`);
+        if (!rows.some((r) => r.status === 'VALID')) throw new ApiError('NOTHING_TO_COMMIT', 409, 'Nothing to commit', 'No rows to commit — reject the import instead.');
         rows.forEach((r) => {
           if (r.status === 'VALID') r.status = 'COMMITTED';
-          else if (r.status === 'INVALID' || r.status === 'DUPLICATE') r.status = 'SKIPPED';
         });
-        b.rowCounts = { COMMITTED: committed, SKIPPED: rows.length - committed };
+        b.status = 'COMMITTED';
+        b.committedAt = this.iso();
+        b.rowCounts = countRows(rows);
         return b;
       }),
     rejectImport: (id) =>
       this.run((s) => {
         const b = s.imports.find((x) => x.id === id);
-        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_STATE', 409, 'Import is not awaiting review');
+        if (!b || b.status !== 'AWAITING_REVIEW') throw new ApiError('INVALID_IMPORT_STATE', 409, 'Import is not awaiting review');
         b.status = 'REJECTED';
         return b;
       }),

@@ -93,9 +93,24 @@ describe('DemoApiClient data', () => {
   });
 });
 
+/** Live trading is OFF by default (same as the real API); enabling it requires step-up. */
+async function enableLiveTrading(c: ReturnType<typeof client>) {
+  const { token } = await c.auth.stepUp('123456');
+  await c.system.setKillSwitch({ liveTradingEnabled: true, reason: 'test', stepUpToken: token });
+}
+
 describe('order preview → approval → manual ticket → fill', () => {
+  it('rejects live previews while the kill switch is OFF (the default)', async () => {
+    const c = client();
+    expect((await c.system.killSwitch()).liveTradingEnabled).toBe(false);
+    const order = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'HUBC', side: 'BUY', type: 'MARKET', quantity: '10', origin: 'MANUAL' });
+    expect(order.status).toBe('REJECTED_BY_RISK');
+    expect(order.riskChecks.find((r) => r.rule === 'KILL_SWITCH')?.passed).toBe(false);
+  });
+
   it('previews with risk checks, approves with step-up and never fills without a recorded fill', async () => {
     const c = client();
+    await enableLiveTrading(c);
     const order = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'HUBC', side: 'BUY', type: 'MARKET', quantity: '10', origin: 'MANUAL' });
     expect(order.status).toBe('PREVIEWED');
     expect(order.executionPath).toBe('MANUAL_TICKET');
@@ -137,6 +152,7 @@ describe('order preview → approval → manual ticket → fill', () => {
   it('expires previews after 5 minutes', async () => {
     let now = NOW;
     const c = client(() => now);
+    await enableLiveTrading(c);
     const o = await c.orders.preview({ portfolioId: LIVE_PORTFOLIO_ID, symbol: 'OGDC', side: 'BUY', type: 'MARKET', quantity: '5', origin: 'MANUAL' });
     now += 6 * 60 * 1000;
     const { token } = await c.auth.stepUp('123456');
@@ -162,5 +178,35 @@ describe('backtests', () => {
     expect(bt.equityCurve.length).toBeGreaterThan(100);
     expect(bt.disclaimer).toContain('Past simulated performance does not guarantee future returns');
     expect(bt.source).toBe('SIMULATED');
+  });
+});
+
+describe('statement import (demo mirrors the real pipeline rules)', () => {
+  const CSV = ['date,symbol,side,quantity,price,commission', '2026-11-02,OGDC,BUY,"1,000",250.00,750.00', '2026-11-03,NOPE,BUY,5,10,', '2026-11-04,HUBC,SELL,10,150.25,'].join('\n');
+
+  it('stages rows, flags invalid ones, blocks commit until skipped, then commits; rejects the same file twice', async () => {
+    const c = client();
+    await expect(c.broker.upload({ portfolioId: 'pf-paper', fileName: 'x.csv', content: CSV })).rejects.toMatchObject({ code: 'IMPORT_REQUIRES_LIVE_PORTFOLIO' });
+
+    const batch = await c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'trades.csv', content: CSV });
+    expect(batch).toMatchObject({ status: 'AWAITING_REVIEW', source: 'USER_REPORTED', rowCounts: { VALID: 2, INVALID: 1 } });
+    const rows = await c.broker.importRows(batch.id);
+    expect(rows.map((r) => [r.status, r.feeSource])).toEqual([
+      ['VALID', 'FILE'],
+      ['INVALID', 'ESTIMATED_ON_COMMIT'],
+      ['VALID', 'ESTIMATED_ON_COMMIT'],
+    ]);
+    expect(rows[0]!.quantity).toBe('1000');
+    expect(rows[1]!.errors.join()).toMatch(/unknown symbol NOPE/);
+
+    await expect(c.broker.commitImport(batch.id)).rejects.toMatchObject({ code: 'IMPORT_HAS_INVALID_ROWS' });
+    await expect(c.broker.updateImportRow(batch.id, rows[1]!.id, 'include')).rejects.toMatchObject({ code: 'ROW_NOT_INCLUDABLE' });
+    await c.broker.updateImportRow(batch.id, rows[1]!.id, 'skip');
+    const done = await c.broker.commitImport(batch.id);
+    expect(done).toMatchObject({ status: 'COMMITTED', rowCounts: { COMMITTED: 2, SKIPPED: 1 } });
+
+    await expect(c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'copy.csv', content: CSV })).rejects.toMatchObject({ code: 'DUPLICATE_IMPORT' });
+    const overlap = await c.broker.upload({ portfolioId: LIVE_PORTFOLIO_ID, fileName: 'next.csv', content: CSV.split('\n').slice(0, 2).join('\n') + '\n' });
+    expect(overlap.rowCounts).toEqual({ DUPLICATE: 1 });
   });
 });

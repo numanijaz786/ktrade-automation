@@ -714,28 +714,46 @@ export interface BrokerConnection {
   capabilities: Record<Capability, CapabilityState>;
 }
 
+/** Mirrors `GET /api/v1/imports/:id` (apps/api/src/imports/imports.service.ts → present()). */
 export interface ImportBatch {
   id: string;
+  portfolioId: string | null;
   kind: ImportKind;
   channel: ImportChannel;
   fileName: string;
+  sizeBytes: number;
+  parserKey: string;
+  /** Provenance of rows this file produces (user CSV → USER_REPORTED; KTrade documents → BROKER_CONFIRMED). */
+  source: DataSource | null;
   status: ImportStatus;
   uploadedAt: Instant;
+  committedAt: Instant | null;
+  periodFrom: IsoDate | null;
+  periodTo: IsoDate | null;
   rowCounts: Partial<Record<ImportRowStatus, number>>;
 }
 
+/** Mirrors `GET /api/v1/imports/:id/rows`. Trade fields are null on rows that could not be parsed. */
 export interface ImportRow {
   id: string;
   rowNo: number;
   status: ImportRowStatus;
-  tradeDate: IsoDate;
-  symbol: string;
-  side: OrderSide;
-  quantity: Decimal;
-  price: Decimal;
-  contractRef: string;
+  tradeDate: IsoDate | null;
+  symbol: string | null;
+  side: OrderSide | null;
+  quantity: Decimal | null;
+  price: Decimal | null;
+  contractRef: string | null;
+  /** Charges stated in the file. Empty → the fee engine estimates them on commit. */
+  fees: { component: FeeComponent; amount: Decimal }[];
+  feeSource: 'FILE' | 'ESTIMATED_ON_COMMIT' | null;
+  duplicateOf: { kind: 'IMPORT_ROW' | 'TRANSACTION'; id: string; detail: string } | null;
+  errors: string[];
+  warnings: string[];
   message: string | null;
 }
+
+export type ImportRowAction = 'skip' | 'include';
 
 export interface MailboxStatus {
   connected: boolean;

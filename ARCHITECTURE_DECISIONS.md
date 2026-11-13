@@ -164,3 +164,22 @@ Accepted from the quant engineer's implementation:
 - **Paper trading** fills immediately against the latest quote with 5 bps slippage (`paperFill`) and **may run outside PSX hours**, because it's a simulation and is labelled SIMULATED. Non-marketable paper limit orders stay ACCEPTED (working). The working-order matcher is part of Phase 9.
 - `orders.createdAt` comes from the injected clock (same source as the daily-limit window).
 - **Verified end-to-end:** the docs/06 §3 worked example runs through HTTP → risk → approval → manual fills → ledger → PostgreSQL and reproduces exactly (`test/trading.int.test.ts`).
+
+## ADR-022 · Statement import pipeline (Phase 5)
+- **Flow:** upload (JSON file text, ≤ 2 MB) → SHA-256 file dedupe → parser registry → per-row validation → `imported_rows` (AWAITING_REVIEW) → review (skip / include) → **commit in ONE DB transaction** through `LedgerService.postTrade`.
+- **Duplicate files:** a SHA-256 pre-check plus the `(brokerAccountId, fileSha256)` unique constraint. A concurrent identical upload that loses the race gets the same 409, with `existingImportId`.
+- **Duplicate trades:** a row is flagged DUPLICATE (skipped by default; the owner may include it) when it matches:
+  - an already **committed** imported row (fingerprint = sha256 of portfolio|date|symbol|side|qty|price, decimals normalised), or
+  - an existing ledger transaction with the same economics or the same contract reference. This covers fills recorded by hand in the order pipeline.
+
+  Identical rows *within* one file stay VALID with a warning, because two separate fills at the same price are legitimate.
+- **Invalid rows block the commit** until they are explicitly skipped. Nothing is ever dropped silently. INVALID rows can't be "included".
+- **Fees:** charges stated in the file keep the parser's provenance (generic CSV → USER_REPORTED). Missing charges are computed by the fee engine and stored as **ESTIMATED** fee lines. The accounting methodology is unchanged.
+- **Performance:** `postTrade(…, { rebuild: false })` for each row, then **one** `rebuildSymbol` per affected symbol inside the same transaction: O(n) instead of O(n²), with identical results. `rebuildSymbol` takes the per-symbol advisory lock itself (Postgres xact locks are re-entrant).
+- **Atomicity:** an oversell or constraint failure on any row aborts the whole commit. The error names the source row (`rowNo`, via the ledger error's `eventId` → transaction → row map), and the import stays AWAITING_REVIEW so it can be fixed. Commit transaction timeout is 120 s.
+- **Schema:** `imported_statements.portfolioId` (nullable FK, migration 3) records the target portfolio. It's additive and changes no accounting.
+- **Errors:** the RFC 9457 filter now passes through an **allow-list** of extension members (`rowNo`, `existingImportId`). Internal fields such as `eventId` never leave the API.
+- **Body limit:** the JSON parser limit is raised to 3 MB in `configureApp`. Verified on the compiled build: 2.5 MB is parsed, 4 MB gets 413.
+- **Broker accounts:** `POST /broker/accounts` creates the KTrade account anchor, its LIVE portfolio (conservative limits, market orders off) and connection rows: MANUAL_IMPORT CONNECTED; KTRADE_OFFICIAL_API DISABLED; KTRADE_BROWSER PENDING_AUTHORIZATION. All capabilities are off and no credentials are accepted.
+- **Frontend:** the web `ApiClient` import contract now mirrors the API. The demo client enforces the same rules, so demo and real behaviour don't diverge. The KTrade integration page shows connections plus the full import review UI.
+- **Fix:** the demo kill switch defaulted to ON, contradicting the real default (OFF). Corrected, and tests updated to enable live trading explicitly.

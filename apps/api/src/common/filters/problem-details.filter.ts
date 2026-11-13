@@ -12,9 +12,11 @@ export interface ProblemDetails {
   instance?: string;
   requestId?: string;
   errors?: { path: string; message: string }[];
+  [extension: string]: unknown;
 }
 
 const TYPE_BASE = 'https://ktrade-platform.local/problems/';
+const ALLOWED_EXTENSIONS = ['rowNo', 'existingImportId'] as const;
 
 /**
  * Maps every error to RFC 9457 `application/problem+json` (docs/07 §1).
@@ -62,12 +64,21 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       const detail =
         typeof body === 'string' ? body : ((body as { message?: string | string[] }).message ?? exception.message);
       const code = (typeof body === 'object' && (body as { code?: string }).code) || HttpStatus[status] || 'HTTP_ERROR';
+      // RFC 9457 extension members — an explicit allow-list so internal fields never leak.
+      const ext: Record<string, unknown> = {};
+      if (typeof body === 'object') {
+        for (const k of ALLOWED_EXTENSIONS) {
+          const v = (body as Record<string, unknown>)[k];
+          if (v !== undefined && v !== null) ext[k] = v;
+        }
+      }
       return {
         type: `${TYPE_BASE}${String(code).toLowerCase().replace(/_/g, '-')}`,
         title: exception.name.replace(/Exception$/, '').replace(/([a-z])([A-Z])/g, '$1 $2'),
         status,
         code: String(code),
         detail: Array.isArray(detail) ? detail.join('; ') : detail,
+        ...ext,
       };
     }
     return {

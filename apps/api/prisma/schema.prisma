@@ -522,6 +522,7 @@ model Portfolio {
   strategies    TradingStrategy[]
   riskLimit     RiskLimit?
   alerts        Alert[]
+  imports       ImportedStatement[]
 
   @@unique([userId, name])
   @@index([brokerAccountId])
@@ -1064,6 +1065,8 @@ model DividendEntitlement {
 model ImportedStatement {
   id                String        @id @default(uuid()) @db.Uuid
   brokerAccountId   String        @db.Uuid
+  /// LIVE portfolio the rows will be posted into on commit.
+  portfolioId       String?       @db.Uuid
   uploadedById      String?       @db.Uuid
   kind              ImportKind
   channel           ImportChannel
@@ -1088,6 +1091,7 @@ model ImportedStatement {
   createdAt         DateTime      @default(now()) @db.Timestamptz(6)
 
   brokerAccount    BrokerAccount           @relation(fields: [brokerAccountId], references: [id], onDelete: Restrict)
+  portfolio        Portfolio?              @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
   uploadedBy       User?                   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   rows             ImportedRow[]
   transactions     Transaction[]

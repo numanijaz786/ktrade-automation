@@ -1,4 +1,5 @@
 import { type INestApplication, RequestMethod } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -12,6 +13,8 @@ export function configureApp(app: INestApplication): void {
   const config = app.get(AppConfig);
 
   app.useLogger(app.get(Logger));
+  // JSON bodies up to 3 MB: statement uploads (2 MB cap enforced by the import schema) plus envelope.
+  (app as NestExpressApplication).useBodyParser('json', { limit: '3mb' });
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({

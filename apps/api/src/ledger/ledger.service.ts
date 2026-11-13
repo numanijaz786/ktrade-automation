@@ -57,7 +57,12 @@ export const feeLinesFromBreakdown = (lines: readonly FeeLine[]): FeeLineInput[]
  */
 @Injectable()
 export class LedgerService {
-  async postTrade(tx: Tx, input: PostTradeInput): Promise<{ transactionId: string }> {
+  /**
+   * @param options.rebuild default true. Batch callers (statement imports) pass false for every row and then call
+   *   `rebuildSymbol` once per affected symbol inside the same DB transaction — same result, O(n) instead of O(n²).
+   *   The caller MUST rebuild before committing, otherwise projections are stale.
+   */
+  async postTrade(tx: Tx, input: PostTradeInput, options: { rebuild?: boolean } = {}): Promise<{ transactionId: string }> {
     if (!input.quantity.isInteger() || input.quantity.lte(0)) {
       throw new UnprocessableEntityException({ message: 'Quantity must be a positive whole number of shares', code: 'INVALID_QUANTITY' });
     }
@@ -107,12 +112,13 @@ export class LedgerService {
       },
     });
 
-    await this.rebuildSymbol(tx, input.portfolioId, input.stockId);
+    if (options.rebuild !== false) await this.rebuildSymbol(tx, input.portfolioId, input.stockId);
     return { transactionId: created.id };
   }
 
   /** Recompute holding, lots and per-transaction cost-basis columns for one symbol from the ledger. */
   async rebuildSymbol(tx: Tx, portfolioId: string, stockId: string): Promise<void> {
+    await this.lock(tx, portfolioId, stockId);
     const portfolio = await tx.portfolio.findUniqueOrThrow({ where: { id: portfolioId }, select: { costBasisMethod: true } });
     const rows = await tx.transaction.findMany({
       // Reversed originals and their reversal entries cancel out and are both excluded.
@@ -127,7 +133,12 @@ export class LedgerService {
       result = replay(orderLedgerEvents(events), portfolio.costBasisMethod);
     } catch (err) {
       if (err instanceof LedgerError) {
-        throw new ConflictException({ message: err.message, code: err.code === 'OVERSELL' ? 'INSUFFICIENT_HOLDINGS' : `LEDGER_${err.code}` });
+        // eventId = the offending transaction id, so batch callers can point at the exact source row.
+        throw new ConflictException({
+          message: err.message,
+          code: err.code === 'OVERSELL' ? 'INSUFFICIENT_HOLDINGS' : `LEDGER_${err.code}`,
+          eventId: err.eventId,
+        });
       }
       throw err;
     }

@@ -49,14 +49,14 @@ This is the contract. From Phase 3 on, the live OpenAPI 3.1 document is generate
 ### Broker & sync
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| GET | `/broker/accounts` · POST · PATCH `/:id` | 🅥 / 🅾 | |
+| GET | `/broker/accounts` · POST | 🅥 / 🅾 | POST `{ displayName, clientCodeLast4?, portfolioName? }` registers the KTrade account plus its LIVE portfolio (conservative risk limits, market orders off). No credentials are accepted. Adapters are created DISABLED. |
 | GET | `/broker/accounts/:id/connections` | 🅥 | Adapters with their capability manifest (`implemented / verified / authorized / enabled`) |
 | PATCH | `/broker/connections/:id/capabilities` 🔐 | 🅾 | Can only set `enabled`, and only where `implemented ∧ verified ∧ authorized`. `authorized` requires an `authorizationRef` |
 | POST | `/broker/connections/:id/session/start` · `/session/destroy` | 🅾 | Browser adapter only (disabled). Returns `409 CAPABILITY_UNAVAILABLE` today |
-| POST | `/imports` (multipart: file, kind?, brokerAccountId) | 🅾 | Returns `{ importId, status }`. `409 DUPLICATE_IMPORT` if the file hash was seen before |
-| GET | `/imports` · `/imports/:id` · `/imports/:id/rows?status=` | 🅥 | Review screen data |
-| PATCH | `/imports/:id/rows/:rowId` | 🅾 | Fix or skip a row |
-| POST | `/imports/:id/commit` · `/imports/:id/reject` | 🅾 | |
+| POST | `/imports` (JSON `{ portfolioId, fileName, content, kind? }`, content = file text, ≤ 2 MB) | 🅾 | Target must be a LIVE broker portfolio. Rows are staged as VALID / INVALID / DUPLICATE (`AWAITING_REVIEW`). Errors: `409 DUPLICATE_IMPORT` (+`existingImportId`), `422 UNSUPPORTED_FILE`, `PARSE_FAILED`, `EMPTY_FILE`, `IMPORT_REQUIRES_LIVE_PORTFOLIO`. Binary formats (PDF/XLSX) arrive with the KTrade parsers |
+| GET | `/imports?portfolioId=` · `/imports/:id` · `/imports/:id/rows?status=` | 🅥 | Rows carry `errors[]`, `warnings[]`, `fees[]`, `feeSource` (`FILE` or `ESTIMATED_ON_COMMIT`) and `duplicateOf` |
+| PATCH | `/imports/:id/rows/:rowId` `{ action: "skip" \| "include" }` | 🅾 | Include only overrides DUPLICATE; INVALID rows can only be skipped (`409 ROW_NOT_INCLUDABLE`) |
+| POST | `/imports/:id/commit` · `/imports/:id/reject` | 🅾 | Commit is **all-or-nothing** in one DB transaction via LedgerService. `409 IMPORT_HAS_INVALID_ROWS` until invalid rows are skipped; `409 IMPORT_OVERSELL` / `IMPORT_ROW_REJECTED` with `rowNo` roll back everything |
 | GET/POST/DELETE | `/sync/mailbox` (connect via OAuth, status, disconnect) | 🅾 | |
 | GET | `/sync/discrepancies` | 🅥 | Holdings and cash mismatches |
 

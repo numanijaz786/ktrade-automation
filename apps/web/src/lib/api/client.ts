@@ -31,6 +31,7 @@ import type {
   HoldingDetail,
   ImportBatch,
   ImportRow,
+  ImportRowAction,
   KillSwitch,
   LoginRequest,
   LoginResult,
@@ -173,7 +174,11 @@ export interface BrokerApi {
   connections(): Promise<BrokerConnection[]>;
   imports(): Promise<ImportBatch[]>;
   importRows(importId: string): Promise<ImportRow[]>;
-  upload(input: { fileName: string; kind?: ImportKind; size: number }): Promise<ImportBatch>;
+  /** POST /imports — `content` is the file text (UTF-8, ≤ 2 MB). Target must be a LIVE broker portfolio. */
+  upload(input: { portfolioId: string; fileName: string; content: string; kind?: ImportKind }): Promise<ImportBatch>;
+  /** PATCH /imports/:id/rows/:rowId — skip any row; include only rows flagged DUPLICATE (never INVALID). */
+  updateImportRow(importId: string, rowId: string, action: ImportRowAction): Promise<ImportRow>;
+  /** POST /imports/:id/commit — all-or-nothing; blocked while INVALID rows remain. */
   commitImport(importId: string): Promise<ImportBatch>;
   rejectImport(importId: string): Promise<ImportBatch>;
   mailbox(): Promise<MailboxStatus>;

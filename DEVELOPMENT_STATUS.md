@@ -1,109 +1,85 @@
 # Development Status
 
-_Last updated: 2026-11-13 (session paused on a usage limit). Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_DECISIONS.md`, then **inspect the actual code** before continuing._
+_Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_DECISIONS.md`, then **inspect the actual code** before continuing._
 
 ## 1. Where we are
 
 | | |
 |---|---|
-| **Overall** | Phases 1–4 done. Phases 5–8 partly done. Phases 9–12 not started (their pure logic already exists in `finance-core`). |
-| **Current task** | **Phase 5: statement import pipeline (`apps/api/src/imports/`)** |
-| **Exact stopping point** | The parser layer is done and tested: `imports/parsers/parser.types.ts`, `imports/parsers/generic-csv.parser.ts`, plus 5 passing tests. **Not yet written:** `imports.service.ts`, `imports.controller.ts`, `imports.module.ts`, `parser-registry.ts`, wiring into `app.module.ts`, and `test/imports.int.test.ts`. |
-| **Build health at pause** | ✅ `pnpm turbo run build typecheck lint test` over packages + API: 16/16 tasks pass. ✅ API integration (real Postgres): 19/19. ✅ Web: typecheck 0 errors, lint 0 errors (3 warnings), 26 tests, `next build` succeeds. |
-| **Migrations** | 2 migrations, both applied to the dev DB, **no drift** (`prisma migrate diff` empty). No incomplete migration exists. |
-| **Git** | `main` tracks `origin` = https://github.com/numanijaz786/ktrade-automation. Baseline commit `7c4047d` pushed 2026-11-13 (261 files; secret scan clean). Commit/push only when the owner asks. |
+| **Overall** | Phases 1–5 done (except reconciliation and the KTrade parsers, both blocked on samples). Phase 6 + 8 core done. Phase 7 partial. Phases 9–12 not started (their pure logic exists in `finance-core`). |
+| **Just completed** | **Phase 5 statement import pipeline**, API + frontend (ADR-022). |
+| **Next task** | **Phase 7:** review the agent-written `apps/api/src/market-data/*`, then seed the PSX stock list (`seed/stocks.ts` → idempotent upsert, `pnpm db:seed`). **Why first:** imports reject unknown symbols, and the `stocks` table is empty on a fresh database. Then finish MarketDataService, controller and module, with tests. |
+| **Also pending** | Repo-wide Prettier formatting as a separate style-only commit; CI `format:check` currently fails on 170 files. |
+| **Build health** | ✅ `pnpm turbo run build typecheck lint test`: 20/20 tasks (incl. web production build). ✅ API: 59 tests across 8 files (unit + e2e + 3 Testcontainers suites). ✅ Web: 28 tests. ✅ Compiled-API smoke test (ready 200, auth 401, 2.5 MB body parsed / 4 MB → 413, Swagger lists import routes). |
+| **Migrations** | 3 migrations (`init`, `auth_totp_and_hardening`, `import_target_portfolio`), all applied to the dev DB, no drift. |
+| **Git** | `main` tracks https://github.com/numanijaz786/ktrade-automation. See `git log` for the latest commits. Push only when the owner asks. |
 
-## 2. Completed work
+## 2. Completed work (cumulative)
 
-### Phase 1–2: research & design (`docs/`)
-- `01` KTrade feasibility: no official API.
-- `02` architecture.
-- `03` browser-automation investigation: no written permission, so the adapter is disabled.
-- `04` security.
-- `05` DB design + ERD.
-- `06` accounting.
-- `07` API spec.
-- `08` strategy and trading engine.
-- `09` sync and market data.
+**Phase 1–2: docs/01–09.** Feasibility (no KTrade API), browser-automation investigation (not authorized → disabled), architecture, security, DB/ERD, accounting, API spec, engine, sync and market data.
 
-### Phase 3: foundation
-- pnpm 10 + Turborepo monorepo, TypeScript 6, ESLint 10, Prettier, Vitest 4. Supply-chain guard: 7-day `minimumReleaseAge`.
-- `packages/shared`: enums mirroring Prisma (sync test), decimal-string Zod schemas, auth schemas.
-- `packages/broker-sdk`: capability chain, `guardedCall`, `BrokerAdapter`/`MarketDataProvider` interfaces, disabled KTrade stubs.
-- `packages/finance-core` (184 tests), all pure and decimal-exact:
-  - fees: KTrade schedule, day-trade rule, tax lookup
-  - ledger: WAC/FIFO, lots, bonus/split/rights, dividends, eligibility
-  - returns: valuation, TWR, XIRR, drawdown
-  - indicators: SMA/EMA/WMA/RSI/MACD/ATR/BB/ROC
-  - strategy: rule DSL, templates, evaluator, sizer, scoring
-  - risk: 14 rules + preview hash
-  - backtest: no-look-ahead simulator, metrics, paper fills
-- `apps/api`: NestJS 12 ESM, Prisma 7 (adapter-pg), config validation, pino logging with redaction, RFC 9457 errors, `/health` + `/ready`, Swagger at `/api/docs`.
-- `apps/web`: Next 16, Tailwind 4, shadcn/ui (Radix, 32 components).
-- `infra/docker-compose.yml`: Postgres 16 + Valkey 8 on 127.0.0.1.
-- `.github/workflows/ci.yml`, `.env.example`, `CLAUDE.md`, `ARCHITECTURE_DECISIONS.md` (ADR-001…021).
+**Phase 3: foundation.**
+- Monorepo (pnpm 10, Turborepo, TS 6, ESLint 10, Vitest 4, 7-day release-age guard).
+- `shared`, `broker-sdk` (capability chain, disabled KTrade stubs).
+- `finance-core` (184 tests): fees, ledger, returns, indicators, strategy DSL, risk, backtest.
+- API skeleton, web scaffold, docker-compose (PG 16 + Valkey 8), CI.
 
-### Phase 4: auth, security, audit
-- Argon2id, Ed25519 JWT, rotating refresh tokens with reuse detection, TOTP (RFC 6238 vectors) with replay protection, step-up tokens.
-- Global guard chain (Throttler → JwtAuth → Roles → StepUp), VIEWER read-only, lockout.
-- Envelope encryption (AES-256-GCM) and an audit service.
-- Migration 2: CHECK constraints, a partial unique index, and **append-only triggers** on `audit_logs` and `order_events`.
+**Phase 4: auth and security.**
+- Argon2id; Ed25519 JWT; refresh rotation with reuse detection; TOTP with replay protection; step-up.
+- Guard chain, VIEWER read-only, lockout, rate limiting.
+- Envelope encryption, audit service, append-only triggers.
 
-### Phase 6 + 8 (core): ledger, portfolio, order pipeline
-- `ledger/ledger.service.ts`: advisory lock + full per-symbol replay.
-- `ledger/fee.service.ts`: DB schedule, or KTrade default.
-- `portfolio/*`: portfolios, paper portfolio creation, holdings with valuation, transactions, cash, risk limits, `GET /dashboard/summary` with provenance.
-- `trading/*`:
-  - preview → 14 risk checks → step-up approval bound to the preview hash (5-min expiry)
-  - paper fills
-  - live **manual ticket** (`AWAITING_MANUAL_PLACEMENT` → mark-placed → record fill)
-  - cancel, list/get
-  - kill switch (default OFF)
-  - idempotency keys
-- **docs/06 worked example reproduced end-to-end through HTTP + Postgres** (`test/trading.int.test.ts`).
+**Phase 5: imports (new).**
+- `apps/api/src/imports/{imports.service,imports.controller,imports.module,imports.schemas}.ts`
+- `parsers/{parser-registry,generic-csv.parser,parser.types}.ts`
+- `apps/api/src/broker/{broker-accounts.service,broker.controller}.ts`
+- Migration `20261114000000_import_target_portfolio`.
+- `LedgerService.postTrade(…, {rebuild:false})` for batch posting; the problem+json filter now passes an allow-list of extensions (`rowNo`, `existingImportId`).
+- Web:
+  - `lib/api/{types,client,hooks,errors}.ts` aligned to the API contract
+  - `lib/demo/csv.ts` and the demo import rules
+  - `lib/demo/fixtures.ts`
+  - `app/(app)/integration/page.tsx`: connections and import review UI
+- Demo kill-switch default corrected to OFF.
 
-### Partial work from stopped agents (compiles, lint-clean, NOT wired in)
-- **Market data (Phase 7)** in `apps/api/src/market-data/`: `providers/simulated.provider.ts`, `providers/csv-eod.provider.ts`, `providers/capital-stake.provider.ts` (disabled stub), `csv-eod.parser.ts`, `calendar.ts`, `market-calendar.service.ts`, `movers.ts`, `staleness.ts`, `prices.repository.ts`, `provider-registry.ts`, `rng.ts`, `decimal-format.ts`, `errors.ts`; `apps/api/src/seed/stocks.ts`.
-  **Missing:** `MarketDataService`, controller, `market-data.module.ts`, seed routine (`seedMarketData`), unit + integration tests, wiring into `app.module.ts`. These files were written by an agent that was cut off: **review them before building on them.**
-- **Frontend (Phase 3/UI)** in `apps/web/src/`:
-  - Data layer: `lib/api/{types,client,demo-client,hooks,errors}.ts`, `lib/demo/*`.
-  - Shell: `components/shell/*` (sidebar, mobile nav, banners, theme toggle).
-  - Components: `provenance-badge`, `money`, `stat-tile`, `data-table`, `status-badge`, `step-up-dialog`, `states`, `page-header`.
-  - Format helpers + tests (26 passing).
-  **Missing:** the 19 pages (only `(app)/page.tsx` and the layouts exist).
-  **Review item:** `lib/decimal.ts`, `lib/fees.ts` and `lib/indicators.ts` duplicate `@ktrade/finance-core`. Replace them with imports from the package (add it as a web dependency).
+**Phase 6 + 8: ledger, portfolio, orders.**
+- LedgerService (lock + replay), FeeService, holdings, transactions, cash, dashboard summary.
+- Order pipeline: preview → 14 risk checks → step-up approval bound to the preview hash → paper fill / manual live ticket → fills; kill switch; idempotency.
+- docs/06 worked example verified end-to-end, through **both** the order pipeline and CSV import.
 
-## 3. Tests executed (at pause)
+**Partial: Phase 7 market data** (agent-written, compiles, lint-clean, not wired, untested):
+- `apps/api/src/market-data/*` providers (simulated, CSV-EOD, Capital Stake disabled stub), calendar, movers, staleness, registry.
+- `apps/api/src/seed/stocks.ts`.
+
+**Partial: frontend pages.** Shell, data layer and shared components exist. Pages built so far: the KTrade integration page. 18 pages remain.
+
+## 3. Tests at last run
 | Suite | Result |
 |---|---|
-| `@ktrade/finance-core` | 184 / 184 ✅ |
-| `@ktrade/shared` | 13 / 13 ✅ |
-| `@ktrade/broker-sdk` | 8 / 8 ✅ |
-| `@ktrade/api` unit + e2e (stubbed infra) | 32 / 32 ✅ (incl. TOTP RFC vectors, envelope crypto, rate limiting, CSV parser) |
-| `@ktrade/api` integration (`RUN_INTEGRATION=1`, Testcontainers) | auth 12 / 12 ✅, trading 7 / 7 ✅ |
-| `@ktrade/web` | 26 / 26 ✅; `next build` ✅ |
-| Compiled API smoke test (`node dist/main.js` vs real PG + Valkey) | ✅ health / ready / docs / 404 / loopback bind (earlier in Phase 3; re-run after wiring new modules) |
+| finance-core / shared / broker-sdk | 184 / 13 / 8 ✅ |
+| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 59 / 59 ✅ (auth 12, trading 7, imports 8, parser 5, TOTP 13, envelope 5, e2e 9) |
+| Web | 28 / 28 ✅, `next build` ✅ |
 
 ## 4. Known issues / blockers
 | Item | Type | Action |
 |---|---|---|
-| KTrade has no API; browser automation not authorized | **Blocked (external)** | Owner sends the permission request (docs/03 §6). Adapters stay disabled. |
-| Live PSX prices need a licensed vendor (paid) | **Blocked (owner decision, payment)** | Simulated provider until then. Never scrape. |
-| KTrade contract-note / statement parsers | **Blocked (input)** | Need redacted sample files from the owner. |
-| Tax rates (CGT, dividend WHT) | **Blocked (input)** | Seeded as `verified=false` placeholders. Owner to confirm. |
-| Node 24.13 < 24.15 → jsdom pinned to 27 | Minor | Owner may upgrade Node 24 LTS (ADR-015). |
-| Throttler is in-memory | Known limit | Switch to a Redis store before running more than 1 API instance. |
-| Dev containers `ktrade-postgres-1`, `ktrade-redis-1` left running | Info | `pnpm db:down` to stop (data persists in volumes). |
-| One probe row `test.append_only_probe` in the dev audit log | Info | Intentional evidence that the trigger works; cannot be deleted (append-only). |
+| KTrade has no API; browser automation not authorized | ⛔ External | Owner sends the permission request (docs/03 §6) |
+| Live PSX prices need a licensed vendor (paid) | ⛔ Owner decision | Simulated provider until then |
+| KTrade contract-note / statement / CDC parsers | ⛔ Input | Need redacted samples |
+| Tax rates | ⛔ Input | Placeholders `verified=false` |
+| `stocks` table empty on a fresh DB → imports flag every symbol unknown | Next task | Seed the stock list (Phase 7) |
+| Prettier never applied → CI `format:check` fails | Pending | Style-only commit |
+| `data-table.tsx` lint warning (React Compiler skips TanStack Table) | Info | Known library incompatibility; harmless |
+| Node 24.13 → jsdom pinned to 27 | Minor | Upgrade Node 24 LTS (ADR-015) |
+| Dev containers left running; one `test.append_only_probe` audit row in the dev DB | Info | `pnpm db:down` to stop |
 
-## 5. How to resume (commands)
+## 5. Resume commands
 ```bash
-pnpm db:up                                            # Postgres + Valkey
-cd apps/api && pnpm exec prisma generate && pnpm db:deploy
-cd ../.. && pnpm turbo run build typecheck lint test  # must be green before new work
-cd apps/api && RUN_INTEGRATION=1 pnpm test            # needs Docker
+pnpm db:up
+cd apps/api && pnpm exec prisma generate && pnpm db:deploy && cd ../..
+pnpm turbo run build typecheck lint test
+cd apps/api && RUN_INTEGRATION=1 pnpm test   # Docker required
 ```
-Then continue with the **first unchecked item in `TODO.md`**.
 
-## 6. Guardrails (unchanged)
-Do not deploy, spend money, register accounts, enable broker automation, or execute live financial transactions without the owner's explicit approval. Live trading stays: kill switch OFF, manual approval, manual placement in the KTrade app.
+## 6. Guardrails
+No deploying, spending money, registering accounts, enabling broker automation, or live financial transactions without the owner's explicit approval. Live trading: kill switch OFF, manual approval, manual placement in the KTrade app.

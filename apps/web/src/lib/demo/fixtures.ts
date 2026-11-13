@@ -101,21 +101,26 @@ export function seedAlerts(): Alert[] {
 }
 
 export function seedImports(): { batches: ImportBatch[]; rows: Map<string, ImportRow[]> } {
+  // Only formats the real pipeline supports today (generic CSV). KTrade contract-note/CDC parsers need real samples.
+  const base = { portfolioId: LIVE_PORTFOLIO_ID, kind: 'GENERIC_TRANSACTIONS_CSV' as const, channel: 'UPLOAD' as const, parserKey: 'generic.transactions.csv', source: 'USER_REPORTED' as const };
   const batches: ImportBatch[] = [
-    { id: 'imp-1', kind: 'CONTRACT_NOTE', channel: 'MAILBOX', fileName: 'KTrade_ContractNote_2026-10-30.pdf', status: 'COMMITTED', uploadedAt: at(9, '03:00:00'), rowCounts: { COMMITTED: 1, MATCHED: 1 } },
-    { id: 'imp-2', kind: 'LEDGER_STATEMENT', channel: 'UPLOAD', fileName: 'Ledger_Oct2026.xlsx', status: 'AWAITING_REVIEW', uploadedAt: at(1, '06:00:00'), rowCounts: { VALID: 3, DUPLICATE: 1, INVALID: 1 } },
-    { id: 'imp-3', kind: 'CDC_STATEMENT', channel: 'UPLOAD', fileName: 'CDC_Statement_Q3.pdf', status: 'FAILED', uploadedAt: at(20, '06:00:00'), rowCounts: {} },
+    { ...base, id: 'imp-1', fileName: 'trades_sep2026.csv', sizeBytes: 412, status: 'COMMITTED', uploadedAt: at(9, '03:00:00'), committedAt: at(9, '03:05:00'), periodFrom: daysAgo(40), periodTo: daysAgo(12), rowCounts: { COMMITTED: 2 } },
+    { ...base, id: 'imp-2', fileName: 'trades_oct2026.csv', sizeBytes: 655, status: 'AWAITING_REVIEW', uploadedAt: at(1, '06:00:00'), committedAt: null, periodFrom: daysAgo(14), periodTo: daysAgo(5), rowCounts: { VALID: 3, DUPLICATE: 1, INVALID: 1 } },
   ];
+  const est = 'no charges in file — fees will be ESTIMATED from the fee schedule';
+  const row = (r: Partial<ImportRow> & Pick<ImportRow, 'id' | 'rowNo' | 'status'>): ImportRow => ({
+    tradeDate: null, symbol: null, side: null, quantity: null, price: null, contractRef: null, fees: [], feeSource: 'ESTIMATED_ON_COMMIT', duplicateOf: null, errors: [], warnings: [], message: null, ...r,
+  });
   const rows = new Map<string, ImportRow[]>([
     [
       'imp-2',
       [
-        { id: 'r-1', rowNo: 1, status: 'VALID', tradeDate: daysAgo(14), symbol: 'PPL', side: 'BUY', quantity: '200', price: '196.40', contractRef: 'CN-1013', message: null },
-        { id: 'r-2', rowNo: 2, status: 'DUPLICATE', tradeDate: daysAgo(10), symbol: 'MARI', side: 'BUY', quantity: '230', price: '612.40', contractRef: 'CN-2026-10-30-0042', message: 'Same fingerprint as committed contract note imp-1' },
-        { id: 'r-3', rowNo: 3, status: 'VALID', tradeDate: daysAgo(8), symbol: 'EFERT', side: 'SELL', quantity: '50', price: '214.10', contractRef: 'CN-1019', message: null },
-        { id: 'r-4', rowNo: 4, status: 'INVALID', tradeDate: daysAgo(7), symbol: 'XYZ', side: 'BUY', quantity: '10', price: '12.00', contractRef: 'CN-1020', message: 'Unknown symbol XYZ' },
-        { id: 'r-5', rowNo: 5, status: 'VALID', tradeDate: daysAgo(5), symbol: 'UBL', side: 'BUY', quantity: '100', price: '262.75', contractRef: 'CN-1022', message: null },
-      ],
+        row({ id: 'r-1', rowNo: 2, status: 'VALID', tradeDate: daysAgo(14), symbol: 'PPL', side: 'BUY', quantity: '200', price: '196.40', contractRef: 'CN-1013', fees: [{ component: 'COMMISSION', amount: '117.84' }, { component: 'SST_ON_COMMISSION', amount: '17.68' }], feeSource: 'FILE' }),
+        row({ id: 'r-2', rowNo: 3, status: 'DUPLICATE', tradeDate: daysAgo(10), symbol: 'MARI', side: 'BUY', quantity: '230', price: '612.40', contractRef: 'CN-1016', duplicateOf: { kind: 'IMPORT_ROW', id: 'imp-1', detail: 'already imported from trades_sep2026.csv (row 3)' }, warnings: ['already imported from trades_sep2026.csv (row 3) — skipped unless you include it', est] }),
+        row({ id: 'r-3', rowNo: 4, status: 'VALID', tradeDate: daysAgo(8), symbol: 'EFERT', side: 'SELL', quantity: '50', price: '214.10', contractRef: 'CN-1019', warnings: [est] }),
+        row({ id: 'r-4', rowNo: 5, status: 'INVALID', tradeDate: daysAgo(7), symbol: 'XYZ', side: 'BUY', quantity: '10', price: '12.00', contractRef: 'CN-1020', feeSource: null, errors: ['unknown symbol XYZ (not in the PSX stock list)'] }),
+        row({ id: 'r-5', rowNo: 6, status: 'VALID', tradeDate: daysAgo(5), symbol: 'UBL', side: 'BUY', quantity: '100', price: '262.75', contractRef: 'CN-1022', warnings: [est] }),
+      ].map((r) => ({ ...r, message: [...r.errors, ...r.warnings].join('; ') || null })),
     ],
   ]);
   return { batches, rows };
