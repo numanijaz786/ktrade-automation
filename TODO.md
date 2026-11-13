@@ -74,10 +74,13 @@ Work top to bottom; the first unchecked item is the next task.
 
 ## Phase 9: Strategies, backtesting, paper trading
 
-- [ ] Strategies CRUD + templates endpoint (finance-core templates exist)
-- [ ] Scheduled evaluation (BullMQ), signals persistence, signal → prepared order
-- [ ] Backtest jobs + results endpoints
-- [ ] Open items from ADR-020: VWAP, walk-forward, regime / multi-timeframe filters, STOP orders in paperFill
+- [x] Strategies CRUD + templates + DSL validation + dry-run (ADR-025)
+- [x] Manual evaluation → signals (deduped) + execution log; PAPER autoExecute → system paper approval (PAPER-only, risk-checked); LIVE → signal only
+- [x] Backtests (real KTrade fees, provenance, disclaimer) + compare; Sortino, annualised return, risk/reward
+- [x] Integration tests (13)
+- [ ] Scheduled evaluation (BullMQ) at bar close; signals → `prepare-order` / `dismiss`
+- [ ] Frontend: strategies, backtesting, paper-trading pages on the real API
+- [ ] Open items from ADR-020/025: VWAP, walk-forward, regime / multi-timeframe filters, STOP orders in paperFill, mirror mode
 
 ## Phase 10: Alerts, notifications, dividends, analytics
 

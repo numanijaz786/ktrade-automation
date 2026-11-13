@@ -316,6 +316,56 @@ describe('metrics', () => {
     expect(m.profitFactor!.toString()).toBe('1.333333333333333333333333333333333');
     expect(m.avgWin!.toString()).toBe('20');
     expect(m.avgLoss!.toString()).toBe('-15');
+    // risk/reward = avgWin / |avgLoss| = 20 / 15
+    expect(round(m.riskReward!, 6).toString()).toBe('1.333333');
+  });
+
+  it('risk/reward is null without both winners and losers', () => {
+    const one = (pnl: string) =>
+      computeBacktestMetrics(d('100'), [pt('2024-01-01T00:00:00Z', '100')], [{ netPnl: d(pnl) }], opts);
+    expect(one('5').riskReward).toBeNull();
+    expect(one('-5').riskReward).toBeNull();
+  });
+
+  // equity 100 -> 110 -> 99 -> 108.9: returns +0.10, -0.10, +0.10 (n = 3)
+  const zigzag = [
+    pt('2024-01-01T00:00:00Z', '100'),
+    pt('2024-01-02T00:00:00Z', '110'),
+    pt('2024-01-03T00:00:00Z', '99'),
+    pt('2024-01-04T00:00:00Z', '108.9'),
+  ];
+
+  it('Sortino: mean excess return over downside deviation (all n returns), annualised', () => {
+    // mean = 0.1/3; downside var = (0.1^2)/3 = 1/300; sortino = (1/30)/sqrt(1/300) * sqrt(252) = sqrt(75600)/30
+    const m = computeBacktestMetrics(d('100'), zigzag, [], opts);
+    expect(round(m.sortino!, 4).toString()).toBe('9.1652');
+    expect(round(m.sortino!, 20).eq(round(d('75600').sqrt().div(30), 20))).toBe(true);
+    // with rf = 25.2%/yr over A = 252 → 0.001 per bar: excess = 0.099, -0.101, 0.099
+    // mean excess = 0.097/3; downside var = 0.101^2 / 3
+    const rf = computeBacktestMetrics(d('100'), zigzag, [], { ...opts, riskFreeRatePct: d('25.2') });
+    const expected = d('0.097').div(3).div(d('0.010201').div(3).sqrt()).times(d('252').sqrt());
+    expect(round(rf.sortino!, 20).eq(round(expected, 20))).toBe(true);
+  });
+
+  it('Sortino is null without downside returns or with fewer than two returns', () => {
+    const up = [
+      pt('2024-01-01T00:00:00Z', '100'),
+      pt('2024-01-02T00:00:00Z', '101'),
+      pt('2024-01-03T00:00:00Z', '103'),
+    ];
+    expect(computeBacktestMetrics(d('100'), up, [], opts).sortino).toBeNull();
+    expect(computeBacktestMetrics(d('100'), zigzag.slice(0, 2), [], opts).sortino).toBeNull();
+  });
+
+  it('annualised return compounds the total return over A / n periods', () => {
+    // ratio 1.089 over n = 3 bars; A = 3 → exponent 1 → 8.9%; A = 6 → 1.089^2 = 1.185921 → 18.5921%
+    const a3 = computeBacktestMetrics(d('100'), zigzag, [], { ...opts, annualizationFactor: 3 });
+    expect(a3.annualizedReturnPct!.toString()).toBe('8.9');
+    const a6 = computeBacktestMetrics(d('100'), zigzag, [], { ...opts, annualizationFactor: 6 });
+    expect(a6.annualizedReturnPct!.toString()).toBe('18.5921');
+    expect(
+      computeBacktestMetrics(d('100'), [pt('2024-01-01T00:00:00Z', '100')], [], opts).annualizedReturnPct,
+    ).toBeNull();
   });
 });
 

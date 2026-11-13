@@ -13,6 +13,7 @@ import { ImportsModule } from './imports/imports.module.js';
 import { MarketDataModule } from './market-data/market-data.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { StrategiesModule } from './strategies/strategies.module.js';
 import { TradingModule } from './trading/trading.module.js';
 
 @Module({
@@ -29,6 +30,7 @@ import { TradingModule } from './trading/trading.module.js';
     TradingModule,
     ImportsModule,
     MarketDataModule,
+    StrategiesModule,
   ],
   controllers: [HealthController],
   providers: [

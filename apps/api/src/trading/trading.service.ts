@@ -16,7 +16,7 @@ import {
   roundMoney,
   ZERO,
 } from '@ktrade/finance-core';
-import type { DataSource, OrderStatus } from '@ktrade/shared';
+import type { ActorType, DataSource, OrderStatus } from '@ktrade/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { RequestMeta } from '../auth/decorators.js';
 import { CLOCK, type Clock } from '../common/clock.js';
@@ -49,6 +49,13 @@ const FINAL: OrderStatus[] = ['FILLED', 'CANCELLED', 'REJECTED_BY_RISK', 'REJECT
 
 export type ExecutionPath = 'PAPER_AUTO' | 'MANUAL_TICKET' | 'ADAPTER';
 
+/** Who drives an order transition: a human (step-up verified by the guard) or the strategy engine (PAPER only). */
+export type OrderActor = Extract<ActorType, 'USER' | 'STRATEGY'>;
+type ApprovalKind = 'USER_STEP_UP' | 'SYSTEM_PAPER';
+
+/** Error code when a system (non-human) approval is attempted on anything but a PAPER strategy order. */
+export const SYSTEM_APPROVAL_FORBIDDEN = 'SYSTEM_APPROVAL_FORBIDDEN';
+
 /**
  * Order pipeline (docs/08 §7): preview → risk checks → approval (step-up, bound to the preview hash) → execution.
  *  - PAPER  : simulated fill against the latest quote (source SIMULATED).
@@ -68,7 +75,13 @@ export class TradingService {
 
   // ── Preview ────────────────────────────────────────────────────────────────
 
-  async preview(userId: string, input: PreviewOrderInput, idempotencyKey: string, meta: RequestMeta) {
+  async preview(
+    userId: string,
+    input: PreviewOrderInput,
+    idempotencyKey: string,
+    meta: RequestMeta,
+    actorType: OrderActor = 'USER',
+  ) {
     const replayed = await this.prisma.order.findUnique({
       where: { userId_idempotencyKey: { userId, idempotencyKey } },
     });
@@ -162,13 +175,13 @@ export class TradingService {
               message: r.message,
             })),
           },
-          events: { create: { toStatus: status, actorType: 'USER', actorId: userId, reason: 'preview' } },
+          events: { create: { toStatus: status, actorType, actorId: userId, reason: 'preview' } },
         },
       });
       await this.audit.record(
         {
           action: risk.passed ? 'order.previewed' : 'order.rejected_by_risk',
-          actorType: 'USER',
+          actorType,
           actorUserId: userId,
           entityType: 'order',
           entityId: created.id,
@@ -202,9 +215,43 @@ export class TradingService {
   // ── Approve ────────────────────────────────────────────────────────────────
 
   async approve(userId: string, orderId: string, previewHashIn: string, meta: RequestMeta) {
+    return this.approveInternal(userId, orderId, previewHashIn, meta, 'USER_STEP_UP');
+  }
+
+  /**
+   * System-originated approval for PAPER strategy orders (docs/08 §7 PaperAutoPolicy: PAPER + autoExecute).
+   * Not exposed over HTTP. Runs the same hash binding, expiry and full risk re-check as a human approval, but
+   * refuses (inside the locked transaction, before any state change) anything that is not a PAPER order of
+   * origin STRATEGY in a PAPER portfolio. LIVE orders always need a human with step-up (ADR-021).
+   */
+  async approveSystemPaper(userId: string, orderId: string, previewHashIn: string, meta: RequestMeta) {
+    return this.approveInternal(userId, orderId, previewHashIn, meta, 'SYSTEM_PAPER');
+  }
+
+  private async approveInternal(
+    userId: string,
+    orderId: string,
+    previewHashIn: string,
+    meta: RequestMeta,
+    kind: ApprovalKind,
+  ) {
+    const actor: OrderActor = kind === 'SYSTEM_PAPER' ? 'STRATEGY' : 'USER';
     const now = this.clock.now();
     const result = await this.prisma.$transaction(async (tx) => {
       const order = await this.lockOrder(tx, orderId, userId);
+      if (kind === 'SYSTEM_PAPER') {
+        const portfolio = await tx.portfolio.findUniqueOrThrow({
+          where: { id: order.portfolioId },
+          select: { kind: true },
+        });
+        if (order.mode !== 'PAPER' || portfolio.kind !== 'PAPER' || order.origin !== 'STRATEGY') {
+          throw new ForbiddenException({
+            message:
+              'System approval is only permitted for PAPER strategy orders; live orders need manual approval',
+            code: SYSTEM_APPROVAL_FORBIDDEN,
+          });
+        }
+      }
       if (order.status !== 'PREVIEWED') {
         throw new ConflictException({
           message: `Order is ${order.status}, not awaiting approval`,
@@ -212,7 +259,7 @@ export class TradingService {
         });
       }
       if (!order.previewExpiresAt || order.previewExpiresAt <= now) {
-        await this.transition(tx, order, 'EXPIRED', userId, 'preview expired');
+        await this.transition(tx, order, 'EXPIRED', userId, 'preview expired', {}, actor);
         return { expired: true as const };
       }
       if (order.previewHash !== previewHashIn) {
@@ -258,28 +305,36 @@ export class TradingService {
           'REJECTED_BY_RISK',
           userId,
           `at approval: ${risk.failedRules.join(', ')}`,
+          {},
+          actor,
         );
         return { rejected: risk.failedRules };
       }
 
-      await this.transition(tx, order, 'APPROVED', userId, 'approved with step-up', {
-        approvedById: userId,
-        approvedAt: now,
-      });
+      await this.transition(
+        tx,
+        order,
+        'APPROVED',
+        userId,
+        kind === 'SYSTEM_PAPER' ? 'auto-approved: PAPER strategy (autoExecute)' : 'approved with step-up',
+        { approvedById: userId, approvedAt: now },
+        actor,
+      );
       await this.audit.record(
         {
-          action: 'order.approved',
-          actorType: 'USER',
+          action: kind === 'SYSTEM_PAPER' ? 'order.auto_approved_paper' : 'order.approved',
+          actorType: actor,
           actorUserId: userId,
           entityType: 'order',
           entityId: order.id,
+          ...(kind === 'SYSTEM_PAPER' ? { metadata: { strategyId: order.strategyId } } : {}),
           ...meta,
         },
         tx,
       );
 
       if (order.mode === 'PAPER') {
-        await this.paperExecute(tx, { ...order, status: 'APPROVED' }, quote, now, userId);
+        await this.paperExecute(tx, { ...order, status: 'APPROVED' }, quote, now, userId, actor);
       } else {
         await this.transition(
           tx,
@@ -632,6 +687,7 @@ export class TradingService {
     quote: { last: { toString(): string }; volume: bigint | null },
     now: Date,
     userId: string,
+    actor: OrderActor = 'USER',
   ) {
     const fill = paperFill(
       {
@@ -644,10 +700,10 @@ export class TradingService {
       { slippageBps: PAPER_SLIPPAGE_BPS },
     );
     if (!fill.filled || !fill.price) {
-      await this.transition(tx, order, 'ACCEPTED', userId, `working (paper): ${fill.reason}`);
+      await this.transition(tx, order, 'ACCEPTED', userId, `working (paper): ${fill.reason}`, {}, actor);
       return;
     }
-    await this.transition(tx, order, 'ACCEPTED', userId, 'paper broker accepted');
+    await this.transition(tx, order, 'ACCEPTED', userId, 'paper broker accepted', {}, actor);
     await this.fillOrder(
       tx,
       { ...order, status: 'ACCEPTED' },
@@ -656,6 +712,7 @@ export class TradingService {
       now,
       'SIMULATED',
       userId,
+      actor,
     );
   }
 
@@ -667,6 +724,7 @@ export class TradingService {
     executedAt: Date,
     source: DataSource,
     userId: string,
+    actor: OrderActor = 'USER',
   ) {
     const exec = await tx.orderExecution.create({
       data: {
@@ -712,6 +770,7 @@ export class TradingService {
         avgFillPrice: avg.toDecimalPlaces(6).toFixed(),
         statusSource: source,
       },
+      actor,
     );
   }
 
@@ -723,6 +782,7 @@ export class TradingService {
     userId: string,
     reason: string,
     extra: Prisma.OrderUncheckedUpdateManyInput = {},
+    actorType: OrderActor = 'USER',
   ) {
     const { count } = await tx.order.updateMany({
       where: { id: order.id, status: order.status },
@@ -738,7 +798,7 @@ export class TradingService {
         orderId: order.id,
         fromStatus: order.status,
         toStatus: to,
-        actorType: 'USER',
+        actorType,
         actorId: userId,
         reason,
       },

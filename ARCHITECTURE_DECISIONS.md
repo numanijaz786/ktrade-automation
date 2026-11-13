@@ -235,3 +235,29 @@ Accepted from the quant engineer's implementation:
 - **Watchlists:** per user, ≤ 20 lists of ≤ 100 stocks. Unique name per user (409). Adding a symbol is idempotent; unknown symbols get 404. Other users' lists return **404, not 403**, so ids aren't disclosed. Items cascade on delete.
 - **Defect fixed (Zod 4 semantics):** refinements keep running after a failed check, so a refinement calling `d(v)` on malformed input threw and turned a 422 into a 500. This affected the agent-written EOD CSV parser (empty price field) and the portfolio `pctString`. Both are now guarded, with regression tests (`src/common/zod-refinements.test.ts`). **Rule:** every refinement that parses a decimal must first check `DECIMAL_STRING_RE`.
 - **Licensed vendor:** Capital Stake stays registered but disabled. Activating it returns 409 `PROVIDER_UNAVAILABLE` until a licence, a key and official API docs exist.
+
+## ADR-025 · Strategies, signals and backtesting API (Phase 9, backend)
+
+- **Endpoints:**
+  - `/strategies/templates`;
+  - strategies CRUD (owner-scoped, unique names, no delete while active);
+  - `activate` / `deactivate`;
+  - `/strategies/validate` (dry run with explanation traces, saves nothing);
+  - `/strategies/:id/evaluate`, signals and execution logs;
+  - `/backtests` (+ `/compare`, `/:id`, `/:id/trades`).
+
+  Every backtest response carries the disclaimer.
+
+- **Mode comes from the portfolio** (PAPER or LIVE), never from the client. Built-in templates are recompiled from type + parameters on load, and editing the definition bumps `version`.
+- **Live safety:**
+  - `autoExecute` is refused for LIVE strategies (422 `LIVE_AUTO_EXECUTION_FORBIDDEN`) on create, edit and activation.
+  - LIVE evaluation only records a signal. It never previews or approves an order.
+- **System approval is PAPER-only.** `TradingService.approveSystemPaper` reuses the normal approval path (preview-hash binding, expiry, full risk re-check). Inside the locked transaction, it refuses with 403 `SYSTEM_APPROVAL_FORBIDDEN` unless order mode, portfolio kind and origin are PAPER, PAPER and STRATEGY. Events and audit rows carry actor `STRATEGY`. Covered by tests for LIVE and MANUAL refusal.
+- **Deviation (accepted):** LIVE activation requires step-up, checked in the controller with the same `TokenService.verifyStepUp` the guard uses, and re-checked in the service. The static `@RequireStepUp()` would also force step-up on PAPER activation, which docs/07 does not require.
+- **Backtests:**
+  - Synchronous, ≤ 10 years and ≤ 5,000 bars.
+  - **Costs come from the real KTrade fee engine** (the schedule in effect at `to`).
+  - `dataSource` is the weakest bar source, so results on simulated prices are labelled SIMULATED.
+  - Metrics too large for NUMERIC(12,6) are stored as null, with the full value in `params.metrics`. An open position at the end is saved as a trade without an exit.
+  - New finance-core metrics: Sortino (downside vs the per-bar risk-free rate), annualised return, and risk/reward. Decimal-only, with hand-computed tests.
+- **Not yet built:** `signals/:id/prepare-order | dismiss`, the scheduled evaluation (BullMQ), walk-forward splits and the shadow "mirror" mode.

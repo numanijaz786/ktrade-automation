@@ -8,9 +8,14 @@
  *  sharpe          = (mean(r) − rf/A) / stdev(r) × sqrt(A), r = per-bar equity returns (daily for D1 bars),
  *                    stdev = sample (n − 1), rf = annual risk-free rate (decimal fraction = rfPct/100),
  *                    A = annualizationFactor (252 for daily bars). null if < 2 returns or stdev = 0.
+ *  sortino         = (mean(r) − rf/A) / DD × sqrt(A), DD = downside deviation = sqrt(Σ min(0, r − rf/A)² / n) over
+ *                    all n per-bar returns (target = per-bar risk-free rate). null if < 2 returns or DD = 0.
+ *  annualizedReturnPct = ((finalEquity / initialCapital)^(A / n) − 1) × 100, n = number of per-bar returns
+ *                    (bar-count based, unlike the calendar-day CAGR); null if n < 1.
  *  winRatePct      = winning trades / closed trades × 100 (win = net P&L > 0); null without trades.
  *  profitFactor    = Σ net P&L of winners / |Σ net P&L of losers|; null when there are no losing trades.
  *  avgWin / avgLoss = mean net P&L of winners / losers (avgLoss is negative); null when none.
+ *  riskReward      = avgWin / |avgLoss|; null unless there is at least one winner and one loser.
  *  exposurePct     = bars ending with an open position / total bars × 100.
  */
 import { type Decimal, fromInt, HUNDRED, ONE, pct, sum, ZERO } from '../decimal.js';
@@ -37,11 +42,14 @@ export interface BacktestMetrics {
   readonly cagrPct: Decimal | null;
   readonly maxDrawdownPct: Decimal;
   readonly sharpe: Decimal | null;
+  readonly sortino: Decimal | null;
+  readonly annualizedReturnPct: Decimal | null;
   readonly tradeCount: number;
   readonly winRatePct: Decimal | null;
   readonly profitFactor: Decimal | null;
   readonly avgWin: Decimal | null;
   readonly avgLoss: Decimal | null;
+  readonly riskReward: Decimal | null;
   readonly exposurePct: Decimal;
   readonly feesTotal: Decimal;
   readonly buyAndHoldReturnPct: Decimal | null;
@@ -100,19 +108,39 @@ export function computeBacktestMetrics(
     if (prevEq.gt(0)) returns.push((curve[i] as BacktestEquityPoint).equity.div(prevEq).minus(ONE));
   }
   let sharpe: Decimal | null = null;
+  let sortino: Decimal | null = null;
   if (returns.length >= 2) {
     const mu = mean(returns);
+    const rfPer = (options.riskFreeRatePct ?? ZERO).div(HUNDRED).div(fromInt(A));
     const variance = sum(returns.map((r) => r.minus(mu).pow(2))).div(fromInt(returns.length - 1));
     if (variance.gt(0)) {
-      const rfPer = (options.riskFreeRatePct ?? ZERO).div(HUNDRED).div(fromInt(A));
       sharpe = mu.minus(rfPer).div(variance.sqrt()).times(fromInt(A).sqrt());
     }
+    const downsideVar = sum(
+      returns.map((r) => {
+        const excess = r.minus(rfPer);
+        return excess.lt(0) ? excess.pow(2) : ZERO;
+      }),
+    ).div(fromInt(returns.length));
+    if (downsideVar.gt(0)) {
+      sortino = mu.minus(rfPer).div(downsideVar.sqrt()).times(fromInt(A).sqrt());
+    }
   }
+  const annualizedReturnPct =
+    returns.length < 1
+      ? null
+      : ratio
+          .pow(fromInt(A).div(fromInt(returns.length)))
+          .minus(ONE)
+          .times(HUNDRED);
 
   const wins = trades.filter((t) => t.netPnl.gt(0)).map((t) => t.netPnl);
   const losses = trades.filter((t) => t.netPnl.lt(0)).map((t) => t.netPnl);
   const grossProfit = sum(wins);
   const grossLoss = sum(losses).abs();
+
+  const avgWin = wins.length > 0 ? mean(wins) : null;
+  const avgLoss = losses.length > 0 ? mean(losses) : null;
 
   const exposed = curve.filter((p) => p.positionQty.gt(0)).length;
   return {
@@ -122,11 +150,14 @@ export function computeBacktestMetrics(
     cagrPct,
     maxDrawdownPct,
     sharpe,
+    sortino,
+    annualizedReturnPct,
     tradeCount: trades.length,
     winRatePct: pct(fromInt(wins.length), fromInt(trades.length)),
     profitFactor: grossLoss.isZero() ? null : grossProfit.div(grossLoss),
-    avgWin: wins.length > 0 ? mean(wins) : null,
-    avgLoss: losses.length > 0 ? mean(losses) : null,
+    avgWin,
+    avgLoss,
+    riskReward: avgWin !== null && avgLoss !== null ? avgWin.div(avgLoss.abs()) : null,
     exposurePct: pct(fromInt(exposed), fromInt(curve.length)) ?? ZERO,
     feesTotal: options.feesTotal,
     buyAndHoldReturnPct: options.buyAndHoldReturnPct,
