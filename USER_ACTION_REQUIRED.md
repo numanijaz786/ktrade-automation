@@ -4,15 +4,16 @@ Only things that genuinely need **you**: permissions, accounts, payments, physic
 
 _Last updated: 2026-11-14_
 
-| #   | Item                                                            | Blocks                                | Cost                   | Status                            |
-| --- | --------------------------------------------------------------- | ------------------------------------- | ---------------------- | --------------------------------- |
-| 1   | Written automation permission from KTrade                       | Automated reads/orders via KTrade     | none                   | ⏳ open                           |
-| 2   | Redacted KTrade contract note, ledger and CDC statement samples | KTrade-format imports, reconciliation | none                   | ⏳ open                           |
-| 3   | Market-data vendor decision                                     | Real/delayed PSX prices               | paid (vendor quote)    | ⏳ open                           |
-| 4   | Confirmed tax rates (CGT, dividend WHT) and your filer status   | Tax estimates                         | none                   | ⏳ open                           |
-| 5   | Hosting / domain for the single secure URL                      | Production deployment                 | paid (VPS ~US$6–12/mo) | ⏳ open                           |
-| 6   | Email/Telegram setup for notifications                          | Email/Telegram alerts                 | none                   | ⏳ later (when the feature lands) |
-| 7   | LLM API key and data-sharing opt-in                             | AI assistant / research write-ups     | usage-based            | ⏳ later (when the feature lands) |
+| #   | Item                                                            | Blocks                                                   | Cost                   | Status                            |
+| --- | --------------------------------------------------------------- | -------------------------------------------------------- | ---------------------- | --------------------------------- |
+| 1   | Written automation permission from KTrade                       | Automated reads/orders via KTrade                        | none                   | ⏳ open                           |
+| 2   | Redacted KTrade contract note, ledger and CDC statement samples | KTrade-format imports, reconciliation                    | none                   | ⏳ open                           |
+| 3   | Market-data vendor decision                                     | Real/delayed PSX prices                                  | paid (vendor quote)    | ⏳ open                           |
+| 4   | Confirmed tax rates (CGT, dividend WHT) and your filer status   | Tax estimates                                            | none                   | ⏳ open                           |
+| 5   | Hosting / domain for the single secure URL                      | Production deployment                                    | paid (VPS ~US$6–12/mo) | ⏳ open                           |
+| 6   | Email/Telegram setup for notifications                          | Email/Telegram alerts                                    | none                   | ⏳ later (when the feature lands) |
+| 7   | LLM API key and data-sharing opt-in                             | AI assistant / research write-ups                        | usage-based            | ⏳ later (when the feature lands) |
+| 8   | Free SBP EasyData account (API sign-in)                         | Macro data (policy rate, inflation, PKR FX) for research | free                   | ⏳ open                           |
 
 ---
 
@@ -36,7 +37,7 @@ _Last updated: 2026-11-14_
 - **Options found:**
   - **Capital Stake**, which describes itself as an authorized PSX feed vendor (REST + WebSocket, quotes, intraday, EOD, corporate actions; pricing not public).
   - **PSX's own EOD product** with Deutsche Börse (subscription).
-- **Recommendation:** ask Capital Stake for a personal/retail quote first. It's the only one found offering intraday plus corporate actions through an API.
+- **Recommendation:** ask Capital Stake for a personal/retail quote first. It's the only authorized PSX feed vendor found offering intraday data, corporate actions **and standardised fundamentals** through an API. For comparison, **EODHD** lists PSX (`.KAR`) prices and fundamentals with published plan pricing (global vendor; check its PSX licensing and coverage depth). PSX's own portal forbids commercial or derived use of its data without PSX approval (marketdatarequest@psx.com.pk).
 - **Works without it:** simulated prices (clearly labelled), and importing EOD prices you're licensed to use (`POST /market/prices/import`), which then take priority over simulated prices.
 - **Steps:** request quotes. Don't subscribe until we've compared them. Once you have a key, it's entered in Settings, never in chat.
 
@@ -55,3 +56,10 @@ _Last updated: 2026-11-14_
 ### 6–7. Notifications and AI provider
 
 These will be described when those features are built, with the exact permissions requested. Email will use read-only OAuth for contract notes.
+
+### 8. SBP EasyData account (macro data)
+
+- **Why:** the research engine uses official State Bank of Pakistan data (policy rate, CPI inflation, PKR exchange rates). EasyData's datasets are public, but its **API requires a free sign-in**.
+- **Blocked:** automatic macro context in research reports. (You can still enter macro figures manually.)
+- **Steps:** create an account at easydata.sbp.org.pk, generate an API key in its API section, and enter it later in Settings, not in chat.
+- **Cost:** free.
