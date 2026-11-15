@@ -88,7 +88,8 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Alerts CRUD + evaluator (cooldown, triggerOnce, dedupe) + scheduler; in-app notifications; order/signal notifications; email/Telegram adapters disabled
 - [x] Risk engine DAILY_LOSS fed from real today P&L (ADR-028) + integration test
 - [ ] Make summary accountValue treat unquoted holdings consistently with snapshots (at cost, ESTIMATED)
-- [ ] Dividends (declarations, entitlements, WHT, reconcile)
+- [x] Dividends: declarations, entitlements (settled before book closure, T+n), verified-only WHT, mark-paid (WHT required), reconcile (ADR-031)
+- [ ] Frontend: dividends page on the real API
 - [ ] Analytics endpoints + PDF/CSV/XLSX exports
 - [ ] ⛔ Email/Telegram delivery: owner configures channels (USER_ACTION #6)
 

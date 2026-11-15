@@ -9,6 +9,7 @@ import { ClockModule } from './common/clock.js';
 import { ProblemDetailsFilter } from './common/filters/problem-details.filter.js';
 import { LoggerModule } from './common/logging/logger.module.js';
 import { ConfigModule } from './config/config.module.js';
+import { DividendsModule } from './dividends/dividends.module.js';
 import { HealthController } from './health/health.controller.js';
 import { ImportsModule } from './imports/imports.module.js';
 import { MarketDataModule } from './market-data/market-data.module.js';
@@ -37,6 +38,7 @@ import { TradingModule } from './trading/trading.module.js';
     NotificationsModule,
     SnapshotsModule,
     AlertsModule,
+    DividendsModule,
   ],
   controllers: [HealthController],
   providers: [

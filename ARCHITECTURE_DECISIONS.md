@@ -326,3 +326,11 @@ Accepted from the quant engineer's implementation:
   - **Concurrency:** no overlapping ticks in-process. A bar counts as done when a successful run log exists; this is checked before and after a per strategy+bar Postgres **try**-lock (skip, never wait). The signal unique key and order idempotency key are the backstop. A bar isn't retried after 3 failures.
   - LIVE strategies only record signals and notifications, **never orders**. PAPER + autoExecute behaves as before (system paper approval, PAPER-only).
 - **Not yet:** intraday strategies aren't scheduled.
+
+## ADR-031 · Dividends
+
+- **Declarations** are owner-entered (USER_REPORTED), with dates in order (announcement ≤ book-closure start ≤ end ≤ payment) and DPS above 0. Editing or deleting is locked once any entitlement is PAID or RECONCILED; otherwise it clears that dividend's estimates.
+- **Entitlement** = shares **settled strictly before book-closure start** (finance-core `settledQuantityBefore` over the same ledger replay as holdings; BUY/SELL settle T+n on the holiday-aware PSX calendar; bonus, split, rights and transfers from their event date). **`market.settlementDays` defaults to 1 (T+1), and the owner must confirm it.** Recompute is idempotent and never touches PAID, RECONCILED or CANCELLED rows.
+- **Withholding estimates use verified `tax_rates` only.** An unknown filer status, a missing rate or ambiguous rates give `taxStatus: NOT_CONFIGURED`, with WHT and net shown as null (0 is a schema placeholder).
+- **Mark-paid requires the withheld amount from the payment advice** (decided by the lead, overriding the agent's default). Withholding is **never inferred** from cash received, because a shortfall could be a wrong share count or a missing payment rather than tax. Any mismatch (gross − zakat − withheld − received) is returned as `unexplainedDifference` with a warning. Mark-paid is one transaction (lock + conditional update + unique external ref): exactly one DIVIDEND cash movement plus a DIVIDEND_RECEIVED notification.
+- **Reconcile:** PAID → RECONCILED, with the entitlement and its cash movement set to BROKER_CONFIRMED (manual confirmation until statement parsers exist).

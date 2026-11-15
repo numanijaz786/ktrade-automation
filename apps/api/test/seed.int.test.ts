@@ -29,17 +29,22 @@ describe('seed (integration, real PostgreSQL)', () => {
     await pg?.stop();
   });
 
-  it('seeds stocks + SIMULATED bars idempotently (DB CHECK constraints validate every OHLC bar)', async () => {
-    const first = await seedMarketData(prisma, clock, { years: 1 });
-    expect(first.stocks).toBe(PSX_SEED_STOCKS.length);
-    expect(first.barsInserted).toBeGreaterThan(PSX_SEED_STOCKS.length * 200); // ~245 sessions/yr
-    const second = await seedMarketData(prisma, clock, { years: 1 });
-    expect(second).toMatchObject({ barsInserted: 0, barsUpdated: 0 });
-    expect(await prisma.stockPrice.count({ where: { source: { not: 'SIMULATED' } } })).toBe(0);
-    expect(
-      (await prisma.systemSetting.findUnique({ where: { key: 'marketData.activeProvider' } }))?.value,
-    ).toBe('simulated');
-  });
+  // Heavy by design (~7.5k bar upserts, run twice): 30 s was exceeded only while Docker builds ran in parallel.
+  it(
+    'seeds stocks + SIMULATED bars idempotently (DB CHECK constraints validate every OHLC bar)',
+    { timeout: 180_000 },
+    async () => {
+      const first = await seedMarketData(prisma, clock, { years: 1 });
+      expect(first.stocks).toBe(PSX_SEED_STOCKS.length);
+      expect(first.barsInserted).toBeGreaterThan(PSX_SEED_STOCKS.length * 200); // ~245 sessions/yr
+      const second = await seedMarketData(prisma, clock, { years: 1 });
+      expect(second).toMatchObject({ barsInserted: 0, barsUpdated: 0 });
+      expect(await prisma.stockPrice.count({ where: { source: { not: 'SIMULATED' } } })).toBe(0);
+      expect(
+        (await prisma.systemSetting.findUnique({ where: { key: 'marketData.activeProvider' } }))?.value,
+      ).toBe('simulated');
+    },
+  );
 
   it('never overwrites real (non-simulated) price rows', async () => {
     const ogdc = await prisma.stock.findUniqueOrThrow({ where: { symbol: 'OGDC' } });
