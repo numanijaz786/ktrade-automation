@@ -114,7 +114,9 @@ Work top to bottom; the first unchecked item is the next task.
 
 ## Phase 12: Hardening & delivery
 
-- [ ] Production Dockerfiles + compose (api, worker, web, nginx TLS, migrate job)
-- [ ] Security review (OWASP), dependency audit, gitleaks pre-commit
-- [ ] README, deployment guide, security documentation finalisation
+- [x] Production Dockerfiles + compose (api, migrate, web, nginx TLS; DB/cache internal only), backups/restore, deployment guide + go-live checklist, verified locally 32/32 (ADR-032)
+- [ ] Forward real client IP BFF → API (trusted proxy) for per-client rate limits and audit IPs
+- [ ] CSP nonces (drop 'unsafe-inline'); slim the API image
+- [ ] Security review (OWASP ASVS L2 checklist), dependency audit, gitleaks run in CI
+- [ ] ⛔ Deploy: owner approves VPS + domain (USER_ACTION #5), then follow DEPLOYMENT_GUIDE.md
 - [ ] Paper-trading demonstration script

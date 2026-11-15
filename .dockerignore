@@ -1,0 +1,32 @@
+# Keep the Docker build context small and free of secrets / host-built artefacts.
+# Host node_modules are Windows/macOS builds and must never reach a Linux image.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/generated
+.git
+.github
+.vscode
+.idea
+
+# Secrets and runtime data
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/secrets
+**/browser-profiles
+**/storage
+infra/.env.prod
+infra/certs
+infra/backups
+infra/letsencrypt
+
+# Not needed to build api/web
+docs
+*.md
+!apps/web/README.md

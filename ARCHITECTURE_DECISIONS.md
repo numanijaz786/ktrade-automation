@@ -334,3 +334,15 @@ Accepted from the quant engineer's implementation:
 - **Withholding estimates use verified `tax_rates` only.** An unknown filer status, a missing rate or ambiguous rates give `taxStatus: NOT_CONFIGURED`, with WHT and net shown as null (0 is a schema placeholder).
 - **Mark-paid requires the withheld amount from the payment advice** (decided by the lead, overriding the agent's default). Withholding is **never inferred** from cash received, because a shortfall could be a wrong share count or a missing payment rather than tax. Any mismatch (gross − zakat − withheld − received) is returned as `unexplainedDifference` with a warning. Mark-paid is one transaction (lock + conditional update + unique external ref): exactly one DIVIDEND cash movement plus a DIVIDEND_RECEIVED notification.
 - **Reconcile:** PAID → RECONCILED, with the entitlement and its cash movement set to BROKER_CONFIRMED (manual confirmation until statement parsers exist).
+
+## ADR-032 · Production packaging (verified locally, not deployed)
+
+- **Images:** `api` (runtime, non-root uid 1000, read-only filesystem, healthcheck), a one-shot `migrate` (`prisma migrate deploy`, carries the Prisma CLI) and `web` (Next standalone, enabled only via `NEXT_OUTPUT=standalone` in the Docker build; dev and start are unchanged).
+- **`infra/docker-compose.prod.yml`:** Postgres 16 and Valkey 8 on an internal network only. migrate → api → web → **nginx is the only service publishing ports (80/443)**. The API isn't routable from outside (`/api/*` returns 404 externally; the browser uses the BFF only). Secrets come from a gitignored `infra/.env.prod`; `.env.prod.example` holds names only. Restart policies, resource and log limits are sized for a 2 vCPU / 4 GB VPS.
+- **nginx:** HTTP→HTTPS, TLS 1.2/1.3 only, HSTS, CSP (`frame-ancestors 'none'`), nosniff, no-referrer, Permissions-Policy, no version leaks. A per-IP rate limit on `/bff/auth/` and a 3 MB body cap. The Let's Encrypt cert name is fixed to `ktrade`, so the domain never appears in config. An optional IP allow-list snippet is included.
+- **Backups:** `backup.sh` (pg_dump custom format, gzip, optional `age` encryption, rotation) and `restore.sh` (refuses to overwrite the live DB without `--force`). A restore into a scratch DB was verified.
+- **Local verification: 32/32 checks** (startup and health, redirect, TLS versions, headers, CSRF + Secure cookies, register/login/market through the BFF, no tokens in bodies, 429, 413, no exposed ports). **Not verifiable locally:** real Let's Encrypt issuance, `age` encryption, DNS, firewall and an external port scan.
+- **Follow-ups (TODO):**
+  1. **Client IP:** the API sees the web container as the client, so its rate limits and audit IPs aren't per-client. Forward `X-Forwarded-For` from the BFF and trust only the internal proxy. Until then nginx's per-IP limit is the effective brute-force guard.
+  2. **CSP** uses `'unsafe-inline'` for scripts and styles until nonces are added.
+  3. The API image is large (922 MB on disk), because Prisma arrives as a peer dependency. Slim it later.

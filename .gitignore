@@ -12,6 +12,15 @@ generated/
 .env
 .env.*
 !.env.example
+!infra/.env.prod.example
+# production secrets, TLS material and database dumps (infra/, see DEPLOYMENT_GUIDE.md)
+infra/.env.prod
+infra/certs/
+infra/letsencrypt/
+infra/backups/
+*.dump
+*.dump.gz
+*.dump.gz.age
 *.pem
 *.key
 secrets/
