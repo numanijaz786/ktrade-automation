@@ -125,7 +125,8 @@ Work top to bottom; the first unchecked item is the next task.
 ## Research & advisor (AI Investment Advisor)
 
 - [x] Data layer: financials, announcements, macro, provider status/registry (honest disabled stubs), immutable recommendations + outcomes, outcome evaluator, performance (ADR-034)
-- [~] Pure research engine in finance-core (ADX, support/resistance, volume, patterns, ratios, valuation, recommendation rules with hard data gating) — agent in progress; see docs/12
+- [x] Pure research engine in finance-core: technicals, ratios, valuation, recommendation rules with hard data gating, holdings advice, scanner (ADR-035, docs/12; 295 finance-core tests)
+- [ ] Backtest the default rule thresholds on real historical data once available (thresholds are untuned)
 - [ ] API: advisor endpoint wiring engine + data layer + portfolio (daily report, holdings advice, scanner) and outcome-evaluation scheduler
 - [ ] Frontend pages: AI Advisor, Buy opportunities, Sell/exit signals, Stock research, Market intelligence feed, Scanner, Recommendation history/performance, Data provider settings, System health & data freshness
 - [ ] Alerts for entry range / targets / stop / recommendation change / news

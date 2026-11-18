@@ -11,3 +11,4 @@ export * from './indicators/index.js';
 export * from './strategy/index.js';
 export * from './risk/index.js';
 export * from './backtest/index.js';
+export * from './research/index.js';

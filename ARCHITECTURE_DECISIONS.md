@@ -362,3 +362,23 @@ Accepted from the quant engineer's implementation:
 - **Outcome evaluation has no look-ahead:** it reads only D1 bars strictly after the recommendation bar. Entry = the recommendation price. If a stop and a target are touched in the same bar, the stop wins; a gap through the stop exits at the open. Positions close at the stop, the highest defined target, or after the holding window. A re-run adds nothing unless a newer bar exists.
 - **Performance** counts only ACTIONABLE rows and excludes SIMULATED-priced ones unless asked (`includeSimulated=true`). The KSE-100 benchmark is null, with a note, until a `KSE100_INDEX` macro series exists.
 - **Not yet built:** a scheduler for outcome evaluation, macro CSV import, rules-based sentiment.
+
+## ADR-035 · Deterministic recommendation engine (finance-core/research)
+
+- **Pure and deterministic** (no I/O, clocks or randomness; decimal-only). Rules and thresholds are in `docs/12-recommendation-rules.md`. An LLM never produces a price, target or score; it may only explain the evidence.
+- **Technical analysis:** ADX (+DI/−DI; validated against a hand-computed fixture and an independent exact-fraction implementation), swing-pivot support/resistance, volume analysis, trend alignment (SMA 20/50/100/200), breakout with volume confirmation, momentum, candlestick patterns. Every output has a `warm` flag and an explanation.
+- **Fundamentals and valuation:** a ratio is either OK with its inputs and provenance, or UNAVAILABLE with the missing input names. It's never estimated. Quarterly annualisation happens only on request and is flagged. Valuation (earnings-based fair value, Gordon growth with r > g, simple DCF with explicit assumptions, margin of safety) separates reported facts from assumptions, and peer medians need at least 3 peers.
+- **Recommendations** per horizon (short-term, swing, long-term, dividend, value, growth) from weighted bullish/bearish rule tables, with each passing rule citing its metric and threshold.
+  - Thresholds: STRONG_BUY at bull ≥ 80 and bear ≤ 10; BUY at bull ≥ 65 and bear ≤ 25; WATCHLIST at bull ≥ 45.
+  - **SELL** requires a held position, bear ≥ 65, bull ≤ 30 and at least one structural rule (a trend break or fundamental deterioration). RSI, MACD, candles and volume are never structural, so a temporary decline alone gives HOLD for a holder.
+  - **Plan:** entry range (never above the last close plus tolerance), ATR/support stop, three targets, gross and fee-net risk/reward, fee-aware position size, holding period.
+  - **Confidence** is four listed components: coverage 30, signal agreement 30, liquidity 20, data quality 20. It measures data quality and rule agreement, not win probability.
+- **Hard gates (each tested):**
+  - a **SIMULATED** latest bar gives NOT_ACTIONABLE for every horizon, with the exact reason "simulated data — not for investment decisions" and no entry, stop, targets, size or confidence;
+  - minimum history of 60 bars (short-term, swing) or 200 (the others);
+  - stale or future-dated price, invalid bars, or fundamentals missing for a fundamental horizon: NOT_ACTIONABLE;
+  - illiquid stocks are capped at WATCHLIST/AVOID/HOLD;
+  - an ESTIMATED latest bar is capped at LOW confidence, so no BUY.
+- **No look-ahead:** the engine ignores bars after the decision time (reported), and property tests show appended or mutated future bars never change the result.
+- **Limitations:** the thresholds are untuned heuristics, not a validated edge, so backtest before relying on them (use the existing backtester and the recommendation tracker). Daily bars only, with no corporate-action adjustment. "No strong opportunity today" is a valid result.
+- The synthetic test fixtures are now excluded from the published build.
