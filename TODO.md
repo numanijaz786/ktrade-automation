@@ -89,7 +89,7 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Risk engine DAILY_LOSS fed from real today P&L (ADR-028) + integration test
 - [ ] Make summary accountValue treat unquoted holdings consistently with snapshots (at cost, ESTIMATED)
 - [x] Dividends: declarations, entitlements (settled before book closure, T+n), verified-only WHT, mark-paid (WHT required), reconcile (ADR-031)
-- [ ] Frontend: dividends page on the real API
+- [x] Frontend: dividends page on the real API
 - [ ] Analytics endpoints + PDF/CSV/XLSX exports
 - [ ] ⛔ Email/Telegram delivery: owner configures channels (USER_ACTION #6)
 
@@ -115,8 +115,9 @@ Work top to bottom; the first unchecked item is the next task.
 ## Phase 12: Hardening & delivery
 
 - [x] Production Dockerfiles + compose (api, migrate, web, nginx TLS; DB/cache internal only), backups/restore, deployment guide + go-live checklist, verified locally 32/32 (ADR-032)
-- [ ] Forward real client IP BFF → API (trusted proxy) for per-client rate limits and audit IPs
+- [x] Real client IP BFF → API with trusted-proxy handling (ADR-033)
 - [ ] CSP nonces (drop 'unsafe-inline'); slim the API image
-- [ ] Security review (OWASP ASVS L2 checklist), dependency audit, gitleaks run in CI
+- [x] ASVS L2 self-review + dependency audit (ADR-033, docs/11)
+- [ ] Close ASVS gaps: absolute session lifetime, TOTP required for OWNER, breached-password check, `pnpm audit` in CI, csv-parse 7
 - [ ] ⛔ Deploy: owner approves VPS + domain (USER_ACTION #5), then follow DEPLOYMENT_GUIDE.md
 - [ ] Paper-trading demonstration script

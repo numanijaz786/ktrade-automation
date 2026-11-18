@@ -7,9 +7,13 @@
  *  - CSRF          → double-submit: readable `ktrade_csrf` cookie must equal the `x-csrf-token` header
  *                    on every non-GET request (constant-time compare)
  *
+ *  - client IP     → `X-Forwarded-For` to the API, only when `BFF_TRUST_PROXY=true` (behind nginx) and the
+ *                    nginx-set value is a valid IP; a browser-supplied header is never forwarded otherwise
+ *
  * Responses to the browser never contain a token. Nothing here logs a token, cookie or body.
  * Pure `Request → Response` functions so they are unit-testable without a Next server.
  */
+import { isIP } from 'node:net';
 import {
   ACCESS_COOKIE,
   accessCookie,
@@ -80,12 +84,18 @@ function cookiesOf(req: Request) {
   return parseCookieHeader(req.headers.get('cookie'));
 }
 
-/** Same-origin check on top of the token: a present `Origin` must match this host. */
+const proxyTrusted = () => process.env.BFF_TRUST_PROXY === 'true';
+
+/**
+ * Same-origin check on top of the token: a present `Origin` must match this host. `X-Forwarded-Host` is only
+ * believed behind nginx (`BFF_TRUST_PROXY=true`), which sets it; otherwise it is client-controlled.
+ */
 function originAllowed(req: Request): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return true;
   try {
-    const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? new URL(req.url).host;
+    const forwarded = proxyTrusted() ? req.headers.get('x-forwarded-host') : null;
+    const host = forwarded ?? req.headers.get('host') ?? new URL(req.url).host;
     return new URL(origin).host === host;
   } catch {
     return false;
@@ -126,6 +136,22 @@ interface Session {
 
 type RefreshResult = { ok: true; session: Session } | { ok: false; status: number; body: string };
 
+/**
+ * The real client IP, or null when it can't be trusted.
+ *
+ * Only behind nginx (`BFF_TRUST_PROXY=true`, set by the production compose file) are `X-Real-IP` /
+ * `X-Forwarded-For` meaningful: nginx OVERWRITES both with `$remote_addr`, so a client-sent value never
+ * survives. `X-Real-IP` wins; otherwise the right-most `X-Forwarded-For` entry (the hop nginx added). Anything
+ * that isn't a plain IPv4/IPv6 address is dropped. Without the flag (dev, tests, direct exposure) the headers
+ * are attacker-controlled and are ignored, so the API attributes the request to the BFF itself.
+ */
+export function trustedClientIp(req: Request): string | null {
+  if (!proxyTrusted()) return null;
+  const real = req.headers.get('x-real-ip');
+  const candidate = (real ?? req.headers.get('x-forwarded-for')?.split(',').pop() ?? '').trim();
+  return candidate.length <= 45 && isIP(candidate) !== 0 ? candidate : null;
+}
+
 function upstreamHeaders(req: Request | null, extra: Record<string, string> = {}): Headers {
   const h = new Headers({ Accept: 'application/json', ...extra });
   if (req) {
@@ -133,6 +159,9 @@ function upstreamHeaders(req: Request | null, extra: Record<string, string> = {}
       const v = req.headers.get(name);
       if (v) h.set(name, v);
     }
+    // Exactly one hop, built here — the browser's own X-Forwarded-For is never copied through.
+    const ip = trustedClientIp(req);
+    if (ip) h.set('X-Forwarded-For', ip);
   }
   return h;
 }

@@ -9,6 +9,7 @@ import {
   handleRefresh,
   handleStepUp,
   resetRefreshCache,
+  trustedClientIp,
 } from './handlers';
 
 const API = 'http://api.test/api/v1';
@@ -128,6 +129,29 @@ describe('CSRF (double submit)', () => {
       ['watchlists'],
     );
     expect(res.status).toBe(403);
+  });
+
+  it('ignores a client-sent X-Forwarded-Host unless the BFF is behind the trusted proxy', async () => {
+    const crossSite = () =>
+      handleProxy(
+        req('/bff/watchlists', {
+          method: 'DELETE',
+          cookies: { ...csrf.cookies, ktrade_at: ACCESS },
+          headers: {
+            ...csrf.headers,
+            origin: 'https://evil.test',
+            host: 'web.test',
+            'x-forwarded-host': 'evil.test',
+          },
+        }),
+        ['watchlists'],
+      );
+    expect((await crossSite()).status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Behind nginx the header is nginx's own (public host), so it is the one compared.
+    vi.stubEnv('BFF_TRUST_PROXY', 'true');
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    expect((await crossSite()).status).toBe(204);
   });
 
   it('requires CSRF on login and register too', async () => {
@@ -443,6 +467,69 @@ describe('step-up, refresh, logout', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(`${API}/auth/logout`);
     expect(cookieLine(res, 'ktrade_at')).toContain('Max-Age=0');
     expect(cookieLine(res, 'ktrade_rt')).toContain('Max-Age=0');
+  });
+});
+
+describe('client IP forwarding (BFF_TRUST_PROXY)', () => {
+  const upstreamXff = (call = 0) => (fetchMock.mock.calls[call][1].headers as Headers).get('x-forwarded-for');
+  const proxied = (headers: Record<string, string>) =>
+    handleProxy(req('/bff/portfolios', { cookies: { ktrade_at: ACCESS }, headers }), ['portfolios']);
+
+  it('is off by default: a client-sent X-Forwarded-For / X-Real-IP is never forwarded', async () => {
+    fetchMock.mockResolvedValueOnce(okJson([]));
+    await proxied({ 'x-forwarded-for': '6.6.6.6', 'x-real-ip': '6.6.6.6' });
+    expect(upstreamXff()).toBeNull();
+    vi.stubEnv('BFF_TRUST_PROXY', 'TRUE'); // only the exact string "true" enables it
+    expect(trustedClientIp(req('/', { headers: { 'x-real-ip': '6.6.6.6' } }))).toBeNull();
+  });
+
+  it('when trusted, forwards the nginx-set X-Real-IP as a single X-Forwarded-For hop', async () => {
+    vi.stubEnv('BFF_TRUST_PROXY', 'true');
+    fetchMock.mockResolvedValueOnce(okJson([]));
+    await proxied({ 'x-real-ip': '203.0.113.7', 'x-forwarded-for': '6.6.6.6, 203.0.113.7' });
+    expect(upstreamXff()).toBe('203.0.113.7');
+  });
+
+  it('falls back to the right-most X-Forwarded-For entry (the hop nginx wrote), never the left-most', () => {
+    vi.stubEnv('BFF_TRUST_PROXY', 'true');
+    expect(trustedClientIp(req('/', { headers: { 'x-forwarded-for': '6.6.6.6, 2001:db8::1' } }))).toBe(
+      '2001:db8::1',
+    );
+  });
+
+  it('drops anything that is not a plain IP', () => {
+    vi.stubEnv('BFF_TRUST_PROXY', 'true');
+    for (const bad of ['', 'unknown', '203.0.113.7:443', '999.1.1.1', '1.2.3.4 , 5.6.7.8', 'a'.repeat(60)]) {
+      expect(trustedClientIp(req('/', { headers: { 'x-real-ip': bad } }))).toBeNull();
+    }
+    // An invalid X-Real-IP is not "rescued" by a different X-Forwarded-For value.
+    expect(
+      trustedClientIp(req('/', { headers: { 'x-real-ip': 'nope', 'x-forwarded-for': '203.0.113.7' } })),
+    ).toBeNull();
+  });
+
+  it('forwards the client IP on login and refresh too (per-client API rate limits and audit)', async () => {
+    vi.stubEnv('BFF_TRUST_PROXY', 'true');
+    fetchMock.mockResolvedValueOnce(tokenResponse(ACCESS, RT));
+    await handleCredentials(
+      req('/bff/auth/login', {
+        method: 'POST',
+        ...csrf,
+        headers: { ...csrf.headers, 'x-real-ip': '198.51.100.4' },
+        body: { email: 'o@example.com', password: 'x' },
+      }),
+      'login',
+    );
+    expect(upstreamXff()).toBe('198.51.100.4');
+    fetchMock.mockResolvedValueOnce(tokenResponse(NEW_ACCESS, NEW_RT));
+    await handleRefresh(
+      req('/bff/auth/refresh', {
+        method: 'POST',
+        cookies: { ...csrf.cookies, ktrade_rt: RT },
+        headers: { ...csrf.headers, 'x-real-ip': '198.51.100.4' },
+      }),
+    );
+    expect(upstreamXff(1)).toBe('198.51.100.4');
   });
 });
 

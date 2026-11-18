@@ -25,6 +25,17 @@ export interface ProblemDetails {
 const TYPE_BASE = 'https://ktrade-platform.local/problems/';
 const ALLOWED_EXTENSIONS = ['rowNo', 'existingImportId'] as const;
 
+const reasonPhrase = (status: number) =>
+  String(HttpStatus[status] ?? 'Error')
+    .toLowerCase()
+    .replace(/(^|_)([a-z])/g, (_, sep: string, c: string) => (sep ? ' ' : '') + c.toUpperCase());
+
+/** "NotFoundException" → "Not Found"; a bare HttpException (e.g. body-parser 413) → the status reason phrase. */
+function problemTitle(exception: HttpException, status: number): string {
+  if (exception.constructor === HttpException) return reasonPhrase(status);
+  return exception.name.replace(/Exception$/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
 /**
  * Maps every error to RFC 9457 `application/problem+json` (docs/07 §1).
  * Unknown errors become a generic 500 — internal messages and stacks are logged, never returned.
@@ -84,7 +95,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       }
       return {
         type: `${TYPE_BASE}${String(code).toLowerCase().replace(/_/g, '-')}`,
-        title: exception.name.replace(/Exception$/, '').replace(/([a-z])([A-Z])/g, '$1 $2'),
+        title: problemTitle(exception, status),
         status,
         code: String(code),
         detail: Array.isArray(detail) ? detail.join('; ') : detail,

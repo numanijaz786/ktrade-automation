@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isTrustProxyEntry } from '../common/trust-proxy.js';
 
 /**
  * Environment contract. The app refuses to start when anything is missing or malformed (fail fast).
@@ -69,6 +70,25 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /**
+   * Hops allowed to set X-Forwarded-For (Express `trust proxy`): comma-separated IPs, CIDRs (IPv4 ≥ /8, IPv6
+   * ≥ /16) or loopback|linklocal|uniquelocal. Default loopback only; empty = trust nobody. Production trusts
+   * only the web (BFF) container's fixed address, so `req.ip` (rate limits, audit) is the real client.
+   */
+  TRUST_PROXY_ADDRESSES: z
+    .string()
+    .default('loopback')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    )
+    .pipe(
+      z.array(
+        z.string().refine(isTrustProxyEntry, 'must be an IP, a CIDR or loopback|linklocal|uniquelocal'),
+      ),
+    ),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('true')

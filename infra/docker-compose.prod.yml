@@ -11,6 +11,10 @@
 #   app      web ↔ api                (has egress: a future market-data vendor)
 #   data     api / migrate ↔ postgres / valkey   (internal: no egress, no host access)
 # nginx is not on `app`, so the API is unreachable from outside; the browser only ever uses /bff/* on web.
+#
+# Client IP chain: nginx overwrites X-Real-IP/X-Forwarded-For with $remote_addr → web (BFF_TRUST_PROXY=true)
+# forwards one validated hop → api trusts X-Forwarded-For ONLY from web's fixed address on `app`
+# (TRUST_PROXY_ADDRESSES), so req.ip — rate limits and audit — is the real client and cannot be spoofed.
 name: ktrade-prod
 
 x-logging: &logging
@@ -133,6 +137,8 @@ services:
       REDIS_URL: redis://valkey:6379
       COOKIE_SECURE: 'true'
       SWAGGER_ENABLED: 'false'
+      # Only the BFF (web's fixed IP below) may set X-Forwarded-For; keep in sync with networks.app.
+      TRUST_PROXY_ADDRESSES: loopback,172.30.250.10
       NODE_OPTIONS: --max-old-space-size=512
     expose: ['3001']
     networks: [app, data]
@@ -167,11 +173,17 @@ services:
       NEXT_PUBLIC_DATA_MODE: api
       API_BASE_URL: http://api:3001/api/v1
       BFF_COOKIE_SECURE: 'true'
+      # web is reachable only from nginx (edge) and api (app), so nginx's X-Real-IP can be trusted here.
+      BFF_TRUST_PROXY: 'true'
       HOSTNAME: 0.0.0.0
       PORT: '3000'
       NODE_OPTIONS: --max-old-space-size=384
     expose: ['3000']
-    networks: [edge, app]
+    networks:
+      edge: {}
+      app:
+        # Fixed so the API can trust exactly this address as its proxy (TRUST_PROXY_ADDRESSES).
+        ipv4_address: 172.30.250.10
     depends_on:
       api:
         condition: service_healthy
@@ -225,7 +237,12 @@ services:
 
 networks:
   edge: {}
-  app: {}
+  app:
+    # Pinned subnet so web gets a fixed address (see api TRUST_PROXY_ADDRESSES). Change both if it clashes
+    # with a host network.
+    ipam:
+      config:
+        - subnet: 172.30.250.0/24
   data:
     internal: true
 

@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
+import { trustProxySetting } from './common/trust-proxy.js';
 import { AppConfig } from './config/config.module.js';
 
 export const API_PREFIX = 'api/v1';
@@ -13,9 +14,14 @@ export function configureApp(app: INestApplication): void {
   const config = app.get(AppConfig);
 
   app.useLogger(app.get(Logger));
+  // req.ip = the real client only when the request came through a configured hop (the BFF); otherwise the
+  // socket address, so a spoofed X-Forwarded-For is ignored. Throttling and audit `ip` both use req.ip.
+  (app as NestExpressApplication).set('trust proxy', trustProxySetting(config.get('TRUST_PROXY_ADDRESSES')));
+  // Security headers first, so they are also on responses the body parser rejects (400 bad JSON, 413).
+  (app as NestExpressApplication).disable('x-powered-by');
+  app.use(helmet());
   // JSON bodies up to 3 MB: statement uploads (2 MB cap enforced by the import schema) plus envelope.
   (app as NestExpressApplication).useBodyParser('json', { limit: '3mb' });
-  app.use(helmet());
   app.use(cookieParser());
   app.enableCors({
     origin: config.get('CORS_ORIGINS'),

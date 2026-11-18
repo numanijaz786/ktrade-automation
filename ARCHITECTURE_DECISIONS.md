@@ -346,3 +346,10 @@ Accepted from the quant engineer's implementation:
   1. **Client IP:** the API sees the web container as the client, so its rate limits and audit IPs aren't per-client. Forward `X-Forwarded-For` from the BFF and trust only the internal proxy. Until then nginx's per-IP limit is the effective brute-force guard.
   2. **CSP** uses `'unsafe-inline'` for scripts and styles until nonces are added.
   3. The API image is large (922 MB on disk), because Prisma arrives as a peer dependency. Slim it later.
+
+## ADR-033 · Real client IP end-to-end, dependency audit and ASVS review
+
+- **Client IP:** nginx overwrites `X-Forwarded-For` and `X-Real-IP` with `$remote_addr`. The BFF reads them only when `BFF_TRUST_PROXY` is exactly `true`, validates the value as an IP, and sends one hop to the API. The API trusts proxies only from `TRUST_PROXY_ADDRESSES` (default loopback; `true`, hop counts and `/0` ranges are rejected at startup), so `req.ip`, the throttler's per-client buckets and the audit `ip` are the real client, and spoofed headers from untrusted sources are ignored. Tested at BFF and API level. This closes ADR-032 follow-up 1.
+- **Dependency audit:** no high or critical advisories, so nothing was bumped. 3 moderate: csv-parse (not exploitable here; fix needs a major bump), and glob/minimatch (dev tooling only).
+- **ASVS L2 self-review** (`docs/11-security-review.md`): 62 requirements, 47 met, 10 partial, 2 not met, 3 N/A. Top gaps: no absolute session lifetime, TOTP optional for the OWNER, CSP still allows inline scripts, no breached-password check, no `pnpm audit` step in CI.
+- Body-parser errors now carry Helmet headers and no `X-Powered-By`; generic 413s have a proper title.
