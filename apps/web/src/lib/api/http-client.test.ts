@@ -373,7 +373,6 @@ describe('HttpApiClient', () => {
   it('groups without a backend reject with NOT_AVAILABLE and never call the network', async () => {
     const { c, fetchMock } = client([]);
     const calls = [
-      c.dividends.list('p'),
       c.analytics.feesTaxes('p'),
       c.assistant.history(),
       c.reports.list(),

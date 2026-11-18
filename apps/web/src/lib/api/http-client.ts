@@ -6,6 +6,21 @@
 import type { ApiClient } from './client';
 import { ApiError, notAvailable } from './errors';
 import {
+  type ApiDividend,
+  type ApiDividendComputeResult,
+  type ApiDividendEntitlement,
+  type ApiDividendEntitlementList,
+  type ApiMarkPaidResult,
+  mapDividendComputeResult,
+  mapDividendDeclaration,
+  mapDividendDeclarationDeleted,
+  mapDividendDeclarationUpdated,
+  mapDividendEntitlement,
+  mapDividendEntitlementList,
+  mapMarkPaidResult,
+  toApiDividendInput,
+  toApiDividendUpdate,
+  toApiMarkPaid,
   type ApiAlert,
   type ApiAlertEvaluation,
   type ApiBackfillResult,
@@ -577,9 +592,56 @@ export class HttpApiClient implements ApiClient {
       mapAlertEvaluation(await this.request<ApiAlertEvaluation>('POST', 'alerts/evaluate')),
   };
 
-  // ─── no backend yet: NOT_AVAILABLE (never demo data) ────────────────────
+  dividends: ApiClient['dividends'] = {
+    declarations: async (q = {}) =>
+      (await this.get<ApiDividend[]>('dividends', { symbol: q.symbol, limit: 500 })).map(
+        mapDividendDeclaration,
+      ),
+    createDeclaration: async (input) =>
+      mapDividendDeclaration(
+        await this.request<ApiDividend>('POST', 'dividends', { body: toApiDividendInput(input) }),
+      ),
+    updateDeclaration: async (id, patch) =>
+      mapDividendDeclarationUpdated(
+        await this.request<ApiDividend & { estimatedEntitlementsCleared: number }>(
+          'PATCH',
+          `dividends/${seg(id)}`,
+          { body: toApiDividendUpdate(patch) },
+        ),
+      ),
+    deleteDeclaration: async (id) =>
+      mapDividendDeclarationDeleted(
+        await this.request<{ id: string; deleted: boolean; estimatedEntitlementsCleared: number }>(
+          'DELETE',
+          `dividends/${seg(id)}`,
+        ),
+      ),
+    entitlements: async (pf) =>
+      mapDividendEntitlementList(
+        await this.get<ApiDividendEntitlementList>(`portfolios/${seg(pf)}/dividend-entitlements`),
+      ),
+    compute: async (pf) =>
+      mapDividendComputeResult(
+        await this.request<ApiDividendComputeResult>(
+          'POST',
+          `portfolios/${seg(pf)}/dividend-entitlements/compute`,
+        ),
+      ),
+    markPaid: async (id, input) =>
+      mapMarkPaidResult(
+        await this.request<ApiMarkPaidResult>('POST', `dividend-entitlements/${seg(id)}/mark-paid`, {
+          body: toApiMarkPaid(input),
+        }),
+      ),
+    reconcile: async (id, input = {}) =>
+      mapDividendEntitlement(
+        await this.request<ApiDividendEntitlement>('POST', `dividend-entitlements/${seg(id)}/reconcile`, {
+          body: input.statementRef?.trim() ? { statementRef: input.statementRef.trim() } : {},
+        }),
+      ),
+  };
 
-  dividends: ApiClient['dividends'] = { list: () => rejectNA() };
+  // ─── no backend yet: NOT_AVAILABLE (never demo data) ────────────────────
 
   analytics: ApiClient['analytics'] = {
     performance: () => rejectNA(),

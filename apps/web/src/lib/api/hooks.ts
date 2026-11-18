@@ -21,6 +21,10 @@ import type {
   BacktestRequest,
   ChannelConfig,
   ChartRange,
+  DividendDeclarationInput,
+  DividendDeclarationUpdate,
+  DividendMarkPaidInput,
+  DividendReconcileInput,
   FillRequest,
   MoverType,
   Order,
@@ -69,7 +73,8 @@ export const qk = {
   strategies: ['strategies', 'list'] as const,
   signals: (strategyId?: string) => ['strategies', 'signals', strategyId ?? 'all'] as const,
   backtests: ['backtests'] as const,
-  dividends: (pf: string) => ['dividends', pf] as const,
+  dividendDeclarations: ['dividends', 'declarations'] as const,
+  dividendEntitlements: (pf: string) => ['dividends', 'entitlements', pf] as const,
   performance: (pf: string, p: PerformancePeriod) => ['analytics', 'performance', pf, p] as const,
   realized: (pf: string) => ['analytics', 'realized', pf] as const,
   feesTaxes: (pf: string) => ['analytics', 'feesTaxes', pf] as const,
@@ -598,13 +603,62 @@ export function useCompareBacktests() {
 
 // ─── dividends, analytics, reports ─────────────────────────────────────────
 
-export function useDividends(pf: string | undefined) {
+export function useDividendDeclarations() {
+  const api = useApiClient();
+  return useQuery({ queryKey: qk.dividendDeclarations, queryFn: () => api.dividends.declarations() });
+}
+
+export function useDividendEntitlements(pf: string | undefined) {
   const api = useApiClient();
   return useQuery({
-    queryKey: qk.dividends(pf ?? ''),
-    queryFn: () => api.dividends.list(pf!),
+    queryKey: qk.dividendEntitlements(pf ?? ''),
+    queryFn: () => api.dividends.entitlements(pf!),
     enabled: !!pf,
   });
+}
+
+/**
+ * Declaration edits clear estimated entitlements, and payments move cash, so every dividend mutation
+ * refreshes all dividend queries; payments also refresh the portfolio, dashboard and inbox.
+ */
+export function useDividendMutations() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const dividends = () => qc.invalidateQueries({ queryKey: ['dividends'] });
+  const money = () => {
+    void dividends();
+    void qc.invalidateQueries({ queryKey: ['portfolio'] });
+    void qc.invalidateQueries({ queryKey: ['dashboard'] });
+    void qc.invalidateQueries({ queryKey: ['notifications'] });
+  };
+  return {
+    create: useMutation({
+      mutationFn: (input: DividendDeclarationInput) => api.dividends.createDeclaration(input),
+      onSuccess: dividends,
+    }),
+    update: useMutation({
+      mutationFn: (v: { id: string; patch: DividendDeclarationUpdate }) =>
+        api.dividends.updateDeclaration(v.id, v.patch),
+      onSuccess: dividends,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.dividends.deleteDeclaration(id),
+      onSuccess: dividends,
+    }),
+    compute: useMutation({
+      mutationFn: (portfolioId: string) => api.dividends.compute(portfolioId),
+      onSuccess: dividends,
+    }),
+    markPaid: useMutation({
+      mutationFn: (v: { id: string; input: DividendMarkPaidInput }) => api.dividends.markPaid(v.id, v.input),
+      onSuccess: money,
+    }),
+    reconcile: useMutation({
+      mutationFn: (v: { id: string; input?: DividendReconcileInput }) =>
+        api.dividends.reconcile(v.id, v.input),
+      onSuccess: money,
+    }),
+  };
 }
 
 export function usePerformance(pf: string | undefined, period: PerformancePeriod) {

@@ -356,6 +356,153 @@ export interface Dividend {
   source: DataSource;
 }
 
+// ─── dividends (ADR-031; apps/api/src/dividends) ───────────────────────────
+
+/** A cash-dividend declaration. Reference data shared by every portfolio; owner-entered (USER_REPORTED). */
+export interface DividendDeclaration {
+  id: string;
+  symbol: string;
+  companyName: string | null;
+  announcementDate: IsoDate | null;
+  bookClosureFrom: IsoDate;
+  bookClosureTo: IsoDate | null;
+  paymentDate: IsoDate | null;
+  /** NUMERIC(20,6) decimal string. */
+  dividendPerShare: Decimal;
+  source: DataSource;
+  /** True once any entitlement is PAID or RECONCILED: the declaration can no longer be edited or deleted. */
+  locked: boolean;
+  createdAt: Instant;
+}
+
+export interface DividendDeclarationInput {
+  symbol: string;
+  announcementDate?: IsoDate | null;
+  bookClosureFrom: IsoDate;
+  bookClosureTo?: IsoDate | null;
+  paymentDate?: IsoDate | null;
+  dividendPerShare: Decimal;
+}
+
+/** PATCH body: the symbol is immutable; `null` clears an optional date. */
+export type DividendDeclarationUpdate = Partial<Omit<DividendDeclarationInput, 'symbol'>>;
+
+export interface DividendDeclarationUpdated extends DividendDeclaration {
+  /** Estimated (unpaid) entitlements dropped because the terms changed — recompute. */
+  estimatedEntitlementsCleared: number;
+}
+
+export interface DividendDeclarationDeleted {
+  id: string;
+  deleted: true;
+  estimatedEntitlementsCleared: number;
+}
+
+/**
+ * - CONFIGURED: a verified WHT rate applies; WHT and net are estimates.
+ * - NOT_CONFIGURED: filer status unknown / no verified rate / ambiguous rates — WHT and net are null.
+ * - RECOMPUTE_REQUIRED: a different verified rate now applies — WHT and net are null until recomputed.
+ * - AS_PAID: PAID / RECONCILED rows report what was recorded from the payment advice.
+ */
+export type DividendTaxStatus = 'CONFIGURED' | 'NOT_CONFIGURED' | 'RECOMPUTE_REQUIRED' | 'AS_PAID';
+
+export interface DividendEntitlement {
+  id: string;
+  dividendId: string;
+  portfolioId: string;
+  symbol: string;
+  bookClosureFrom: IsoDate;
+  bookClosureTo: IsoDate | null;
+  paymentDate: IsoDate | null;
+  dividendPerShare: Decimal;
+  /** Shares settled strictly before the book-closure start. */
+  sharesEligible: Decimal;
+  grossAmount: Decimal;
+  /** Fraction ("0.15000000"); null unless taxStatus is CONFIGURED or AS_PAID. */
+  whtRate: Decimal | null;
+  whtAmount: Decimal | null;
+  zakatAmount: Decimal;
+  netAmount: Decimal | null;
+  /** gross − zakat: what is known for sure when WHT is not configured. */
+  netBeforeWht: Decimal;
+  taxStatus: DividendTaxStatus;
+  taxNote: string | null;
+  status: DividendPaymentStatus;
+  source: DataSource;
+  /** Book closure has not started yet: holdings may still change; recompute after it. */
+  provisional: boolean;
+  paidAt: IsoDate | null;
+  cashMovementId: string | null;
+  reconciledAt: Instant | null;
+  updatedAt: Instant;
+}
+
+export interface DividendEntitlementList {
+  data: DividendEntitlement[];
+  filerStatus: TaxFilerStatus;
+}
+
+/** The settlement cycle used for eligibility. A DEFAULT basis is an assumption the owner must confirm. */
+export interface SettlementAssumption {
+  days: number;
+  basis: 'SYSTEM_SETTING' | 'DEFAULT';
+  note: string;
+}
+
+export interface DividendComputeCounts {
+  created: number;
+  updated: number;
+  unchanged: number;
+  removed: number;
+  skippedSettled: number;
+  notEligible: number;
+}
+
+export interface DividendComputeResult {
+  portfolioId: string;
+  settlement: SettlementAssumption;
+  filerStatus: TaxFilerStatus;
+  counts: DividendComputeCounts;
+  data: DividendEntitlement[];
+}
+
+export interface DividendMarkPaidInput {
+  paidAt: IsoDate;
+  /** Cash actually received (after withholding and zakat). */
+  netAmount: Decimal;
+  /** Withholding actually deducted, from the payment advice. Required — never inferred (ADR-031). */
+  whtAmount: Decimal;
+  zakatAmount?: Decimal;
+}
+
+export interface DividendMarkPaidResult {
+  entitlement: DividendEntitlement;
+  cashMovementId: string;
+  whtBasis: 'REPORTED';
+  /** gross − zakat − withheld − received. Non-zero means something does not add up. */
+  unexplainedDifference: Decimal;
+  warnings: string[];
+  estimate: {
+    netAmount: Decimal | null;
+    whtAmount: Decimal | null;
+    grossAmount: Decimal;
+    taxStatus: DividendTaxStatus;
+  };
+  differences: {
+    /** received net − estimated net (null when the estimate had no configured WHT). */
+    netAmount: Decimal | null;
+    /** recorded WHT − estimated WHT (null when the estimate had no configured WHT). */
+    whtAmount: Decimal | null;
+    /** (net + WHT + zakat) − estimated gross. */
+    grossAmount: Decimal;
+  };
+}
+
+export interface DividendReconcileInput {
+  /** Broker / CDC statement reference, kept in the audit trail. */
+  statementRef?: string;
+}
+
 export interface HoldingDetail {
   holding: Holding;
   lots: Lot[];

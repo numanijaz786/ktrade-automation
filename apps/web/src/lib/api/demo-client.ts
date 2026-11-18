@@ -64,6 +64,18 @@ import {
 } from '../demo/fixtures';
 import type { ApiClient } from './client';
 import { ApiError } from './errors';
+import {
+  computeEntitlements,
+  createDeclaration,
+  declarationView,
+  deleteDeclaration,
+  entitlementView,
+  markPaid as markDividendPaid,
+  reconcile as reconcileDividend,
+  updateDeclaration,
+  type DemoDividendContext,
+  type DemoDividendState,
+} from './demo-dividends';
 import type {
   Alert,
   AlertEvaluation,
@@ -173,6 +185,8 @@ interface State {
   quotes: Map<string, QuoteState>;
   ledgers: Map<string, LedgerEntry[]>;
   dividends: Map<string, Dividend[]>;
+  /** Declarations + entitlements (ADR-031 rules; see demo-dividends.ts). */
+  divs: DemoDividendState;
   portfolios: Portfolio[];
   orders: DemoOrder[];
   watchlists: DemoWatchlist[];
@@ -332,6 +346,7 @@ export class DemoApiClient implements ApiClient {
         [LIVE_PORTFOLIO_ID, live.dividends],
         [PAPER_PORTFOLIO_ID, paper.dividends],
       ]),
+      divs: { declarations: [], entitlements: [] },
       portfolios: [
         {
           id: LIVE_PORTFOLIO_ID,
@@ -414,6 +429,7 @@ export class DemoApiClient implements ApiClient {
       broker: cashNow.toFixed(2),
       difference: '-12.40',
     };
+    this.seedDividends(s, live.dividends);
     s.orders = this.seedOrders(s);
     s.strategies = this.seedStrategies();
     s.signals = this.buildSignals(s.strategies);
@@ -430,6 +446,66 @@ export class DemoApiClient implements ApiClient {
       },
     ];
     return s;
+  }
+
+  /**
+   * Declarations from the seeded ledger's dividends; the paid ones keep their recorded (SIMULATED /
+   * BROKER_CONFIRMED) payment, everything else is computed by the same engine the Compute button uses.
+   */
+  private seedDividends(s: State, records: Dividend[]) {
+    const ledger = s.ledgers.get(LIVE_PORTFOLIO_ID) ?? [];
+    for (const r of records) {
+      s.divs.declarations.push({
+        id: r.id,
+        symbol: r.symbol,
+        companyName: r.name,
+        announcementDate: r.announcementDate,
+        bookClosureFrom: r.exDate,
+        bookClosureTo: null,
+        paymentDate: r.paymentDate,
+        dividendPerShare: r.perShare,
+        source: 'USER_REPORTED',
+        createdAt: `${r.announcementDate}T04:00:00Z`,
+      });
+      if (r.status !== 'PAID' && r.status !== 'RECONCILED') continue;
+      const cash = ledger.find(
+        (e) =>
+          e.kind === 'cash' &&
+          e.cash.type === 'DIVIDEND' &&
+          e.cash.description.startsWith(`${r.symbol} cash dividend`),
+      );
+      const gross = Dec.of(r.grossAmount);
+      s.divs.entitlements.push({
+        id: `dent-${r.id}`,
+        dividendId: r.id,
+        portfolioId: LIVE_PORTFOLIO_ID,
+        sharesEligible: r.eligibleQty,
+        grossAmount: gross.toFixed(4),
+        whtRate: gross.isZero() ? '0.00000000' : Dec.of(r.whtAmount).div(gross).toFixed(8),
+        whtAmount: Dec.of(r.whtAmount).toFixed(4),
+        zakatAmount: '0.0000',
+        netAmount: Dec.of(r.netAmount).toFixed(4),
+        status: r.status,
+        source: r.source,
+        paidAt: r.paymentDate,
+        cashMovementId: cash?.kind === 'cash' ? cash.cash.id : null,
+        reconciledAt: r.status === 'RECONCILED' && r.paymentDate ? `${r.paymentDate}T10:00:00Z` : null,
+        updatedAt: `${r.paymentDate ?? r.exDate}T10:00:00Z`,
+      });
+    }
+    for (const pf of [LIVE_PORTFOLIO_ID, PAPER_PORTFOLIO_ID])
+      computeEntitlements(s.divs, pf, s.ledgers.get(pf) ?? [], this.divContext(s));
+  }
+
+  private divContext(s: State): DemoDividendContext {
+    return {
+      today: DEMO_TODAY,
+      nowIso: this.iso(),
+      id: (prefix) => this.id(prefix),
+      filerStatus: s.userSettings.taxFilerStatus,
+      taxRates: seedTaxRates(),
+      knownSymbol: (symbol) => s.quotes.has(symbol),
+    };
   }
 
   // ─── derived data helpers ────────────────────────────────────────────────
@@ -2571,11 +2647,79 @@ export class DemoApiClient implements ApiClient {
   }
 
   dividends: ApiClient['dividends'] = {
-    list: (pfId) =>
+    declarations: (q = {}) =>
       this.run((s) =>
-        [...(s.dividends.get(this.portfolio(s, pfId).id) ?? [])].sort((a, b) =>
-          b.exDate.localeCompare(a.exDate),
-        ),
+        s.divs.declarations
+          .filter((d) => !q.symbol || d.symbol === q.symbol.trim().toUpperCase())
+          .sort(
+            (a, b) =>
+              b.bookClosureFrom.localeCompare(a.bookClosureFrom) || b.createdAt.localeCompare(a.createdAt),
+          )
+          .map((d) => declarationView(s.divs, d)),
+      ),
+    createDeclaration: (input) => this.run((s) => createDeclaration(s.divs, input, this.divContext(s))),
+    updateDeclaration: (id, patch) => this.run((s) => updateDeclaration(s.divs, id, patch)),
+    deleteDeclaration: (id) => this.run((s) => deleteDeclaration(s.divs, id)),
+    entitlements: (pfId) =>
+      this.run((s) => {
+        this.portfolio(s, pfId);
+        const ctx = this.divContext(s);
+        const byBookClosure = (id: string) =>
+          s.divs.declarations.find((d) => d.id === id)?.bookClosureFrom ?? '';
+        return {
+          data: s.divs.entitlements
+            .filter((e) => e.portfolioId === pfId)
+            .sort((a, b) => byBookClosure(b.dividendId).localeCompare(byBookClosure(a.dividendId)))
+            .map((e) => entitlementView(s.divs, e, ctx)),
+          filerStatus: ctx.filerStatus,
+        };
+      }),
+    compute: (pfId) =>
+      this.run((s) => computeEntitlements(s.divs, pfId, this.ledger(s, pfId), this.divContext(s))),
+    markPaid: (id, input) =>
+      this.run((s) =>
+        markDividendPaid(s.divs, id, input, this.divContext(s), (row, symbol, net) => {
+          const dv = s.divs.declarations.find((d) => d.id === row.dividendId)!;
+          const cashId = this.id('cash');
+          this.appendLedger(s, row.portfolioId, {
+            kind: 'cash',
+            cash: {
+              id: cashId,
+              portfolioId: row.portfolioId,
+              date: input.paidAt,
+              type: 'DIVIDEND',
+              amount: net,
+              description: `Dividend ${symbol} (book closure ${dv.bookClosureFrom})`,
+              source: 'USER_REPORTED',
+            },
+          });
+          s.notifications.unshift({
+            id: this.id('n'),
+            type: 'DIVIDEND_RECEIVED',
+            title: `Dividend received: ${symbol}`,
+            body: `PKR ${net} net received on ${input.paidAt} for ${row.sharesEligible} shares.`,
+            createdAt: this.iso(),
+            readAt: null,
+            read: false,
+            channel: 'IN_APP',
+            status: 'SENT',
+            alertId: null,
+            link: '/dividends',
+          });
+          return cashId;
+        }),
+      ),
+    reconcile: (id) =>
+      this.run((s) =>
+        reconcileDividend(s.divs, id, this.divContext(s), (cashId) => {
+          for (const [pf, entries] of s.ledgers) {
+            const hit = entries.find((e) => e.kind === 'cash' && e.cash.id === cashId);
+            if (hit?.kind === 'cash') {
+              hit.cash.source = 'BROKER_CONFIRMED';
+              s.ledgerVersion.set(pf, (s.ledgerVersion.get(pf) ?? 0) + 1);
+            }
+          }
+        }),
       ),
   };
 

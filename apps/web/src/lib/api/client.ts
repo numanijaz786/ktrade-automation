@@ -27,7 +27,17 @@ import type {
   DashboardSummary,
   DataMode,
   Discrepancy,
-  Dividend,
+  DividendComputeResult,
+  DividendDeclaration,
+  DividendDeclarationDeleted,
+  DividendDeclarationInput,
+  DividendDeclarationUpdate,
+  DividendDeclarationUpdated,
+  DividendEntitlement,
+  DividendEntitlementList,
+  DividendMarkPaidInput,
+  DividendMarkPaidResult,
+  DividendReconcileInput,
   FeeEstimate,
   FeeEstimateQuery,
   FeeScheduleRow,
@@ -186,8 +196,24 @@ export interface BacktestsApi {
   compare(req: BacktestCompareRequest): Promise<BacktestComparison>;
 }
 
+/** docs/07 "dividends", ADR-031. Declarations are shared reference data; entitlements are per portfolio. */
 export interface DividendsApi {
-  list(portfolioId: string): Promise<Dividend[]>;
+  /** GET /dividends — newest book closure first. */
+  declarations(query?: { symbol?: string }): Promise<DividendDeclaration[]>;
+  /** POST /dividends (OWNER) — recorded as USER_REPORTED. */
+  createDeclaration(input: DividendDeclarationInput): Promise<DividendDeclaration>;
+  /** PATCH /dividends/:id (OWNER) — 409 DIVIDEND_LOCKED once paid; clears that dividend's estimates. */
+  updateDeclaration(id: string, patch: DividendDeclarationUpdate): Promise<DividendDeclarationUpdated>;
+  /** DELETE /dividends/:id (OWNER) — 409 DIVIDEND_LOCKED once paid. */
+  deleteDeclaration(id: string): Promise<DividendDeclarationDeleted>;
+  /** GET /portfolios/:id/dividend-entitlements */
+  entitlements(portfolioId: string): Promise<DividendEntitlementList>;
+  /** POST /portfolios/:id/dividend-entitlements/compute (OWNER) — idempotent; paid rows untouched. */
+  compute(portfolioId: string): Promise<DividendComputeResult>;
+  /** POST /dividend-entitlements/:id/mark-paid (OWNER) — WHT from the payment advice is required. */
+  markPaid(entitlementId: string, input: DividendMarkPaidInput): Promise<DividendMarkPaidResult>;
+  /** POST /dividend-entitlements/:id/reconcile (OWNER) — PAID → RECONCILED (BROKER_CONFIRMED). */
+  reconcile(entitlementId: string, input?: DividendReconcileInput): Promise<DividendEntitlement>;
 }
 
 export interface AnalyticsApi {

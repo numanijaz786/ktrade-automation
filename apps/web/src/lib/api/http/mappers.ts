@@ -29,6 +29,8 @@ import type {
   StrategyType,
   NotificationChannel,
   NotificationStatus,
+  DividendPaymentStatus,
+  TaxFilerStatus,
 } from '@ktrade/shared';
 import { Dec } from '../../decimal';
 import { ApiError, type FieldError } from '../errors';
@@ -45,6 +47,18 @@ import type {
   PnlFigure,
   PortfolioPerformance,
   SnapshotBackfillResult,
+  DividendComputeResult,
+  DividendDeclaration,
+  DividendDeclarationDeleted,
+  DividendDeclarationInput,
+  DividendDeclarationUpdate,
+  DividendDeclarationUpdated,
+  DividendEntitlement,
+  DividendEntitlementList,
+  DividendMarkPaidInput,
+  DividendMarkPaidResult,
+  DividendTaxStatus,
+  SettlementAssumption,
   BrokerConnection,
   Capability,
   CapabilityState,
@@ -1250,6 +1264,8 @@ export function notificationLink(type: string | null, alertId: string | null): s
       return '/strategies';
     case 'SYNC_DISCREPANCY':
       return '/integration';
+    case 'DIVIDEND_RECEIVED':
+      return '/dividends';
     default:
       return undefined;
   }
@@ -1369,5 +1385,208 @@ export function mapAlertEvaluation(e: ApiAlertEvaluation): AlertEvaluation {
     evaluated: e.evaluated,
     fired: e.fired.map((f) => ({ ...f })),
     skipped: { ...e.skipped },
+  };
+}
+
+// ─── dividends (apps/api/src/dividends, ADR-031) ───────────────────────────
+
+export interface ApiDividend {
+  id: string;
+  symbol: string;
+  companyName?: string | null;
+  announcementDate: string | null;
+  bookClosureFrom: string;
+  bookClosureTo: string | null;
+  paymentDate: string | null;
+  dividendPerShare: string;
+  source: DataSource;
+  locked: boolean;
+  createdAt: string;
+}
+
+export function mapDividendDeclaration(r: ApiDividend): DividendDeclaration {
+  return {
+    id: r.id,
+    symbol: r.symbol,
+    companyName: orNull(r.companyName),
+    announcementDate: orNull(r.announcementDate),
+    bookClosureFrom: r.bookClosureFrom,
+    bookClosureTo: orNull(r.bookClosureTo),
+    paymentDate: orNull(r.paymentDate),
+    dividendPerShare: r.dividendPerShare,
+    source: r.source,
+    locked: r.locked === true,
+    createdAt: r.createdAt,
+  };
+}
+
+export function mapDividendDeclarationUpdated(
+  r: ApiDividend & { estimatedEntitlementsCleared?: number },
+): DividendDeclarationUpdated {
+  return { ...mapDividendDeclaration(r), estimatedEntitlementsCleared: r.estimatedEntitlementsCleared ?? 0 };
+}
+
+export function mapDividendDeclarationDeleted(r: {
+  id: string;
+  deleted: boolean;
+  estimatedEntitlementsCleared?: number;
+}): DividendDeclarationDeleted {
+  return { id: r.id, deleted: true, estimatedEntitlementsCleared: r.estimatedEntitlementsCleared ?? 0 };
+}
+
+/** `POST /dividends` body (strict schema: only known keys; the API records it as USER_REPORTED). */
+export function toApiDividendInput(i: DividendDeclarationInput): Record<string, unknown> {
+  return {
+    symbol: i.symbol,
+    ...(i.announcementDate !== undefined ? { announcementDate: i.announcementDate } : {}),
+    bookClosureFrom: i.bookClosureFrom,
+    ...(i.bookClosureTo !== undefined ? { bookClosureTo: i.bookClosureTo } : {}),
+    ...(i.paymentDate !== undefined ? { paymentDate: i.paymentDate } : {}),
+    dividendPerShare: i.dividendPerShare,
+  };
+}
+
+const DIVIDEND_UPDATE_KEYS = [
+  'announcementDate',
+  'bookClosureFrom',
+  'bookClosureTo',
+  'paymentDate',
+  'dividendPerShare',
+] as const;
+
+/** `PATCH /dividends/:id` body: only the fields given (`null` clears an optional date). */
+export function toApiDividendUpdate(u: DividendDeclarationUpdate): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of DIVIDEND_UPDATE_KEYS) if (u[k] !== undefined) out[k] = u[k];
+  return out;
+}
+
+export interface ApiDividendEntitlement {
+  id: string;
+  dividendId: string;
+  portfolioId: string;
+  symbol: string;
+  bookClosureFrom: string;
+  bookClosureTo: string | null;
+  paymentDate: string | null;
+  dividendPerShare: string;
+  sharesEligible: string;
+  grossAmount: string;
+  whtRate: string | null;
+  whtAmount: string | null;
+  zakatAmount: string;
+  netAmount: string | null;
+  netBeforeWht: string;
+  taxStatus: DividendTaxStatus;
+  taxNote: string | null;
+  status: DividendPaymentStatus;
+  source: DataSource;
+  provisional: boolean;
+  paidAt: string | null;
+  cashMovementId: string | null;
+  reconciledAt: string | null;
+  updatedAt: string;
+}
+
+export interface ApiDividendEntitlementList {
+  data: ApiDividendEntitlement[];
+  filerStatus: TaxFilerStatus;
+}
+
+/** Tax figures are meaningful only when a verified rate applied, or when recorded from a payment advice. */
+const TAX_SHOWN: ReadonlySet<DividendTaxStatus> = new Set<DividendTaxStatus>(['CONFIGURED', 'AS_PAID']);
+
+export function mapDividendEntitlement(e: ApiDividendEntitlement): DividendEntitlement {
+  // Defensive: whatever the payload carries, WHT / net are never shown for an unconfigured or stale rate
+  // (the stored 0 is a NOT NULL placeholder, never a rate — ADR-031).
+  const showTax = TAX_SHOWN.has(e.taxStatus);
+  return {
+    id: e.id,
+    dividendId: e.dividendId,
+    portfolioId: e.portfolioId,
+    symbol: e.symbol,
+    bookClosureFrom: e.bookClosureFrom,
+    bookClosureTo: orNull(e.bookClosureTo),
+    paymentDate: orNull(e.paymentDate),
+    dividendPerShare: e.dividendPerShare,
+    sharesEligible: e.sharesEligible,
+    grossAmount: e.grossAmount,
+    whtRate: showTax ? orNull(e.whtRate) : null,
+    whtAmount: showTax ? orNull(e.whtAmount) : null,
+    zakatAmount: e.zakatAmount,
+    netAmount: showTax ? orNull(e.netAmount) : null,
+    netBeforeWht: e.netBeforeWht,
+    taxStatus: e.taxStatus,
+    taxNote: orNull(e.taxNote),
+    status: e.status,
+    source: e.source,
+    provisional: e.provisional === true,
+    paidAt: orNull(e.paidAt),
+    cashMovementId: orNull(e.cashMovementId),
+    reconciledAt: orNull(e.reconciledAt),
+    updatedAt: e.updatedAt,
+  };
+}
+
+export function mapDividendEntitlementList(r: ApiDividendEntitlementList): DividendEntitlementList {
+  return { data: r.data.map(mapDividendEntitlement), filerStatus: r.filerStatus };
+}
+
+export interface ApiDividendComputeResult {
+  portfolioId: string;
+  settlement: SettlementAssumption;
+  filerStatus: TaxFilerStatus;
+  counts: DividendComputeResult['counts'];
+  data: ApiDividendEntitlement[];
+}
+
+export function mapDividendComputeResult(r: ApiDividendComputeResult): DividendComputeResult {
+  return {
+    portfolioId: r.portfolioId,
+    settlement: { days: r.settlement.days, basis: r.settlement.basis, note: r.settlement.note },
+    filerStatus: r.filerStatus,
+    counts: { ...r.counts },
+    data: r.data.map(mapDividendEntitlement),
+  };
+}
+
+/** `POST /dividend-entitlements/:id/mark-paid` body — `whtAmount` is always sent (the API requires it). */
+export function toApiMarkPaid(i: DividendMarkPaidInput): Record<string, unknown> {
+  return {
+    paidAt: i.paidAt,
+    netAmount: i.netAmount,
+    whtAmount: i.whtAmount,
+    ...(i.zakatAmount !== undefined && i.zakatAmount !== '' ? { zakatAmount: i.zakatAmount } : {}),
+  };
+}
+
+export interface ApiMarkPaidResult {
+  entitlement: ApiDividendEntitlement;
+  cashMovementId: string;
+  whtBasis: 'REPORTED';
+  unexplainedDifference: string;
+  warnings?: string[];
+  estimate: DividendMarkPaidResult['estimate'];
+  differences: DividendMarkPaidResult['differences'];
+}
+
+export function mapMarkPaidResult(r: ApiMarkPaidResult): DividendMarkPaidResult {
+  return {
+    entitlement: mapDividendEntitlement(r.entitlement),
+    cashMovementId: r.cashMovementId,
+    whtBasis: r.whtBasis,
+    unexplainedDifference: r.unexplainedDifference,
+    warnings: [...(r.warnings ?? [])],
+    estimate: {
+      netAmount: orNull(r.estimate.netAmount),
+      whtAmount: orNull(r.estimate.whtAmount),
+      grossAmount: r.estimate.grossAmount,
+      taxStatus: r.estimate.taxStatus,
+    },
+    differences: {
+      netAmount: orNull(r.differences.netAmount),
+      whtAmount: orNull(r.differences.whtAmount),
+      grossAmount: r.differences.grossAmount,
+    },
   };
 }
