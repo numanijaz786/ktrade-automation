@@ -15,7 +15,9 @@ import { ImportsModule } from './imports/imports.module.js';
 import { MarketDataModule } from './market-data/market-data.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { RecommendationsModule } from './recommendations/recommendations.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { ResearchDataModule } from './research-data/research-data.module.js';
 import { SnapshotsModule } from './snapshots/snapshots.module.js';
 import { StrategiesModule } from './strategies/strategies.module.js';
 import { TradingModule } from './trading/trading.module.js';
@@ -39,6 +41,8 @@ import { TradingModule } from './trading/trading.module.js';
     SnapshotsModule,
     AlertsModule,
     DividendsModule,
+    ResearchDataModule,
+    RecommendationsModule,
   ],
   controllers: [HealthController],
   providers: [

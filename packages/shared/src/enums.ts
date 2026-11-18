@@ -249,6 +249,52 @@ export type ActorType = (typeof ACTOR_TYPES)[number];
 export const AI_MESSAGE_ROLES = e(['USER', 'ASSISTANT', 'TOOL']);
 export type AiMessageRole = (typeof AI_MESSAGE_ROLES)[number];
 
+export const FINANCIAL_PERIOD_TYPES = e(['QUARTERLY', 'ANNUAL']);
+export type FinancialPeriodType = (typeof FINANCIAL_PERIOD_TYPES)[number];
+
+export const ANNOUNCEMENT_CATEGORIES = e([
+  'FINANCIAL_RESULT',
+  'DIVIDEND',
+  'BOOK_CLOSURE',
+  'BOARD_MEETING',
+  'CORPORATE_ACTION',
+  'MATERIAL',
+  'MACRO',
+  'SECTOR',
+  'OTHER',
+]);
+export type AnnouncementCategory = (typeof ANNOUNCEMENT_CATEGORIES)[number];
+
+export const SENTIMENT_LABELS = e(['POSITIVE', 'NEGATIVE', 'NEUTRAL']);
+export type SentimentLabel = (typeof SENTIMENT_LABELS)[number];
+
+export const SENTIMENT_SOURCES = e(['RULES', 'MANUAL', 'NONE']);
+export type SentimentSource = (typeof SENTIMENT_SOURCES)[number];
+
+export const MACRO_SERIES = e(['POLICY_RATE', 'CPI_YOY', 'USD_PKR', 'KIBOR_6M', 'KSE100_INDEX']);
+export type MacroSeries = (typeof MACRO_SERIES)[number];
+
+export const RESEARCH_DATA_TYPES = e(['FUNDAMENTALS', 'ANNOUNCEMENTS', 'MACRO']);
+export type ResearchDataType = (typeof RESEARCH_DATA_TYPES)[number];
+
+export const PROVIDER_STATUS_KINDS = e(['OK', 'DEGRADED', 'FAILED', 'NOT_CONFIGURED']);
+export type ProviderStatusKind = (typeof PROVIDER_STATUS_KINDS)[number];
+
+export const RECOMMENDATION_ACTIONS = e(['BUY', 'SELL', 'HOLD', 'WATCHLIST', 'AVOID']);
+export type RecommendationAction = (typeof RECOMMENDATION_ACTIONS)[number];
+
+export const RECOMMENDATION_HORIZONS = e(['SHORT_TERM', 'MEDIUM_TERM', 'LONG_TERM']);
+export type RecommendationHorizon = (typeof RECOMMENDATION_HORIZONS)[number];
+
+export const RECOMMENDATION_STATUSES = e(['ACTIONABLE', 'NOT_ACTIONABLE']);
+export type RecommendationStatus = (typeof RECOMMENDATION_STATUSES)[number];
+
+export const CONFIDENCE_LEVELS = e(['LOW', 'MEDIUM', 'HIGH']);
+export type ConfidenceLevel = (typeof CONFIDENCE_LEVELS)[number];
+
+export const OUTCOME_STATUSES = e(['OPEN', 'TARGET_HIT', 'STOPPED', 'EXPIRED']);
+export type OutcomeStatus = (typeof OUTCOME_STATUSES)[number];
+
 /** Every enum keyed by its Prisma enum name — consumed by the enum-sync test. */
 export const ALL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   DataSource: DATA_SOURCES,
@@ -287,4 +333,16 @@ export const ALL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   NotificationStatus: NOTIFICATION_STATUSES,
   ActorType: ACTOR_TYPES,
   AiMessageRole: AI_MESSAGE_ROLES,
+  FinancialPeriodType: FINANCIAL_PERIOD_TYPES,
+  AnnouncementCategory: ANNOUNCEMENT_CATEGORIES,
+  SentimentLabel: SENTIMENT_LABELS,
+  SentimentSource: SENTIMENT_SOURCES,
+  MacroSeries: MACRO_SERIES,
+  ResearchDataType: RESEARCH_DATA_TYPES,
+  ProviderStatusKind: PROVIDER_STATUS_KINDS,
+  RecommendationAction: RECOMMENDATION_ACTIONS,
+  RecommendationHorizon: RECOMMENDATION_HORIZONS,
+  RecommendationStatus: RECOMMENDATION_STATUSES,
+  ConfidenceLevel: CONFIDENCE_LEVELS,
+  OutcomeStatus: OUTCOME_STATUSES,
 };

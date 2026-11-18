@@ -9,12 +9,12 @@
 
 // Prisma 7: connection URL lives in prisma.config.ts; the client is generated into src/ as TypeScript (ESM).
 generator client {
-  provider        = "prisma-client"
-  output          = "../src/generated/prisma"
-  moduleFormat    = "esm"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
   // Generated files import each other with .js so tsc's ESM output runs under plain Node (no TS loader).
   importFileExtension = "js"
-  previewFeatures = ["postgresqlExtensions"]
+  previewFeatures     = ["postgresqlExtensions"]
 }
 
 datasource db {
@@ -327,6 +327,90 @@ enum AiMessageRole {
 
 // ───────────────────────────── Identity & security ─────────────────────────────
 
+// ───────────────────────────── Research data layer (docs/10) ─────────────────────────────
+
+enum FinancialPeriodType {
+  QUARTERLY
+  ANNUAL
+}
+
+enum AnnouncementCategory {
+  FINANCIAL_RESULT
+  DIVIDEND
+  BOOK_CLOSURE
+  BOARD_MEETING
+  CORPORATE_ACTION
+  MATERIAL
+  MACRO
+  SECTOR
+  OTHER
+}
+
+enum SentimentLabel {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+enum SentimentSource {
+  RULES
+  MANUAL
+  NONE
+}
+
+enum MacroSeries {
+  POLICY_RATE
+  CPI_YOY
+  USD_PKR
+  KIBOR_6M
+  KSE100_INDEX
+}
+
+enum ResearchDataType {
+  FUNDAMENTALS
+  ANNOUNCEMENTS
+  MACRO
+}
+
+enum ProviderStatusKind {
+  OK
+  DEGRADED
+  FAILED
+  NOT_CONFIGURED
+}
+
+enum RecommendationAction {
+  BUY
+  SELL
+  HOLD
+  WATCHLIST
+  AVOID
+}
+
+enum RecommendationHorizon {
+  SHORT_TERM
+  MEDIUM_TERM
+  LONG_TERM
+}
+
+enum RecommendationStatus {
+  ACTIONABLE
+  NOT_ACTIONABLE
+}
+
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum OutcomeStatus {
+  OPEN
+  TARGET_HIT
+  STOPPED
+  EXPIRED
+}
+
 model User {
   id               String    @id @default(uuid()) @db.Uuid
   email            String    @unique @db.Citext
@@ -344,23 +428,25 @@ model User {
   createdAt        DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
 
-  settings          UserSettings?
-  refreshTokens     RefreshToken[]
-  credentials       CredentialVault[]
-  brokerAccounts    BrokerAccount[]
-  portfolios        Portfolio[]
-  watchlists        Watchlist[]
-  strategies        TradingStrategy[]
-  backtests         BacktestResult[]
-  alerts            Alert[]
-  notifications     Notification[]
-  notificationCfgs  NotificationChannelConfig[]
-  ordersCreated     Order[]                     @relation("OrderCreatedBy")
-  ordersApproved    Order[]                     @relation("OrderApprovedBy")
-  importsUploaded   ImportedStatement[]
-  auditLogs         AuditLog[]
-  aiConversations   AiConversation[]
-  settingsUpdated   SystemSetting[]
+  settings             UserSettings?
+  refreshTokens        RefreshToken[]
+  credentials          CredentialVault[]
+  brokerAccounts       BrokerAccount[]
+  portfolios           Portfolio[]
+  watchlists           Watchlist[]
+  strategies           TradingStrategy[]
+  backtests            BacktestResult[]
+  alerts               Alert[]
+  notifications        Notification[]
+  notificationCfgs     NotificationChannelConfig[]
+  ordersCreated        Order[]                     @relation("OrderCreatedBy")
+  ordersApproved       Order[]                     @relation("OrderApprovedBy")
+  importsUploaded      ImportedStatement[]
+  auditLogs            AuditLog[]
+  aiConversations      AiConversation[]
+  settingsUpdated      SystemSetting[]
+  announcementsEntered Announcement[]
+  recommendations      Recommendation[]
 
   @@map("users")
 }
@@ -717,16 +803,16 @@ model FeeScheduleItem {
 
 /// Effective-dated tax rates. Seed values are placeholders flagged `verified=false` until checked against FBR/NCCPL.
 model TaxRate {
-  id              String         @id @default(uuid()) @db.Uuid
-  taxType         TaxType
-  filerStatus     TaxFilerStatus
-  minHoldingDays  Int?
-  maxHoldingDays  Int?
-  rate            Decimal        @db.Decimal(12, 8)
-  effectiveFrom   DateTime       @db.Date
-  effectiveTo     DateTime?      @db.Date
-  verified        Boolean        @default(false)
-  sourceNote      String?
+  id             String         @id @default(uuid()) @db.Uuid
+  taxType        TaxType
+  filerStatus    TaxFilerStatus
+  minHoldingDays Int?
+  maxHoldingDays Int?
+  rate           Decimal        @db.Decimal(12, 8)
+  effectiveFrom  DateTime       @db.Date
+  effectiveTo    DateTime?      @db.Date
+  verified       Boolean        @default(false)
+  sourceNote     String?
 
   @@index([taxType, filerStatus, effectiveFrom])
   @@map("tax_rates")
@@ -767,39 +853,39 @@ model SystemSetting {
 // ───────────────────────────── Orders ─────────────────────────────
 
 model Order {
-  id                String        @id @default(uuid()) @db.Uuid
-  userId            String        @db.Uuid
-  portfolioId       String        @db.Uuid
-  stockId           String        @db.Uuid
+  id                String             @id @default(uuid()) @db.Uuid
+  userId            String             @db.Uuid
+  portfolioId       String             @db.Uuid
+  stockId           String             @db.Uuid
   mode              ExecutionMode // PAPER | LIVE (BACKTEST orders live in backtest_trades)
   origin            OrderOrigin
   side              OrderSide
   type              OrderType
-  timeInForce       TimeInForce   @default(DAY)
-  quantity          Decimal       @db.Decimal(20, 4)
-  limitPrice        Decimal?      @db.Decimal(20, 6)
-  stopPrice         Decimal?      @db.Decimal(20, 6)
-  referencePrice    Decimal?      @db.Decimal(20, 6) // last price at preview
+  timeInForce       TimeInForce        @default(DAY)
+  quantity          Decimal            @db.Decimal(20, 4)
+  limitPrice        Decimal?           @db.Decimal(20, 6)
+  stopPrice         Decimal?           @db.Decimal(20, 6)
+  referencePrice    Decimal?           @db.Decimal(20, 6) // last price at preview
   referencePriceSrc DataSource?
-  status            OrderStatus   @default(DRAFT)
-  statusSource      DataSource    @default(USER_REPORTED)
+  status            OrderStatus        @default(DRAFT)
+  statusSource      DataSource         @default(USER_REPORTED)
   idempotencyKey    String
   previewHash       String? // SHA-256 over immutable preview fields
-  previewExpiresAt  DateTime?     @db.Timestamptz(6)
-  estNotional       Decimal?      @db.Decimal(20, 4)
-  estFees           Decimal?      @db.Decimal(20, 4)
-  estTotal          Decimal?      @db.Decimal(20, 4)
-  approvedById      String?       @db.Uuid
-  approvedAt        DateTime?     @db.Timestamptz(6)
-  submittedAt       DateTime?     @db.Timestamptz(6)
+  previewExpiresAt  DateTime?          @db.Timestamptz(6)
+  estNotional       Decimal?           @db.Decimal(20, 4)
+  estFees           Decimal?           @db.Decimal(20, 4)
+  estTotal          Decimal?           @db.Decimal(20, 4)
+  approvedById      String?            @db.Uuid
+  approvedAt        DateTime?          @db.Timestamptz(6)
+  submittedAt       DateTime?          @db.Timestamptz(6)
   adapter           BrokerAdapterKind?
   brokerOrderRef    String?
-  filledQuantity    Decimal       @default(0) @db.Decimal(20, 4)
-  avgFillPrice      Decimal?      @db.Decimal(20, 6)
+  filledQuantity    Decimal            @default(0) @db.Decimal(20, 4)
+  avgFillPrice      Decimal?           @db.Decimal(20, 6)
   rejectionReason   String?
-  strategyId        String?       @db.Uuid
-  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
+  strategyId        String?            @db.Uuid
+  createdAt         DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(6)
 
   user       User             @relation("OrderCreatedBy", fields: [userId], references: [id], onDelete: Restrict)
   approvedBy User?            @relation("OrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
@@ -904,6 +990,9 @@ model Stock {
   strategies       TradingStrategy[]
   signals          StrategySignal[]
   alerts           Alert[]
+  financials       CompanyFinancial[]
+  announcements    Announcement[]
+  recommendations  Recommendation[]
 
   @@index([sector])
   @@map("stocks")
@@ -1063,32 +1152,32 @@ model DividendEntitlement {
 // ───────────────────────────── Imports / sync ─────────────────────────────
 
 model ImportedStatement {
-  id                String        @id @default(uuid()) @db.Uuid
-  brokerAccountId   String        @db.Uuid
+  id              String        @id @default(uuid()) @db.Uuid
+  brokerAccountId String        @db.Uuid
   /// LIVE portfolio the rows will be posted into on commit.
-  portfolioId       String?       @db.Uuid
-  uploadedById      String?       @db.Uuid
-  kind              ImportKind
-  channel           ImportChannel
-  fileName          String
-  mimeType          String
-  sizeBytes         Int
-  fileSha256        String
-  storagePath       String? // encrypted blob; nulled after retention purge
-  emailMessageId    String? // MAILBOX channel
-  parserKey         String // e.g. "ktrade.contract-note.pdf"
-  parserVersion     String
-  periodFrom        DateTime?     @db.Date
-  periodTo          DateTime?     @db.Date
-  status            ImportStatus  @default(UPLOADED)
-  rowsTotal         Int           @default(0)
-  rowsCommitted     Int           @default(0)
-  rowsDuplicate     Int           @default(0)
-  rowsMatched       Int           @default(0)
-  rowsInvalid       Int           @default(0)
-  errors            Json          @default("[]")
-  committedAt       DateTime?     @db.Timestamptz(6)
-  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
+  portfolioId     String?       @db.Uuid
+  uploadedById    String?       @db.Uuid
+  kind            ImportKind
+  channel         ImportChannel
+  fileName        String
+  mimeType        String
+  sizeBytes       Int
+  fileSha256      String
+  storagePath     String? // encrypted blob; nulled after retention purge
+  emailMessageId  String? // MAILBOX channel
+  parserKey       String // e.g. "ktrade.contract-note.pdf"
+  parserVersion   String
+  periodFrom      DateTime?     @db.Date
+  periodTo        DateTime?     @db.Date
+  status          ImportStatus  @default(UPLOADED)
+  rowsTotal       Int           @default(0)
+  rowsCommitted   Int           @default(0)
+  rowsDuplicate   Int           @default(0)
+  rowsMatched     Int           @default(0)
+  rowsInvalid     Int           @default(0)
+  errors          Json          @default("[]")
+  committedAt     DateTime?     @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
 
   brokerAccount    BrokerAccount           @relation(fields: [brokerAccountId], references: [id], onDelete: Restrict)
   portfolio        Portfolio?              @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
@@ -1128,32 +1217,32 @@ model ImportedRow {
 // ───────────────────────────── Strategies, signals, backtests ─────────────────────────────
 
 model TradingStrategy {
-  id               String        @id @default(uuid()) @db.Uuid
-  userId           String        @db.Uuid
-  portfolioId      String        @db.Uuid
-  stockId          String        @db.Uuid
-  name             String
-  type             StrategyType
-  mode             ExecutionMode // PAPER or LIVE (BACKTEST runs are separate records)
-  interval         PriceInterval @default(D1)
-  isActive         Boolean       @default(false)
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @db.Uuid
+  portfolioId     String        @db.Uuid
+  stockId         String        @db.Uuid
+  name            String
+  type            StrategyType
+  mode            ExecutionMode // PAPER or LIVE (BACKTEST runs are separate records)
+  interval        PriceInterval @default(D1)
+  isActive        Boolean       @default(false)
   /// Rule DSL (docs/08). Built-in types compile into this; CUSTOM_RULES edits it directly.
-  entryRules       Json
-  exitRules        Json
-  stopLossPct      Decimal?      @db.Decimal(8, 4)
-  takeProfitPct    Decimal?      @db.Decimal(8, 4)
-  trailingStopPct  Decimal?      @db.Decimal(8, 4)
-  maxInvestment    Decimal       @db.Decimal(20, 4)
-  maxPositionQty   Decimal?      @db.Decimal(20, 4)
-  riskPerTradePct  Decimal?      @db.Decimal(8, 4)
-  cooldownBars     Int           @default(1)
+  entryRules      Json
+  exitRules       Json
+  stopLossPct     Decimal?      @db.Decimal(8, 4)
+  takeProfitPct   Decimal?      @db.Decimal(8, 4)
+  trailingStopPct Decimal?      @db.Decimal(8, 4)
+  maxInvestment   Decimal       @db.Decimal(20, 4)
+  maxPositionQty  Decimal?      @db.Decimal(20, 4)
+  riskPerTradePct Decimal?      @db.Decimal(8, 4)
+  cooldownBars    Int           @default(1)
   /// PAPER: signals auto-execute against the paper broker when true.
   /// LIVE: only takes effect if RiskLimit.liveAutoExecutionEnabled and the adapter capability chain allow it.
-  autoExecute      Boolean       @default(false)
-  version          Int           @default(1)
-  lastEvaluatedAt  DateTime?     @db.Timestamptz(6)
-  createdAt        DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime      @updatedAt @db.Timestamptz(6)
+  autoExecute     Boolean       @default(false)
+  version         Int           @default(1)
+  lastEvaluatedAt DateTime?     @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
 
   user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   portfolio  Portfolio           @relation(fields: [portfolioId], references: [id], onDelete: Restrict)
@@ -1229,31 +1318,31 @@ model StrategyExecution {
 }
 
 model BacktestResult {
-  id              String     @id @default(uuid()) @db.Uuid
-  userId          String     @db.Uuid
-  strategyId      String?    @db.Uuid
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @db.Uuid
+  strategyId      String?       @db.Uuid
   strategyType    StrategyType
   symbol          String
   interval        PriceInterval
   params          Json // full snapshot: rules, parameters, fees, slippage
-  fromDate        DateTime   @db.Date
-  toDate          DateTime   @db.Date
-  initialCapital  Decimal    @db.Decimal(20, 4)
-  finalEquity     Decimal?   @db.Decimal(20, 4)
-  totalReturnPct  Decimal?   @db.Decimal(12, 6)
-  cagrPct         Decimal?   @db.Decimal(12, 6)
-  maxDrawdownPct  Decimal?   @db.Decimal(12, 6)
-  sharpe          Decimal?   @db.Decimal(12, 6)
-  winRatePct      Decimal?   @db.Decimal(12, 6)
+  fromDate        DateTime      @db.Date
+  toDate          DateTime      @db.Date
+  initialCapital  Decimal       @db.Decimal(20, 4)
+  finalEquity     Decimal?      @db.Decimal(20, 4)
+  totalReturnPct  Decimal?      @db.Decimal(12, 6)
+  cagrPct         Decimal?      @db.Decimal(12, 6)
+  maxDrawdownPct  Decimal?      @db.Decimal(12, 6)
+  sharpe          Decimal?      @db.Decimal(12, 6)
+  winRatePct      Decimal?      @db.Decimal(12, 6)
   tradesCount     Int?
-  feesTotal       Decimal?   @db.Decimal(20, 4)
-  benchmarkReturn Decimal?   @db.Decimal(12, 6) // buy-and-hold same symbol
+  feesTotal       Decimal?      @db.Decimal(20, 4)
+  benchmarkReturn Decimal?      @db.Decimal(12, 6) // buy-and-hold same symbol
   equityCurve     Json? // [{t, equity, drawdown}]
   dataSource      DataSource // SIMULATED if run on synthetic prices
-  status          RunStatus  @default(QUEUED)
+  status          RunStatus     @default(QUEUED)
   error           String?
-  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
-  finishedAt      DateTime?  @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  finishedAt      DateTime?     @db.Timestamptz(6)
 
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   strategy TradingStrategy? @relation(fields: [strategyId], references: [id], onDelete: SetNull)
@@ -1264,15 +1353,15 @@ model BacktestResult {
 }
 
 model BacktestTrade {
-  id         String       @id @default(uuid()) @db.Uuid
-  backtestId String       @db.Uuid
-  entryTs    DateTime     @db.Timestamptz(6)
-  exitTs     DateTime?    @db.Timestamptz(6)
-  quantity   Decimal      @db.Decimal(20, 4)
-  entryPrice Decimal      @db.Decimal(20, 6)
-  exitPrice  Decimal?     @db.Decimal(20, 6)
-  fees       Decimal      @db.Decimal(20, 4)
-  pnl        Decimal?     @db.Decimal(20, 4)
+  id         String        @id @default(uuid()) @db.Uuid
+  backtestId String        @db.Uuid
+  entryTs    DateTime      @db.Timestamptz(6)
+  exitTs     DateTime?     @db.Timestamptz(6)
+  quantity   Decimal       @db.Decimal(20, 4)
+  entryPrice Decimal       @db.Decimal(20, 6)
+  exitPrice  Decimal?      @db.Decimal(20, 6)
+  fees       Decimal       @db.Decimal(20, 4)
+  pnl        Decimal?      @db.Decimal(20, 4)
   exitReason SignalReason?
 
   backtest BacktestResult @relation(fields: [backtestId], references: [id], onDelete: Cascade)
@@ -1381,6 +1470,173 @@ model AiMessage {
 
   @@index([conversationId, createdAt])
   @@map("ai_messages")
+}
+
+// ───────────────────────────── Research data & recommendations ─────────────────────────────
+
+/// Fundamentals per reporting period. Owner-entered (USER_REPORTED, document cited) until a licensed provider exists.
+/// Money items are in full currency units (not thousands/millions). Every item is nullable: absent = "not available".
+model CompanyFinancial {
+  id                String              @id @default(uuid()) @db.Uuid
+  stockId           String              @db.Uuid
+  periodType        FinancialPeriodType
+  periodEnd         DateTime            @db.Date
+  publishedAt       DateTime            @db.Timestamptz(6) // when the figures became public (no look-ahead)
+  currency          String              @default("PKR") @db.Char(3)
+  source            DataSource
+  sourceRef         String // document + page, e.g. "OGDC Annual Report 2025, p.84"
+  sourceUrl         String?
+  revenue           Decimal?            @db.Decimal(24, 4)
+  grossProfit       Decimal?            @db.Decimal(24, 4)
+  operatingProfit   Decimal?            @db.Decimal(24, 4)
+  netProfit         Decimal?            @db.Decimal(24, 4)
+  eps               Decimal?            @db.Decimal(20, 6)
+  totalAssets       Decimal?            @db.Decimal(24, 4)
+  totalEquity       Decimal?            @db.Decimal(24, 4)
+  totalDebt         Decimal?            @db.Decimal(24, 4)
+  operatingCashFlow Decimal?            @db.Decimal(24, 4)
+  capex             Decimal?            @db.Decimal(24, 4)
+  sharesOutstanding Decimal?            @db.Decimal(24, 4)
+  dividendPerShare  Decimal?            @db.Decimal(20, 6)
+  enteredById       String?             @db.Uuid
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(6)
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, periodType, periodEnd, source])
+  @@index([stockId, periodEnd(sort: Desc)])
+  @@map("company_financials")
+}
+
+/// News / filings the owner records or imports. Deduplicated on a hash of normalised title + url + publishedAt.
+model Announcement {
+  id              String               @id @default(uuid()) @db.Uuid
+  stockId         String?              @db.Uuid
+  symbols         String[]
+  title           String
+  summary         String?
+  url             String?
+  category        AnnouncementCategory @default(OTHER)
+  source          DataSource
+  sourceName      String // human label of where it came from, e.g. "Company website"
+  publishedAt     DateTime             @db.Timestamptz(6)
+  retrievedAt     DateTime             @db.Timestamptz(6)
+  dedupeHash      String               @unique
+  sentiment       SentimentLabel?
+  sentimentSource SentimentSource      @default(NONE)
+  relevance       Int? // 0–100, owner-assigned
+  enteredById     String?              @db.Uuid
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
+
+  stock     Stock? @relation(fields: [stockId], references: [id], onDelete: SetNull)
+  enteredBy User?  @relation(fields: [enteredById], references: [id], onDelete: SetNull)
+
+  @@index([publishedAt(sort: Desc)])
+  @@index([stockId, publishedAt(sort: Desc)])
+  @@map("announcements")
+}
+
+model MacroObservation {
+  id        String      @id @default(uuid()) @db.Uuid
+  series    MacroSeries
+  date      DateTime    @db.Date
+  value     Decimal     @db.Decimal(20, 6)
+  source    DataSource
+  sourceRef String
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+
+  @@unique([series, date, source])
+  @@index([series, date(sort: Desc)])
+  @@map("macro_observations")
+}
+
+/// Last known health of each research data provider (mutable status row, one per provider + data type).
+model ProviderStatus {
+  id               String             @id @default(uuid()) @db.Uuid
+  providerKey      String
+  dataType         ResearchDataType
+  lastAttemptAt    DateTime?          @db.Timestamptz(6)
+  lastSuccessAt    DateTime?          @db.Timestamptz(6)
+  status           ProviderStatusKind
+  freshnessMinutes Int?
+  message          String?
+  licenseNote      String?
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(6)
+
+  @@unique([providerKey, dataType])
+  @@map("provider_status")
+}
+
+/// IMMUTABLE record of what the engine said, on what inputs, at what time (UPDATE/DELETE/TRUNCATE blocked by trigger).
+/// userId null = system-wide recommendation. Idempotent per (user, stock, horizon, asOfBar, engineVersion): a unique
+/// expression index in the migration SQL (Prisma cannot express COALESCE indexes).
+model Recommendation {
+  id              String                @id @default(uuid()) @db.Uuid
+  userId          String?               @db.Uuid
+  stockId         String                @db.Uuid
+  horizon         RecommendationHorizon
+  action          RecommendationAction
+  status          RecommendationStatus
+  generatedAt     DateTime              @db.Timestamptz(6)
+  asOfBar         DateTime              @db.Date // PKT date of the last D1 bar the engine saw
+  price           Decimal               @db.Decimal(20, 6)
+  priceSource     DataSource
+  entryLow        Decimal?              @db.Decimal(20, 6)
+  entryHigh       Decimal?              @db.Decimal(20, 6)
+  stop            Decimal?              @db.Decimal(20, 6)
+  target1         Decimal?              @db.Decimal(20, 6)
+  target2         Decimal?              @db.Decimal(20, 6)
+  target3         Decimal?              @db.Decimal(20, 6)
+  riskReward      Decimal?              @db.Decimal(10, 4)
+  holdingPeriod   String?
+  holdingDaysMax  Int? // calendar days after asOfBar before an open recommendation expires
+  confidence      Decimal               @db.Decimal(5, 2) // 0–100
+  confidenceLevel ConfidenceLevel
+  components      Json                  @default("{}")
+  reasons         Json                  @default("[]")
+  invalidations   Json                  @default("[]")
+  dataQuality     Json                  @default("{}")
+  engineVersion   String
+  inputsSnapshot  Json                  @default("{}")
+  createdAt       DateTime              @default(now()) @db.Timestamptz(6)
+
+  user     User?                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  stock    Stock                   @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  outcomes RecommendationOutcome[]
+
+  @@index([userId, generatedAt(sort: Desc)])
+  @@index([stockId, generatedAt(sort: Desc)])
+  @@index([status, action, horizon])
+  @@map("recommendations")
+}
+
+/// Append-only evaluation rows: each evaluation adds a row; nothing is rewritten. The latest row per
+/// recommendation is its current state. Percentages are percent (3.5000 = +3.5 %), direction-adjusted.
+model RecommendationOutcome {
+  id                 String        @id @default(uuid()) @db.Uuid
+  recommendationId   String        @db.Uuid
+  evaluatedAt        DateTime      @db.Timestamptz(6)
+  lastBarDate        DateTime      @db.Date // last D1 bar included in this evaluation
+  status             OutcomeStatus
+  maxFavourable      Decimal       @db.Decimal(12, 4)
+  maxAdverse         Decimal       @db.Decimal(12, 4)
+  target1HitAt       DateTime?     @db.Date
+  target2HitAt       DateTime?     @db.Date
+  target3HitAt       DateTime?     @db.Date
+  stopHitAt          DateTime?     @db.Date
+  closedAt           DateTime?     @db.Date
+  exitPrice          Decimal?      @db.Decimal(20, 6)
+  returnPct          Decimal?      @db.Decimal(12, 4) // realised if closed, else mark-to-last-close
+  holdingDays        Int
+  benchmarkReturnPct Decimal?      @db.Decimal(12, 4)
+  createdAt          DateTime      @default(now()) @db.Timestamptz(6)
+
+  recommendation Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Restrict)
+
+  @@unique([recommendationId, lastBarDate, status])
+  @@index([recommendationId, evaluatedAt(sort: Desc)])
+  @@map("recommendation_outcomes")
 }
 
 // ───────────────────────────── Audit ─────────────────────────────

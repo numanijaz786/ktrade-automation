@@ -4,3 +4,4 @@ export * from './broker-adapter.js';
 export * from './guard.js';
 export * from './market-data-provider.js';
 export * from './stubs.js';
+export * from './research-providers.js';
