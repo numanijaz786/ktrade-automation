@@ -68,6 +68,9 @@ function Detail({ s }: { s: StockDetail }) {
         }
         actions={
           <>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/research/${encodeURIComponent(s.symbol)}`}>Advisor research</Link>
+            </Button>
             <CreatePriceAlert symbol={s.symbol} />
             <AddToWatchlist symbol={s.symbol} />
           </>

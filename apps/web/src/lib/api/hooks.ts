@@ -15,6 +15,8 @@ import {
 } from '@tanstack/react-query';
 import { useApiClient } from './client';
 import type {
+  AdvisorHorizon,
+  ScannerFilter,
   AlertInput,
   AlertUpdate,
   AnnouncementInput,
@@ -1016,5 +1018,69 @@ export function useEvaluateOutcomes() {
   return useMutation({
     mutationFn: () => api.recommendations.evaluateOutcomes(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recommendations'] }),
+  });
+}
+
+// ─── advisor (ADR-036) ────────────────────────────────────────────────────
+
+const ADVISOR_REFRESH_MS = 120_000;
+
+export function useAdvisorDailyReport(pf: string | undefined, horizon: AdvisorHorizon) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: ['advisor', 'daily', pf ?? '', horizon] as const,
+    queryFn: () => api.advisor.dailyReport({ portfolioId: pf!, horizon }),
+    enabled: !!pf,
+    refetchInterval: ADVISOR_REFRESH_MS,
+  });
+}
+
+export function useAdvisorHoldings(pf: string | undefined, horizon: AdvisorHorizon) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: ['advisor', 'holdings', pf ?? '', horizon] as const,
+    queryFn: () => api.advisor.holdings({ portfolioId: pf!, horizon }),
+    enabled: !!pf,
+  });
+}
+
+export function useAdvisorScanner(filter: ScannerFilter, horizon: AdvisorHorizon, pf: string | undefined) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: ['advisor', 'scanner', filter, horizon, pf ?? ''] as const,
+    queryFn: () => api.advisor.scanner({ filter, horizon, portfolioId: pf }),
+    enabled: !!pf,
+  });
+}
+
+export function useAdvisorStock(symbol: string | undefined, pf: string | undefined) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: ['advisor', 'stock', symbol ?? '', pf ?? ''] as const,
+    queryFn: () => api.advisor.stock(symbol!, pf),
+    enabled: !!symbol && !!pf,
+  });
+}
+
+export function useRunAdvisor() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { portfolioId: string; horizons?: AdvisorHorizon[] }) => api.advisor.run(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['advisor'] }),
+  });
+}
+
+export function useAdvisorSettings() {
+  const api = useApiClient();
+  return useQuery({ queryKey: ['advisor', 'settings'] as const, queryFn: () => api.advisor.settings() });
+}
+
+export function useUpdateAdvisorSettings() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (riskPerTradePct: string) => api.advisor.updateSettings(riskPerTradePct),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['advisor'] }),
   });
 }

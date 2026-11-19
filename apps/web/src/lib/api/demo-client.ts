@@ -10,6 +10,7 @@
  */
 import { weakestSource, type DataSource, type OrderStatus } from '@ktrade/shared';
 import { Dec } from '../decimal';
+import { createDemoAdvisor } from './demo-advisor';
 import { createDemoResearch } from './demo-research';
 import { estimateFees } from '../fees';
 import {
@@ -300,11 +301,19 @@ export class DemoApiClient implements ApiClient {
     const demoResearch = createDemoResearch({ latencyMs: this.latency, now: this.now });
     this.research = demoResearch.research;
     this.recommendations = demoResearch.recommendations;
+    this.advisor = createDemoAdvisor({
+      latencyMs: this.latency,
+      now: this.now,
+      portfolios: () => this.portfolios.list(),
+      holdings: (pf) => this.portfolios.holdings(pf),
+      summary: (pf) => this.dashboard.summary(pf),
+    });
   }
 
   /** Research data and recommendation history: seeded demo samples, never real data (demo-research.ts). */
   readonly research: ApiClient['research'];
   readonly recommendations: ApiClient['recommendations'];
+  readonly advisor: ApiClient['advisor'];
 
   // ─── infrastructure ──────────────────────────────────────────────────────
 

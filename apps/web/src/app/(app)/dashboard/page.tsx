@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, FlaskConical, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdvisorSummaryCard } from '@/components/advisor/advisor-summary-card';
 import { PageHeader, Section } from '@/components/page-header';
 import { PnlText } from '@/components/money';
 import { ProvenanceBadge } from '@/components/provenance-badge';
@@ -73,6 +74,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
   const holdings = useHoldings(portfolioId);
   return (
     <>
+      <AdvisorSummaryCard portfolioId={portfolioId} />
       <QueryState query={summary} rows={4}>
         {(s) => <Kpis s={s} />}
       </QueryState>

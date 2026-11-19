@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { ProvenanceBadge } from '@/components/provenance-badge';
 import { QueryState } from '@/components/states';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -145,6 +146,16 @@ export function RecommendationDrawer({ id, onClose }: { id: string | null; onClo
               : 'Loading the saved record.'}
           </SheetDescription>
         </SheetHeader>
+        {q.data && (
+          <p className="px-4 text-sm">
+            <Link
+              href={`/research/${encodeURIComponent(q.data.symbol)}`}
+              className="underline underline-offset-2"
+            >
+              Open full research for {q.data.symbol}
+            </Link>
+          </p>
+        )}
         {id && <QueryState query={q}>{(rec) => <RecommendationDetailView rec={rec} />}</QueryState>}
       </SheetContent>
     </Sheet>

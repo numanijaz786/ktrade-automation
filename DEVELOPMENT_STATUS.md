@@ -4,15 +4,15 @@ _Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_D
 
 ## 1. Where we are
 
-|                    |                                                                                                                                                                                                                                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Overall**        | Phases 1–5 done (except reconciliation and the KTrade parsers, both blocked on samples). Phase 6 + 8 core done. Phase 7 partial. Phases 9–12 not started (their pure logic exists in `finance-core`).                                                                                              |
-| **Just completed** | Signal actions + strategy scheduler (ADR-030). Web: dashboard performance, notifications, alerts. All earlier milestones are on GitHub.                                                                                                                                                            |
-| **Next task**      | Phase 12 production packaging (Dockerfiles, production compose with nginx + TLS-ready config, backups, health checks) so a single private URL can be deployed once hosting is approved. Then dividends, analytics/exports, and the research engine (docs/10).                                      |
-| **Also done**      | Repo-wide Prettier formatting (style-only commit `d961174`); CI `format:check` passes.                                                                                                                                                                                                             |
-| **Build health**   | ✅ `pnpm turbo run build typecheck lint test`: 20/20 tasks (incl. web production build). ✅ API: 59 tests across 8 files (unit + e2e + 3 Testcontainers suites). ✅ Web: 28 tests. ✅ Compiled-API smoke test (ready 200, auth 401, 2.5 MB body parsed / 4 MB → 413, Swagger lists import routes). |
-| **Migrations**     | 3 migrations (`init`, `auth_totp_and_hardening`, `import_target_portfolio`), all applied to the dev DB, no drift.                                                                                                                                                                                  |
-| **Git**            | `main` tracks https://github.com/numanijaz786/ktrade-automation. See `git log` for the latest commits. Push only when the owner asks.                                                                                                                                                              |
+|                    |                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overall**        | Phases 1–5 done (except reconciliation and the KTrade parsers, both blocked on samples). Phase 6 + 8 core done. Phase 7 partial. Phases 9–12 not started (their pure logic exists in `finance-core`).                                                                                                       |
+| **Just completed** | Research engine (ADR-035), research data layer + immutable recommendation tracking (ADR-034), advisor API (ADR-036), and all advisor/research pages (ADR-037). Security hardening (ADR-033), dividends, production packaging (ADR-032). Everything is committed and pushed.                                 |
+| **Next task**      | **Real market data** (USER_ACTION #3: Capital Stake quote or licensed/imported EOD prices) — without it every recommendation is NOT_ACTIONABLE by design. Then backtest the recommendation thresholds on real history. Engineering follow-ups: engine `riskLevel`, valuation assumptions, ASVS gaps (TODO). |
+| **Also done**      | Repo-wide Prettier formatting (style-only commit `d961174`); CI `format:check` passes.                                                                                                                                                                                                                      |
+| **Build health**   | ✅ `pnpm turbo run build typecheck lint test`: 20/20 tasks (incl. web production build). ✅ API: 59 tests across 8 files (unit + e2e + 3 Testcontainers suites). ✅ Web: 28 tests. ✅ Compiled-API smoke test (ready 200, auth 401, 2.5 MB body parsed / 4 MB → 413, Swagger lists import routes).          |
+| **Migrations**     | 3 migrations (`init`, `auth_totp_and_hardening`, `import_target_portfolio`), all applied to the dev DB, no drift.                                                                                                                                                                                           |
+| **Git**            | `main` tracks https://github.com/numanijaz786/ktrade-automation. See `git log` for the latest commits. Push only when the owner asks.                                                                                                                                                                       |
 
 ## 2. Completed work (cumulative)
 
@@ -63,7 +63,7 @@ _Last updated: 2026-11-14. Read this, `TODO.md`, `CLAUDE.md` and `ARCHITECTURE_D
 | Suite                                              | Result                      |
 | -------------------------------------------------- | --------------------------- |
 | finance-core / shared / broker-sdk                 | 184 / 13 / 8 ✅             |
-| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 136 / 136 ✅ in 18 files    |
+| API unit + e2e + integration (`RUN_INTEGRATION=1`) | 230 / 230 ✅ in 27 files    |
 | Web                                                | 28 / 28 ✅, `next build` ✅ |
 
 ## 4. Known issues / blockers

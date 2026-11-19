@@ -14,16 +14,17 @@ Browser ── Next.js web (apps/web) ──[BFF, planned]── NestJS API (app
 
 ## API modules (apps/api/src)
 
-| Module                                               | Responsibility                                                                | Status |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------- | ------ |
-| auth, audit, security                                | Login, sessions, 2FA, step-up, RBAC, append-only audit                        | ✅     |
-| ledger, portfolio                                    | The only writer of trades (lock + replay), holdings, cash, dashboard          | ✅     |
-| trading                                              | Preview → risk → approval → paper fill / manual live ticket, kill switch      | ✅     |
-| imports, broker                                      | Statement import pipeline, KTrade account registration                        | ✅     |
-| market-data                                          | Providers, quotes (persisted), candles, overview, sectors, movers, watchlists | ✅     |
-| strategies, backtests, signals                       | Uses finance-core engines                                                     | ⏳     |
-| notifications, alerts, dividends, analytics, reports |                                                                               | ⏳     |
-| research, AI assistant                               | Attributable research and recommendations                                     | ⏳     |
+| Module                                               | Responsibility                                                                                                                                   | Status                                  |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| auth, audit, security                                | Login, sessions, 2FA, step-up, RBAC, append-only audit                                                                                           | ✅                                      |
+| ledger, portfolio                                    | The only writer of trades (lock + replay), holdings, cash, dashboard                                                                             | ✅                                      |
+| trading                                              | Preview → risk → approval → paper fill / manual live ticket, kill switch                                                                         | ✅                                      |
+| imports, broker                                      | Statement import pipeline, KTrade account registration                                                                                           | ✅                                      |
+| market-data                                          | Providers, quotes (persisted), candles, overview, sectors, movers, watchlists                                                                    | ✅                                      |
+| strategies, backtests, signals                       | Uses finance-core engines                                                                                                                        | ⏳                                      |
+| notifications, alerts, dividends, analytics, reports |                                                                                                                                                  | ⏳                                      |
+| research-data, recommendations, advisor              | Financials/announcements/macro, immutable recommendation tracking, daily report, holdings advice, scanner (pure engine in finance-core/research) | ✅ (needs real prices to be actionable) |
+| AI assistant (LLM chat)                              | Optional explanation layer; disabled stub                                                                                                        | ⏳                                      |
 
 ## Data provenance
 

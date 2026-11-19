@@ -50,16 +50,40 @@ export const ticketSchema = z
 
 type Errors = Partial<Record<'portfolioId' | 'symbol' | 'quantity' | 'limitPrice', string>>;
 
-export function OrderTicket({ onReset }: { onReset: () => void }) {
+export interface TicketPrefill {
+  symbol?: string;
+  side?: OrderSide;
+  quantity?: string;
+  limitPrice?: string;
+}
+
+/** Reads `?symbol=&side=&qty=&type=&limit=` (from the advisor). Anything that fails validation is ignored. */
+export function parsePrefill(params: { get(name: string): string | null }): TicketPrefill {
+  const symbol = (params.get('symbol') ?? '').trim().toUpperCase();
+  const side = params.get('side');
+  const qty = params.get('qty') ?? '';
+  const limit = params.get('limit') ?? '';
+  const out: TicketPrefill = {};
+  if (/^[A-Z0-9.-]{1,12}$/.test(symbol)) out.symbol = symbol;
+  if (side === 'BUY' || side === 'SELL') out.side = side;
+  if (/^\d{1,12}$/.test(qty) && /[1-9]/.test(qty)) out.quantity = qty;
+  if (params.get('type') === 'LIMIT' && /^\d{1,10}(\.\d{1,4})?$/.test(limit) && /[1-9]/.test(limit))
+    out.limitPrice = limit;
+  return out;
+}
+
+export function OrderTicket({ onReset, prefill }: { onReset: () => void; prefill?: TicketPrefill }) {
   const { portfolioId: activeId, portfolios } = useActivePortfolio();
   // Follows the active portfolio (which may load after mount) until the user picks one here.
   const [picked, setPortfolioId] = useState<string | null>(null);
   const portfolioId = picked ?? activeId ?? '';
-  const [symbol, setSymbol] = useState('');
-  const [side, setSide] = useState<OrderSide>('BUY');
-  const [type, setType] = useState<Extract<OrderType, 'MARKET' | 'LIMIT'>>('MARKET');
-  const [quantity, setQuantity] = useState('');
-  const [limitPrice, setLimitPrice] = useState('');
+  const [symbol, setSymbol] = useState(prefill?.symbol ?? '');
+  const [side, setSide] = useState<OrderSide>(prefill?.side ?? 'BUY');
+  const [type, setType] = useState<Extract<OrderType, 'MARKET' | 'LIMIT'>>(
+    prefill?.limitPrice ? 'LIMIT' : 'MARKET',
+  );
+  const [quantity, setQuantity] = useState(prefill?.quantity ?? '');
+  const [limitPrice, setLimitPrice] = useState(prefill?.limitPrice ?? '');
   const [errors, setErrors] = useState<Errors>({});
   const [orderId, setOrderId] = useState<string | null>(null);
   const preview = usePreviewOrder();

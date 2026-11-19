@@ -2,6 +2,12 @@ import {
   Activity,
   ArrowLeftRight,
   Banknote,
+  BadgeDollarSign,
+  Briefcase,
+  LogOut,
+  ShieldCheck,
+  Radar,
+  Brain,
   Bell,
   BellRing,
   BotMessageSquare,
@@ -39,6 +45,17 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Advisor',
+    items: [
+      { href: '/advisor', label: 'Advisor', icon: Brain },
+      { href: '/advisor/buy', label: 'Buy opportunities', icon: BadgeDollarSign },
+      { href: '/advisor/sell', label: 'Sell & exit', icon: LogOut },
+      { href: '/advisor/portfolio', label: 'Portfolio manager', icon: Briefcase },
+      { href: '/scanner', label: 'Scanner', icon: Radar },
+      { href: '/risk', label: 'Risk', icon: ShieldCheck },
+    ],
+  },
   {
     label: 'Overview',
     items: [
@@ -99,10 +116,11 @@ export const MOBILE_NAV: NavItem[] = [
 ];
 
 /** Exact match for `/market` so it is not highlighted together with `/market/overview`. */
-const EXACT = new Set(['/market']);
+const EXACT = new Set(['/market', '/advisor']);
 
 export function isActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
+  if (href === '/advisor') return pathname === href;
   if (EXACT.has(href))
     return pathname === href || (pathname.startsWith(`${href}/`) && pathname !== '/market/overview');
   return pathname === href || pathname.startsWith(`${href}/`);

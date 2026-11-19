@@ -116,6 +116,14 @@ import {
   toPerformanceQuery,
   toRecommendationQuery,
 } from './http/mappers-research';
+import {
+  mapAdvisorSettings,
+  mapDailyReport,
+  mapHoldingsReport,
+  mapRunSummary,
+  mapScannerReport,
+  mapStockReport,
+} from './http/mappers-advisor';
 import type {
   AnnouncementsImportResult,
   DataMode,
@@ -744,6 +752,22 @@ export class HttpApiClient implements ApiClient {
     evaluateOutcomes: async () =>
       mapEvaluationSummary(
         await this.request<EvaluationSummary>('POST', 'recommendations/evaluate-outcomes'),
+      ),
+  };
+
+  advisor: ApiClient['advisor'] = {
+    dailyReport: async (q) => mapDailyReport(await this.get<unknown>('advisor/daily-report', { ...q })),
+    holdings: async (q) => mapHoldingsReport(await this.get<unknown>('advisor/holdings', { ...q })),
+    scanner: async (q) => mapScannerReport(await this.get<unknown>('advisor/scanner', { ...q })),
+    stock: async (symbol, portfolioId) =>
+      mapStockReport(
+        await this.get<unknown>(`advisor/stocks/${seg(symbol.trim().toUpperCase())}`, { portfolioId }),
+      ),
+    run: async (input) => mapRunSummary(await this.request<unknown>('POST', 'advisor/run', { body: input })),
+    settings: async () => mapAdvisorSettings(await this.get<unknown>('advisor/settings')),
+    updateSettings: async (riskPerTradePct) =>
+      mapAdvisorSettings(
+        await this.request<unknown>('PUT', 'advisor/settings', { body: { riskPerTradePct } }),
       ),
   };
 

@@ -8,6 +8,14 @@
 import { createContext, createElement, useContext, type ReactNode } from 'react';
 import type { ImportKind, SignalStatus } from '@ktrade/shared';
 import type {
+  AdvisorHorizon,
+  AdvisorRunSummary,
+  AdvisorSettings,
+  DailyReport,
+  HoldingsAdviceReport,
+  ScannerFilter,
+  ScannerReport,
+  StockReport,
   Alert,
   AlertEvaluation,
   AlertInput,
@@ -255,6 +263,28 @@ export interface ResearchApi {
   providers(): Promise<ResearchProviderStatus[]>;
 }
 
+/** AI Investment Advisor (ADR-036). Advisory only: nothing here places or approves an order. */
+export interface AdvisorApi {
+  /** GET /advisor/daily-report */
+  dailyReport(q: { portfolioId: string; horizon: AdvisorHorizon }): Promise<DailyReport>;
+  /** GET /advisor/holdings */
+  holdings(q: { portfolioId: string; horizon: AdvisorHorizon }): Promise<HoldingsAdviceReport>;
+  /** GET /advisor/scanner — may legitimately be empty. */
+  scanner(q: {
+    filter: ScannerFilter;
+    horizon: AdvisorHorizon;
+    portfolioId?: string;
+  }): Promise<ScannerReport>;
+  /** GET /advisor/stocks/:symbol */
+  stock(symbol: string, portfolioId?: string): Promise<StockReport>;
+  /** POST /advisor/run (OWNER) — evaluates and stores results; idempotent per bar. */
+  run(input: { portfolioId: string; horizons?: AdvisorHorizon[] }): Promise<AdvisorRunSummary>;
+  /** GET /advisor/settings */
+  settings(): Promise<AdvisorSettings>;
+  /** PUT /advisor/settings (OWNER, 0 < risk <= 5) */
+  updateSettings(riskPerTradePct: string): Promise<AdvisorSettings>;
+}
+
 /** Immutable recommendation history and outcome tracking (ADR-034). Never hides failed recommendations. */
 export interface RecommendationsApi {
   list(query?: RecommendationQuery): Promise<RecommendationPage>;
@@ -356,6 +386,7 @@ export interface ApiClient {
   dividends: DividendsApi;
   research: ResearchApi;
   recommendations: RecommendationsApi;
+  advisor: AdvisorApi;
   analytics: AnalyticsApi;
   reports: ReportsApi;
   notifications: NotificationsApi;

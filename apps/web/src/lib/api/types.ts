@@ -1384,3 +1384,4 @@ export interface UserSettings {
 }
 
 export * from './types-research';
+export * from './types-advisor';

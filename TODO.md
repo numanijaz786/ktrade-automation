@@ -130,7 +130,10 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Advisor API (daily report, holdings advice, scanner, stock report, settings), explanation layer (template, LLM stub disabled), after-close scheduler + dedup alerts (ADR-036)
 - [ ] Per-portfolio sizing for multiple portfolios on the same bar; valuation assumptions storage (DDM/DCF); real ex-dividend dates
 - [x] Frontend (already built): Market intelligence, Financial statements, Data providers & system health, Recommendation history/performance
-- [ ] **NEXT: Frontend advisor pages: AI Advisor dashboard (daily report), Buy opportunities, Sell & exit signals, My portfolio manager, Stock research report, Scanner, Risk settings (risk per trade %)**
+- [x] Frontend advisor pages: AI Advisor, Buy opportunities, Sell & exit, Portfolio manager, Stock research report, Scanner, Risk settings (ADR-037)
+- [ ] **NEXT: obtain real prices (USER_ACTION #3) and backtest the default recommendation thresholds on real history; then tune only on out-of-sample data**
+- [ ] Add `riskLevel` to the engine output (Low/Medium/High from ATR%/liquidity) so buy cards can show it
+- [ ] Candlestick-pattern list on the stock report; valuation-assumption storage
 - [ ] Alerts for entry range / targets / stop / recommendation change / news
 - [ ] ⛔ Real prices: Capital Stake quote or licensed EOD source (USER_ACTION #3) — until then every recommendation is NOT_ACTIONABLE by design
 - [ ] ⛔ SBP EasyData key (USER_ACTION #8); LLM key for the explanation layer (USER_ACTION #7)
