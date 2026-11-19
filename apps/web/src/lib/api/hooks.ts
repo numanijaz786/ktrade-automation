@@ -17,6 +17,7 @@ import { useApiClient } from './client';
 import type {
   AlertInput,
   AlertUpdate,
+  AnnouncementInput,
   BacktestCompareRequest,
   BacktestRequest,
   ChannelConfig,
@@ -26,6 +27,12 @@ import type {
   DividendMarkPaidInput,
   DividendReconcileInput,
   FillRequest,
+  FinancialInput,
+  MacroInput,
+  MacroObservation,
+  NewsFeedQuery,
+  PerformanceQuery,
+  RecommendationQuery,
   MoverType,
   Order,
   OrderFilters,
@@ -75,6 +82,13 @@ export const qk = {
   backtests: ['backtests'] as const,
   dividendDeclarations: ['dividends', 'declarations'] as const,
   dividendEntitlements: (pf: string) => ['dividends', 'entitlements', pf] as const,
+  newsFeed: (q: NewsFeedQuery) => ['research', 'news', q] as const,
+  financials: (symbol: string) => ['research', 'financials', symbol] as const,
+  macro: (series?: string) => ['research', 'macro', series ?? 'all'] as const,
+  researchProviders: ['research', 'providers'] as const,
+  recommendations: (q: RecommendationQuery) => ['recommendations', 'list', q] as const,
+  recommendation: (id: string) => ['recommendations', 'one', id] as const,
+  recPerformance: (q: PerformanceQuery) => ['recommendations', 'performance', q] as const,
   performance: (pf: string, p: PerformancePeriod) => ['analytics', 'performance', pf, p] as const,
   realized: (pf: string) => ['analytics', 'realized', pf] as const,
   feesTaxes: (pf: string) => ['analytics', 'feesTaxes', pf] as const,
@@ -909,5 +923,98 @@ export function useUpdateUserSettings() {
   return useMutation({
     mutationFn: (u: UserSettings) => api.settings.updateUser(u),
     onSuccess: (d) => qc.setQueryData(qk.userSettings, d),
+  });
+}
+
+// ─── research data, recommendations ────────────────────────────────────────
+
+const RESEARCH_REFRESH_MS = 60_000;
+
+export function useNewsFeed(q: NewsFeedQuery = {}) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: qk.newsFeed(q),
+    queryFn: () => api.research.newsFeed(q),
+    refetchInterval: RESEARCH_REFRESH_MS,
+  });
+}
+
+export function useFinancials(symbol: string | undefined) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: qk.financials(symbol ?? ''),
+    queryFn: () => api.research.financials(symbol!),
+    enabled: !!symbol,
+  });
+}
+
+export function useMacro(series?: MacroObservation['series']) {
+  const api = useApiClient();
+  return useQuery({ queryKey: qk.macro(series), queryFn: () => api.research.macro({ series }) });
+}
+
+export function useResearchProviders() {
+  const api = useApiClient();
+  return useQuery({ queryKey: qk.researchProviders, queryFn: () => api.research.providers() });
+}
+
+/** Owner writes. Everything entered is USER_REPORTED; each write refreshes the research queries. */
+export function useResearchMutations() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['research'] });
+  return {
+    addAnnouncement: useMutation({
+      mutationFn: (input: AnnouncementInput) => api.research.addAnnouncement(input),
+      onSuccess: refresh,
+    }),
+    importAnnouncements: useMutation({
+      mutationFn: (csv: string) => api.research.importAnnouncements(csv),
+      onSuccess: refresh,
+    }),
+    saveFinancial: useMutation({
+      mutationFn: (input: FinancialInput) => api.research.saveFinancial(input),
+      onSuccess: refresh,
+    }),
+    importFinancials: useMutation({
+      mutationFn: (csv: string) => api.research.importFinancials(csv),
+      onSuccess: refresh,
+    }),
+    addMacro: useMutation({
+      mutationFn: (input: MacroInput) => api.research.addMacro(input),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+export function useRecommendations(q: RecommendationQuery) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: qk.recommendations(q),
+    queryFn: () => api.recommendations.list(q),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useRecommendation(id: string | undefined) {
+  const api = useApiClient();
+  return useQuery({
+    queryKey: qk.recommendation(id ?? ''),
+    queryFn: () => api.recommendations.get(id!),
+    enabled: !!id,
+  });
+}
+
+export function useRecommendationPerformance(q: PerformanceQuery) {
+  const api = useApiClient();
+  return useQuery({ queryKey: qk.recPerformance(q), queryFn: () => api.recommendations.performance(q) });
+}
+
+export function useEvaluateOutcomes() {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.recommendations.evaluateOutcomes(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recommendations'] }),
   });
 }

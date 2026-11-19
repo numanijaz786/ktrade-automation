@@ -9,6 +9,10 @@ import {
   CandlestickChart,
   ChartNoAxesCombined,
   Cable,
+  Database,
+  History,
+  Newspaper,
+  Scale,
   FileBarChart,
   FlaskConical,
   LayoutDashboard,
@@ -54,6 +58,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/market/overview', label: 'Market overview', icon: Activity },
       { href: '/market', label: 'Stock explorer', icon: CandlestickChart },
       { href: '/watchlists', label: 'Watchlists', icon: Star },
+    ],
+  },
+  {
+    label: 'Research',
+    items: [
+      { href: '/intelligence', label: 'Market intelligence', icon: Newspaper },
+      { href: '/financials', label: 'Financial statements', icon: Scale },
+      { href: '/recommendations', label: 'Recommendations', icon: History },
+      { href: '/data-health', label: 'Data providers', icon: Database },
     ],
   },
   {

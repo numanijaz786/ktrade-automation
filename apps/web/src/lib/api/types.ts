@@ -1382,3 +1382,5 @@ export interface UserSettings {
   costBasisMethod: CostBasisMethod;
   aiDataSharingOptIn: boolean;
 }
+
+export * from './types-research';

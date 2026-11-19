@@ -12,6 +12,8 @@ import type {
   AlertEvaluation,
   AlertInput,
   AlertUpdate,
+  AnnouncementInput,
+  AnnouncementsImportResult,
   AssistantMessage,
   Backtest,
   BacktestCompareRequest,
@@ -40,7 +42,24 @@ import type {
   DividendReconcileInput,
   FeeEstimate,
   FeeEstimateQuery,
+  EvaluationSummary,
   FeeScheduleRow,
+  FinancialInput,
+  FinancialSaved,
+  FinancialsImportResult,
+  FinancialsList,
+  MacroInput,
+  MacroList,
+  MacroObservation,
+  NewsFeed,
+  NewsFeedQuery,
+  NewsItem,
+  PerformanceQuery,
+  RecommendationDetail,
+  RecommendationPage,
+  RecommendationPerformance,
+  RecommendationQuery,
+  ResearchProviderStatus,
   FeesTaxes,
   FillRequest,
   Holding,
@@ -216,6 +235,35 @@ export interface DividendsApi {
   reconcile(entitlementId: string, input?: DividendReconcileInput): Promise<DividendEntitlement>;
 }
 
+/** docs/10, ADR-034. Everything here is owner-entered (USER_REPORTED) until a licensed source is connected. */
+export interface ResearchApi {
+  /** GET /research/news-feed — only items inside the freshness window, with lastUpdated and a coverage note. */
+  newsFeed(query?: NewsFeedQuery): Promise<NewsFeed>;
+  /** POST /research/announcements (OWNER) — 409 DUPLICATE_ANNOUNCEMENT when already recorded. */
+  addAnnouncement(input: AnnouncementInput): Promise<NewsItem>;
+  /** POST /research/announcements/import (OWNER) — 422 with row-level errors when any row is invalid. */
+  importAnnouncements(csv: string): Promise<AnnouncementsImportResult>;
+  /** GET /research/financials?symbol= — periods on file, newest first. */
+  financials(symbol: string): Promise<FinancialsList>;
+  /** POST /research/financials (OWNER) — re-entering a period corrects it in place. */
+  saveFinancial(input: FinancialInput): Promise<FinancialSaved>;
+  /** POST /research/financials/import (OWNER) — all-or-nothing, 422 with row-level errors. */
+  importFinancials(csv: string): Promise<FinancialsImportResult>;
+  macro(query?: { series?: MacroObservation['series'] }): Promise<MacroList>;
+  addMacro(input: MacroInput): Promise<MacroObservation>;
+  /** GET /research/providers */
+  providers(): Promise<ResearchProviderStatus[]>;
+}
+
+/** Immutable recommendation history and outcome tracking (ADR-034). Never hides failed recommendations. */
+export interface RecommendationsApi {
+  list(query?: RecommendationQuery): Promise<RecommendationPage>;
+  get(id: string): Promise<RecommendationDetail>;
+  performance(query?: PerformanceQuery): Promise<RecommendationPerformance>;
+  /** POST /recommendations/evaluate-outcomes (OWNER) — appends outcome rows from stored daily bars. */
+  evaluateOutcomes(): Promise<EvaluationSummary>;
+}
+
 export interface AnalyticsApi {
   performance(portfolioId: string, period: PerformancePeriod): Promise<PerformanceRow[]>;
   realizedUnrealized(portfolioId: string): Promise<RealizedUnrealized>;
@@ -306,6 +354,8 @@ export interface ApiClient {
   strategies: StrategiesApi;
   backtests: BacktestsApi;
   dividends: DividendsApi;
+  research: ResearchApi;
+  recommendations: RecommendationsApi;
   analytics: AnalyticsApi;
   reports: ReportsApi;
   notifications: NotificationsApi;

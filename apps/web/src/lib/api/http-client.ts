@@ -90,7 +90,42 @@ import {
   problemToApiError,
   toApiRiskLimits,
 } from './http/mappers';
-import type { DataMode, ImportBatch, ImportRow, MarketProvider, QuoteTick } from './types';
+import {
+  type ApiFinancial,
+  type ApiMacro,
+  type ApiNewsFeed,
+  type ApiNewsItem,
+  type ApiRecPerformance,
+  type ApiRecommendation,
+  type ApiResearchProvider,
+  mapAnnouncementsImport,
+  mapEvaluationSummary,
+  mapFinancialSaved,
+  mapFinancialsImport,
+  mapFinancialsList,
+  mapMacro,
+  mapMacroList,
+  mapNewsFeed,
+  mapNewsItem,
+  mapPerformanceReport,
+  mapRecommendationDetail,
+  mapRecommendationPage,
+  mapResearchProvider,
+  toApiAnnouncement,
+  toApiFinancial,
+  toPerformanceQuery,
+  toRecommendationQuery,
+} from './http/mappers-research';
+import type {
+  AnnouncementsImportResult,
+  DataMode,
+  EvaluationSummary,
+  FinancialsImportResult,
+  ImportBatch,
+  ImportRow,
+  MarketProvider,
+  QuoteTick,
+} from './types';
 
 export const CSRF_COOKIE = 'ktrade_csrf';
 export const CSRF_HEADER = 'x-csrf-token';
@@ -638,6 +673,77 @@ export class HttpApiClient implements ApiClient {
         await this.request<ApiDividendEntitlement>('POST', `dividend-entitlements/${seg(id)}/reconcile`, {
           body: input.statementRef?.trim() ? { statementRef: input.statementRef.trim() } : {},
         }),
+      ),
+  };
+
+  research: ApiClient['research'] = {
+    newsFeed: async (q = {}) =>
+      mapNewsFeed(
+        await this.get<ApiNewsFeed>('research/news-feed', {
+          windowHours: q.windowHours,
+          symbol: q.symbol?.trim() ? q.symbol.trim().toUpperCase() : undefined,
+          limit: 200,
+        }),
+      ),
+    addAnnouncement: async (input) =>
+      mapNewsItem(
+        await this.request<ApiNewsItem>('POST', 'research/announcements', {
+          body: toApiAnnouncement(input),
+        }),
+      ),
+    importAnnouncements: async (csv) =>
+      mapAnnouncementsImport(
+        await this.request<AnnouncementsImportResult>('POST', 'research/announcements/import', {
+          body: { csv },
+        }),
+      ),
+    financials: async (symbol) =>
+      mapFinancialsList(
+        await this.get<{ symbol: string; data: ApiFinancial[]; note?: string }>('research/financials', {
+          symbol: symbol.trim().toUpperCase(),
+          limit: 200,
+        }),
+      ),
+    saveFinancial: async (input) =>
+      mapFinancialSaved(
+        await this.request<ApiFinancial & { created: boolean }>('POST', 'research/financials', {
+          body: toApiFinancial(input),
+        }),
+      ),
+    importFinancials: async (csv) =>
+      mapFinancialsImport(
+        await this.request<FinancialsImportResult>('POST', 'research/financials/import', { body: { csv } }),
+      ),
+    macro: async (q = {}) =>
+      mapMacroList(
+        await this.get<{ data: ApiMacro[]; note?: string }>('research/macro', {
+          series: q.series,
+          limit: 200,
+        }),
+      ),
+    addMacro: async (input) =>
+      mapMacro(await this.request<ApiMacro>('POST', 'research/macro', { body: input })),
+    providers: async () =>
+      (await this.get<{ data: ApiResearchProvider[] }>('research/providers')).data.map(mapResearchProvider),
+  };
+
+  recommendations: ApiClient['recommendations'] = {
+    list: async (q = {}) =>
+      mapRecommendationPage(
+        await this.get<{ total: number; data: ApiRecommendation[] }>(
+          'recommendations',
+          toRecommendationQuery({ limit: 25, ...q }),
+        ),
+      ),
+    get: async (id) =>
+      mapRecommendationDetail(await this.get<ApiRecommendation>(`recommendations/${seg(id)}`)),
+    performance: async (q = {}) =>
+      mapPerformanceReport(
+        await this.get<ApiRecPerformance>('recommendations/performance', toPerformanceQuery(q)),
+      ),
+    evaluateOutcomes: async () =>
+      mapEvaluationSummary(
+        await this.request<EvaluationSummary>('POST', 'recommendations/evaluate-outcomes'),
       ),
   };
 
