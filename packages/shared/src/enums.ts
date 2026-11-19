@@ -283,7 +283,15 @@ export type ProviderStatusKind = (typeof PROVIDER_STATUS_KINDS)[number];
 export const RECOMMENDATION_ACTIONS = e(['BUY', 'SELL', 'HOLD', 'WATCHLIST', 'AVOID']);
 export type RecommendationAction = (typeof RECOMMENDATION_ACTIONS)[number];
 
-export const RECOMMENDATION_HORIZONS = e(['SHORT_TERM', 'MEDIUM_TERM', 'LONG_TERM']);
+export const RECOMMENDATION_HORIZONS = e([
+  'SHORT_TERM',
+  'MEDIUM_TERM',
+  'LONG_TERM',
+  'SWING',
+  'DIVIDEND',
+  'VALUE',
+  'GROWTH',
+]);
 export type RecommendationHorizon = (typeof RECOMMENDATION_HORIZONS)[number];
 
 export const RECOMMENDATION_STATUSES = e(['ACTIONABLE', 'NOT_ACTIONABLE']);

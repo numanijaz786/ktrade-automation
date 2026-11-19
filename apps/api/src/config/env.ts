@@ -71,6 +71,20 @@ export const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   /**
+   * Run the advisor for the owner's portfolios after the PSX close on trading days (15:45 PKT), then evaluate
+   * recommendation outcomes and raise in-app notifications. Off by default; POST /advisor/run works regardless.
+   */
+  ADVISOR_SCHEDULER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Optional LLM explainer provider name. Unset = no LLM; the explainer is a disabled stub and makes no network calls. */
+  ADVISOR_LLM_PROVIDER: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+  /**
    * Hops allowed to set X-Forwarded-For (Express `trust proxy`): comma-separated IPs, CIDRs (IPv4 ≥ /8, IPv6
    * ≥ /16) or loopback|linklocal|uniquelocal. Default loopback only; empty = trust nobody. Production trusts
    * only the web (BFF) container's fixed address, so `req.ip` (rate limits, audit) is the real client.

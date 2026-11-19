@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AdvisorModule } from './advisor/advisor.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
 import { AuditModule } from './audit/audit.service.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -43,6 +44,7 @@ import { TradingModule } from './trading/trading.module.js';
     DividendsModule,
     ResearchDataModule,
     RecommendationsModule,
+    AdvisorModule,
   ],
   controllers: [HealthController],
   providers: [

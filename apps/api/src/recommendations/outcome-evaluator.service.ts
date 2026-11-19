@@ -9,7 +9,15 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { type EvalBar, evaluateOutcome } from './outcome-evaluation.js';
 
 /** Calendar days an open recommendation lives when it carries no explicit window (by horizon). */
-export const DEFAULT_HOLDING_DAYS = { SHORT_TERM: 30, MEDIUM_TERM: 90, LONG_TERM: 365 } as const;
+export const DEFAULT_HOLDING_DAYS = {
+  SHORT_TERM: 30,
+  MEDIUM_TERM: 90,
+  LONG_TERM: 365,
+  SWING: 60,
+  DIVIDEND: 730,
+  VALUE: 730,
+  GROWTH: 730,
+} as const;
 
 const toDate = (s: string): Date => new Date(`${s}T00:00:00Z`);
 const day = (d0: Date): string => d0.toISOString().slice(0, 10);

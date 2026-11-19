@@ -127,8 +127,10 @@ Work top to bottom; the first unchecked item is the next task.
 - [x] Data layer: financials, announcements, macro, provider status/registry (honest disabled stubs), immutable recommendations + outcomes, outcome evaluator, performance (ADR-034)
 - [x] Pure research engine in finance-core: technicals, ratios, valuation, recommendation rules with hard data gating, holdings advice, scanner (ADR-035, docs/12; 295 finance-core tests)
 - [ ] Backtest the default rule thresholds on real historical data once available (thresholds are untuned)
-- [ ] API: advisor endpoint wiring engine + data layer + portfolio (daily report, holdings advice, scanner) and outcome-evaluation scheduler
-- [ ] Frontend pages: AI Advisor, Buy opportunities, Sell/exit signals, Stock research, Market intelligence feed, Scanner, Recommendation history/performance, Data provider settings, System health & data freshness
+- [x] Advisor API (daily report, holdings advice, scanner, stock report, settings), explanation layer (template, LLM stub disabled), after-close scheduler + dedup alerts (ADR-036)
+- [ ] Per-portfolio sizing for multiple portfolios on the same bar; valuation assumptions storage (DDM/DCF); real ex-dividend dates
+- [x] Frontend (already built): Market intelligence, Financial statements, Data providers & system health, Recommendation history/performance
+- [ ] **NEXT: Frontend advisor pages: AI Advisor dashboard (daily report), Buy opportunities, Sell & exit signals, My portfolio manager, Stock research report, Scanner, Risk settings (risk per trade %)**
 - [ ] Alerts for entry range / targets / stop / recommendation change / news
 - [ ] ⛔ Real prices: Capital Stake quote or licensed EOD source (USER_ACTION #3) — until then every recommendation is NOT_ACTIONABLE by design
 - [ ] ⛔ SBP EasyData key (USER_ACTION #8); LLM key for the explanation layer (USER_ACTION #7)

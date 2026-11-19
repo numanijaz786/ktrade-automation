@@ -387,10 +387,15 @@ enum RecommendationAction {
   AVOID
 }
 
+/// SWING/DIVIDEND/VALUE/GROWTH were added for the six-horizon advisor engine (additive migration).
 enum RecommendationHorizon {
   SHORT_TERM
   MEDIUM_TERM
   LONG_TERM
+  SWING
+  DIVIDEND
+  VALUE
+  GROWTH
 }
 
 enum RecommendationStatus {
